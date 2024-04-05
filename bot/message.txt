@@ -1,0 +1,9 @@
+344йъ--------|--------|0
+--------|--------|0
+--------|--------|0
+<coroutine object SenderGetter.get_sender at 0x00000202AC5C7140>|hello dude|0
+--------|--------|0
+--------|--------|0
+Channel(id=1677806302, title='гл-тар-11', photo=ChatPhotoEmpty(), date=datetime.datetime(2022, 7, 27, 20, 18, 11, tzinfo=datetime.timezone.utc), creator=True, left=False, broadcast=True, verified=False, megagroup=False, restricted=False, signatures=False, min=False, scam=False, has_link=False, has_geo=False, slowmode_enabled=False, call_active=False, call_not_empty=False, fake=False, gigagroup=False, noforwards=False, join_to_send=False, join_request=False, forum=False, stories_hidden=False, stories_hidden_min=True, stories_unavailable=True, access_hash=-6686319539293095344, username='zmfbt11', restriction_reason=[], admin_rights=ChatAdminRights(change_info=True, post_messages=True, edit_messages=True, delete_messages=True, ban_users=True, invite_users=True, pin_messages=True, add_admins=True, anonymous=False, manage_call=True, other=True, manage_topics=True, post_stories=True, edit_stories=True, delete_stories=True), banned_rights=None, default_banned_rights=None, participants_count=None, usernames=[], stories_max_id=None, color=None)|hello guys|0
+гл-тар-11|hello one more time|0
+гл-тар-11|hello|0
