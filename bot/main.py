@@ -1,27 +1,45 @@
+#
+from ENV import *
+
+import os
+
 import asyncio
+
 import psycopg2
+
 from telethon import TelegramClient, sync, events
+
 import re
+
 import zipfile
-from time import sleep
+
+import json
+
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-import os
+from selenium.webdriver import ChromeOptions, Keys
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.wait import WebDriverWait
+
+from bs4 import BeautifulSoup
+
+from urllib import request
+
+from time import sleep
 from datetime import datetime
 
 
 # Use your own values from my.telegram.org
-api_id = 15723016
-api_hash = 'fd10c198eaa94bc4fe3f82415eb46ee6'
+#api_id = 15723016
+#api_hash = 'fd10c198eaa94bc4fe3f82415eb46ee6'
 client = TelegramClient('Pulchrum', api_id, api_hash, system_version="4.16.30-vxASPA")
 
 # Proxy for selenium webdriver
-PROXY_HOST = '38.154.89.230'  # rotating proxy or host
-PROXY_PORT = 8000 # port
-PROXY_USER = 'nSMJ7N' # username
-PROXY_PASS = 'HQhCVD' # password
+#PROXY_HOST = '38.154.89.230'  # rotating proxy or host
+#PROXY_PORT = 8000 # port
+#PROXY_USER = 'nSMJ7N' # username
+#PROXY_PASS = 'HQhCVD' # password
 
 # def WritetoDB(sender, text):
 #     f = open('message.txt', 'a')
@@ -95,7 +113,7 @@ def get_chromedriver(use_proxy=False, user_agent=None):
         chrome_options.add_argument(f'--user-agent={user_agent}')
 
     s = Service(
-        executable_path='K:/Project/chromedriver-win64/chromedriver.exe'
+        executable_path=executablepath
     )
     driver = webdriver.Chrome(
         service=s,
@@ -108,10 +126,11 @@ async def getHeatmap():
     try:
         driver = get_chromedriver(use_proxy=False,
                                   user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
+        #hardcode
         driver.get('https://smart-lab.ru/q/map/')
         await asyncio.sleep(10)
         s = datetime.now()
-        path_to_file = 'K:/Project/py/bot/images/' + s.strftime("%d_%m_%Y") + '/smartlab'
+        path_to_file = path_to_bot + '/images/' + s.strftime("%d_%m_%Y") + '/smartlab'
         if not os.path.exists(path_to_file):
             os.makedirs(path_to_file)
         ts = s.strftime(("%f"))
@@ -119,14 +138,15 @@ async def getHeatmap():
         path = path_to_file + '/hmmb' + ts + '.jpg'
         catch = driver.find_element("xpath", "/html/body/div[1]/main/div[3]")  # мосбиржа
         catch.screenshot(path)
+        #tg channel hardcoded
         # совмещен гет и пост - нужно поменять
-        await client.send_message(-1002009872429, "текущая обстановка на московской бирже", file=path)
+        await client.send_message(channel_to_post, "текущая обстановка на московской бирже", file=path)
 
         path = path_to_file + '/hmsb' + ts + '.jpg'
         catch = driver.find_element("xpath", "/html/body/div[1]/main/div[5]")  # спббиржа
         catch.screenshot(path)
         # совмещен гет и пост - нужно поменять
-        await client.send_message(-1002009872429, "текущая обстановка на СПБ бирже", file=path)
+        await client.send_message(channel_to_post, "текущая обстановка на СПБ бирже", file=path)
 
     except Exception as ex:
         print(ex)
@@ -186,8 +206,8 @@ def replaceMessage(message):
 
 
 async def DBprocessing():
-    connection = psycopg2.connect(dbname='db_bot', user='postgres',
-                                  password='1qaz!QAZ', host='localhost')
+    connection = psycopg2.connect(dbname=db_name, user=db_user,
+                                  password=db_password, host=db_host)
     cursor = connection.cursor()
     SQLquery = "SELECT ID, TEXT FROM MESSAGES WHERE (STATUS=0 AND (TYPE=2))"
 
@@ -205,8 +225,8 @@ async def DBprocessing():
     connection.close()
 
 async def DBposting():
-    connection = psycopg2.connect(dbname='db_bot', user='postgres',
-                                  password='1qaz!QAZ', host='localhost')
+    connection = psycopg2.connect(dbname=db_name, user=db_user,
+                                  password=db_password, host=db_host)
     cursor = connection.cursor()
     SQLquery = "SELECT ID, TEXT, IMAGE FROM MESSAGES WHERE (STATUS=1 AND (TYPE=2))"
 
@@ -237,8 +257,8 @@ async def DBposting():
 
 
 async def CheckDB(type):
-    connection = psycopg2.connect(dbname='db_bot', user='postgres',
-                                  password='1qaz!QAZ', host='localhost')
+    connection = psycopg2.connect(dbname=db_name, user=db_user,
+                                  password=db_password, host=db_host)
     cursor = connection.cursor()
     if type == 0:
         SQLquery = "SELECT COUNT (ID) FROM MESSAGES WHERE (STATUS=0)"
@@ -254,6 +274,26 @@ async def CheckDB(type):
 
     return(quantity)
 
+async def CheckDB_tw(type):
+    connection = psycopg2.connect(dbname=db_name, user=db_user,
+                                  password=db_password, host=db_host)
+    cursor = connection.cursor()
+    if type == 0:
+        SQLquery = "SELECT COUNT (ID) FROM TWITTER WHERE (STATUS=0)"
+    elif type == 1:
+        SQLquery = "SELECT COUNT (ID) FROM TWITTER WHERE (STATUS=1)"
+
+    cursor.execute(SQLquery)
+    quantity = cursor.fetchone()[0]
+
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+    return(quantity)
+
+# запись в базу данных сообщения телеграмм
+# todo бъединить в одну функцию  запись в таблцы TG, TW, VK
 async def WritetoDB(senderid, sendertitle, text, status=0, type=0, image=''):
     #f = open('message.txt', 'a')
     #string = str(sender) + "|" + str(text) + "|0\n"
@@ -261,8 +301,8 @@ async def WritetoDB(senderid, sendertitle, text, status=0, type=0, image=''):
     #f.close()
     SQLquery = f"INSERT INTO MESSAGES (SENDERID,SENDERNAME,TEXT,STATUS,TYPE,IMAGE,TIMER) VALUES ('{senderid}', '{sendertitle}', '{text}', {status}, {type}, '{image}', CURRENT_TIMESTAMP)"
 
-    connection = psycopg2.connect(dbname='db_bot', user='postgres',
-                                  password='1qaz!QAZ', host='localhost')
+    connection = psycopg2.connect(dbname=db_name, user=db_user,
+                                  password=db_password, host=db_host)
     cursor = connection.cursor()
     cursor.execute(SQLquery)
 
@@ -270,10 +310,32 @@ async def WritetoDB(senderid, sendertitle, text, status=0, type=0, image=''):
     cursor.close()
     connection.close()
 
+#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#запись в базу данных сообщения twitter
+async def WritetoDB_tw(senderid, sendertitle, text, status=0, type=0, image=''):
+    #f = open('message.txt', 'a')
+    #string = str(sender) + "|" + str(text) + "|0\n"
+    #f.write(string)
+    #f.close()
+    SQLquery = f"INSERT INTO MESSAGES (SENDERID,SENDERNAME,TEXT,STATUS,TYPE,IMAGE,TIMER) VALUES ('{senderid}', '{sendertitle}', '{text}', {status}, {type}, '{image}', CURRENT_TIMESTAMP)"
 
-@client.on(events.NewMessage(chats=[-1001677806302,-1001496320800,-1001411610346, -1001063908560]))
+    connection = psycopg2.connect(dbname=db_name, user=db_user,
+                                  password=db_password, host=db_host)
+    cursor = connection.cursor()
+    cursor.execute(SQLquery)
 
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+# hardcode
+# включение бота на прослушивание каналов
+@client.on(events.NewMessage(chats=chats_to_read))
+
+# hardcode
+# условия для сохранения сообщения
 async def handler(event):
+    # todo вынести в отдельный конфигурационный файл
     # тестовое слово с командой 1
     if 'hello 1' in event.raw_text:
         text = event.raw_text
@@ -324,17 +386,36 @@ async def handler(event):
         image = "/images/static/2.jpg"
         await WritetoDB(senderid, sendername, text, status, type, image)
 
+# условия для асинхронного запуска функций бота
 async def main():
     async with client:
         lastHour=0
         while True:
+            #старт итерации цикла, сброс переменных
             unProcessedQuantity = 0
             unPostedQuantity = 0
+
+            #проверка количества необработанных сообщений
+            # unProcessedQuantity - количество сообщений ТГ
+            # unProcessedQuantity_tw - количество сообщений twitter
+            # unProcessedQuantity_vk - количество сообщений VK
+
+            # TG
             unProcessedQuantity = await CheckDB(0)
             if unProcessedQuantity > 0:
                 await DBprocessing()
                 print('processed')
 
+            # TW
+            unProcessedQuantity_tw = await CheckDB_tw(0)
+            if unProcessedQuantity_tw > 0:
+                await DBprocessing_tw()
+                print('processed')
+
+            # todo перенести из JNB бота VK
+            # VK
+
+            # todo убрать ожидание
             await asyncio.sleep(10)
 
             unPostedQuantity = await CheckDB(1)
@@ -342,12 +423,16 @@ async def main():
                 await DBposting()
                 print('ready for send ', unPostedQuantity)
             print(unProcessedQuantity,"-",unPostedQuantity)
+
+            # todo вывести в стенозависимые
+            #текущее время и проверка на возможность отправкии (бот работает с 9 до 18)
             currentHour = int(datetime.now().strftime("%H"))
             if currentHour > 9 and currentHour > lastHour and currentHour <19 :
                 lastHour = await getHeatmap()
                 print('heatmap start')
 
-
+# todo вывести в стенозависимые
+# Повторяется цикл раз в n секунд, например 300
             await asyncio.sleep(300)
 
 if __name__ == '__main__':
