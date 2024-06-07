@@ -6,11 +6,12 @@ db_user='postgres'
 db_password='1qaz!QAZ'
 db_host='localhost'
 
-#proxy
-PROXY_HOST = '38.154.89.230'  # rotating proxy or host
+#proxy - !!! hardcoded for tw imgs !!!
+
+PROXY_HOST = '38.170.122.135:8000'  # rotating proxy or host
 PROXY_PORT = 8000 # port
-PROXY_USER = 'nSMJ7N' # username
-PROXY_PASS = 'HQhCVD' # password
+PROXY_USER = '657fLU' # username
+PROXY_PASS = 'mjqpjy' # password
 
 #selenium
 DRIVER_PATH='K:\Project\chromedriver-win64\chromedriver.exe'
@@ -18,6 +19,8 @@ DRIVER_PATH='K:\Project\chromedriver-win64\chromedriver.exe'
 #telethon
 api_id = 15723016
 api_hash = 'fd10c198eaa94bc4fe3f82415eb46ee6'
+chats_to_read = [-1001677806302,-1001496320800,-1001411610346, -1001063908560]
+channel_to_post = -1002009872429
 
 #twitter
 tw_username="Alexander_Nepl"    
