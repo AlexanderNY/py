@@ -8,7 +8,7 @@ db_host='localhost'
 
 #proxy - !!! hardcoded for tw imgs !!!
 
-PROXY_HOST = '38.170.122.135:8000'  # rotating proxy or host
+PROXY_HOST = '38.170.122.135'  # rotating proxy or host
 PROXY_PORT = 8000 # port
 PROXY_USER = '657fLU' # username
 PROXY_PASS = 'mjqpjy' # password

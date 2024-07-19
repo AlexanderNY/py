@@ -168,16 +168,17 @@ async def getTwitterMessages():
     #PROXY_USER = 'QncvkH'  # username
     #PROXY_PASS = 'j3U9yK'  # password
 
+    proxy_url = 'https://'+ PROXY_USER + ':' + PROXY_PASS +'@' + PROXY_HOST + ':' + str(PROXY_PORT)
     proxy = request.ProxyHandler({
-        'https': 'https://QncvkH:j3U9yK@5.101.34.214:8000',
-        'http': 'https://QncvkH:j3U9yK@5.101.34.214:8000'
+        'https': proxy_url,
+        'http': proxy_url
     })
     try:
         driver = get_chromedriver(use_proxy=True,
                                   user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
         driver.implicitly_wait(25)
         #hardcode
-        url = "https://twitter.com/"
+        url = "https://x.com/"
         driver.get(url)
         await asyncio.sleep(10)
 
@@ -660,17 +661,9 @@ async def main():
             # unProcessedQuantity_tw - количество сообщений twitter
             # unProcessedQuantity_vk - количество сообщений VK
 
-            # TG
-            unProcessedQuantity = await CheckDB(0)
-            if unProcessedQuantity > 0:
-                await DBprocessing()
-                print('processed')
 
-            # TW
-            unProcessedQuantity_tw = await CheckDB_tw(0)
-            if unProcessedQuantity_tw > 0:
-                await DBprocessing_tw()
-                print('processed')
+
+
 
             # todo перенести из JNB бота VK
             # VK
@@ -678,17 +671,32 @@ async def main():
             # todo убрать ожидание
             await asyncio.sleep(10)
 
+
+            # TG
+            unProcessedQuantity = await CheckDB(0)
+            if unProcessedQuantity > 0:
+                await DBprocessing()
+                print('processed')
             unPostedQuantity = await CheckDB(1)
             if unPostedQuantity >0:
-                await DBposting()
+                #await DBposting()
+                print('post')
                 print('ready for send tg messages ', unPostedQuantity)
             print(unProcessedQuantity,"-",unPostedQuantity)
 
+            # TW
+            unProcessedQuantity_tw = await CheckDB_tw(0)
+            if unProcessedQuantity_tw > 0:
+                await DBprocessing_tw()
+                print('processed_tw')
             unPostedQuantity_tw = await CheckDB_tw(1)
             if unPostedQuantity_tw > 0:
-                await DBposting_tw()
+                #await DBposting_tw()
+                print('post_tw')
                 print('ready for send tw messages', unPostedQuantity_tw)
             print(unProcessedQuantity_tw, "-", unPostedQuantity_tw)
+            await getTwitterMessages()
+
 
             # todo вывести в стенозависимые
             #текущее время и проверка на возможность отправкии (бот работает с 9 до 18)
@@ -699,9 +707,9 @@ async def main():
             currentHour=10
             if currentHour > 9 and currentHour > lastHour and currentHour <19 :
                 print('heatmap start')
-                lastHour = await getHeatmap()
+                #lastHour = await getHeatmap()
                 print('Twitter start')
-                await getTwitterMessages()
+
 
             print('-------------')
             print(cicle)
@@ -714,7 +722,7 @@ async def main():
             await asyncio.sleep(300)
 
 if __name__ == '__main__':
-
+    workflow =
     asyncio.run(main())
 
 
@@ -725,3 +733,4 @@ if __name__ == '__main__':
 # VK
 # instagram
 # triggers to switch functions
+# each variable to ENV file
