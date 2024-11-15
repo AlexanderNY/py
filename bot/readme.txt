@@ -17,4 +17,12 @@ database
 Используемые библиотеки:
 
 
+Статусы
+STATUS=0 gathered
+STATUS=1 processed
+STATUS=2
+STATUS=8 posted to tg
 
+Типы сообщений
+type = 1 тестовый тип
+type = 2 twitter

@@ -1,5 +1,5 @@
 #
-#from ENV import *
+from ENV import *
 import os
 import asyncio
 import psycopg2
@@ -20,17 +20,10 @@ from datetime import datetime
 #todo try DeeplTranslator instead GoogleTranslator
 from deep_translator import GoogleTranslator
 
-import configparser
-config_path = 'config.ini'
-config = configparser.ConfigParser()
-# config.sections()
-config.read(config_path)
-
-
 # Use your own values from my.telegram.org
 #api_id = 15723016
 #api_hash = 'fd10c198eaa94bc4fe3f82415eb46ee6'
-client = TelegramClient(config['telethon']['name'], config['telethon']['api_id'], config['telethon']['api_hash'], system_version="4.16.30-vxASPA")
+client = TelegramClient('Pulchrum', api_id, api_hash, system_version="4.16.30-vxASPA")
 #make message from html
 client.parse_mode = 'html'
 # Proxy for selenium webdriver
@@ -92,10 +85,10 @@ chrome.webRequest.onAuthRequired.addListener(
             {urls: ["<all_urls>"]},
             ['blocking']
 );
-""" % (config['proxy']['proxy_host'], config['proxy']['proxy_port'], config['proxy']['proxy_user'], config['proxy']['proxy_pass'])
+""" % (PROXY_HOST, PROXY_PORT, PROXY_USER, PROXY_PASS)
 
 
-def get_chromedriver(use_proxy=False, user_agent=config['general']['user_agent'], exec_path=config['general']['driver_path'] ):
+def get_chromedriver(use_proxy=False, user_agent=None):
     chrome_options = webdriver.ChromeOptions()
 
     if use_proxy:
@@ -111,7 +104,7 @@ def get_chromedriver(use_proxy=False, user_agent=config['general']['user_agent']
         chrome_options.add_argument(f'--user-agent={user_agent}')
 
     s = Service(
-        executable_path=exec_path
+        executable_path=DRIVER_PATH
     )
     driver = webdriver.Chrome(
         service=s,
@@ -120,14 +113,15 @@ def get_chromedriver(use_proxy=False, user_agent=config['general']['user_agent']
     return driver
 
 
-async def getHeatmap(channel_to_post=config['telethon']['channel_to_post']):
+async def getHeatmap():
     try:
-        driver = get_chromedriver(use_proxy=False, user_agent=config['general']['user_agent'], exec_path=config['general']['driver_path'])
+        driver = get_chromedriver(use_proxy=False,
+                                  user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
         #hardcode
         driver.get('https://smart-lab.ru/q/map/')
         await asyncio.sleep(10)
         s = datetime.now()
-        path_to_file = config['general']['path_to_bot'] + '/images/' + s.strftime("%d_%m_%Y") + '/smartlab'
+        path_to_file = path_to_bot + '/images/' + s.strftime("%d_%m_%Y") + '/smartlab'
         if not os.path.exists(path_to_file):
             os.makedirs(path_to_file)
         ts = s.strftime(("%f"))
@@ -181,7 +175,7 @@ async def getTwitterMessages():
     })
     try:
         driver = get_chromedriver(use_proxy=True,
-                                  user_agent=config['general']['user_agent'])
+                                  user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
         driver.implicitly_wait(25)
         #hardcode
         url = "https://x.com/"
@@ -423,7 +417,7 @@ def translate(text):
     text = GoogleTranslator(source='en', target='ru').translate(text)
     return (text)
 #db tg
-async def DBprocessing_tg(db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host']):
+async def DBprocessing():
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
@@ -442,7 +436,7 @@ async def DBprocessing_tg(db_name=config['database']['db_name'],db_user=config['
     cursor.close()
     connection.close()
 
-async def DBposting_tg(db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host'],channel_to_post=config['telethon']['channel_to_post']):
+async def DBposting():
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
@@ -454,13 +448,13 @@ async def DBposting_tg(db_name=config['database']['db_name'],db_user=config['dat
     for row in selectedrecords:
         id = row[0]
         text = row[1]
-        image = "K:/Project/py/bot" + str(row[2]) #todo вынести наружу
+        image = "K:/Project/py/bot" + str(row[2])
         # change this shit!!!!
 
         if image == '' or len(text)>= 1000:
-            await client.send_message(channel_to_post, text)
+            await client.send_message(-1002009872429, text)
         else:
-            await client.send_message(channel_to_post, text, file=image)
+            await client.send_message(-1002009872429, text, file=image)
 
         status = 8
 
@@ -474,7 +468,7 @@ async def DBposting_tg(db_name=config['database']['db_name'],db_user=config['dat
 
 # сейчас оптимизирую это
 #db tw
-async def DBprocessing_tw(db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host']):
+async def DBprocessing_tw():
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
@@ -498,7 +492,7 @@ async def DBprocessing_tw(db_name=config['database']['db_name'],db_user=config['
     cursor.close()
     connection.close()
 
-async def DBposting_tw(db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host'],channel_to_post=config['telethon']['channel_to_post']):
+async def DBposting_tw():
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
@@ -517,9 +511,9 @@ async def DBposting_tw(db_name=config['database']['db_name'],db_user=config['dat
         # change this shit!!!!
         text = user+':<br>' + text + '<br>' + over
         if image == '' or len(text)>= 1000:
-            await client.send_message(channel_to_post, text)
+            await client.send_message(-1002009872429, text)
         else:
-            await client.send_message(channel_to_post, text, file=image)
+            await client.send_message(-1002009872429, text, file=image)
         status = 8
         cursor.execute(f"UPDATE TWITTER SET STATUS = {status} WHERE id = {id}")
         await asyncio.sleep(20)
@@ -529,7 +523,7 @@ async def DBposting_tw(db_name=config['database']['db_name'],db_user=config['dat
     connection.close()
 
 
-async def CheckDB_tg(type, db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host']):
+async def CheckDB(type):
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
@@ -547,7 +541,7 @@ async def CheckDB_tg(type, db_name=config['database']['db_name'],db_user=config[
 
     return(quantity)
 
-async def CheckDB_tw(type, db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host']):
+async def CheckDB_tw(type):
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
@@ -567,7 +561,7 @@ async def CheckDB_tw(type, db_name=config['database']['db_name'],db_user=config[
 
 # запись в базу данных сообщения телеграмм
 # todo бъединить в одну функцию  запись в таблцы TG, TW, VK
-async def WritetoDB_tg(senderid, sendertitle, text, status=0, type=0, image='', db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host']):
+async def WritetoDB(senderid, sendertitle, text, status=0, type=0, image=''):
     SQLquery = f"INSERT INTO MESSAGES (SENDERID,SENDERNAME,TEXT,STATUS,TYPE,IMAGE,TIMER) VALUES ('{senderid}', '{sendertitle}', '{text}', {status}, {type}, '{image}', CURRENT_TIMESTAMP)"
 
     connection = psycopg2.connect(dbname=db_name, user=db_user,
@@ -579,9 +573,9 @@ async def WritetoDB_tg(senderid, sendertitle, text, status=0, type=0, image='', 
     cursor.close()
     connection.close()
 
-
+#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #запись в базу данных сообщения twitter
-async def WritetoDB_tw(screen_path, avatar_src, user_a, user_a_t, time, ad, text, img_arr, image_over, comments_count, reposts_count, likes_count, views_count, status, type, db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host']):
+async def WritetoDB_tw(screen_path, avatar_src, user_a, user_a_t, time, ad, text, img_arr, image_over, comments_count, reposts_count, likes_count, views_count, status, type):
     SQLquery = f"INSERT INTO TWITTER (SCREENSHOT, AVATAR, TWITTERUSERLINK, TWITTERUSER, TIME, AD, TEXT, IMAGES, IMAGEOVERTEXT, COMMENTS, REPOSTS, LIKES, VIEWS, STATUS, TYPE) VALUES ({screen_path}, {avatar_src}, {user_a}, {user_a_t}, {time}, {ad}, {text}, {img_arr}, {image_over}, {comments_count}, {reposts_count}, {likes_count}, {views_count}, {status}, {type})"
 
     connection = psycopg2.connect(dbname=db_name, user=db_user,
@@ -595,7 +589,7 @@ async def WritetoDB_tw(screen_path, avatar_src, user_a, user_a_t, time, ad, text
 
 # hardcode
 # включение бота на прослушивание каналов
-@client.on(events.NewMessage(chats=config['telethon']['chats_to_read']))
+@client.on(events.NewMessage(chats=chats_to_read))
 
 # hardcode
 # условия для сохранения сообщения
@@ -652,104 +646,66 @@ async def handler(event):
         await WritetoDB(senderid, sendername, text, status, type, image)
 
 # условия для асинхронного запуска функций бота
-
-
 async def main():
     async with client:
         lastHour=0
         cicle=0
-        startTime = datetime.now()
         while True:
-            currentTime = datetime.now()
             cicle = cicle+1
             #старт итерации цикла, сброс переменных
-
-            #unProcessedQuantity = 0
-            #unPostedQuantity = 0
+            unProcessedQuantity = 0
+            unPostedQuantity = 0
 
             #проверка количества необработанных сообщений
             # unProcessedQuantity - количество сообщений ТГ
             # unProcessedQuantity_tw - количество сообщений twitter
             # unProcessedQuantity_vk - количество сообщений VK
 
-            проверка, включен ли функционал
-            # 1 tg включен
-            config['telethon']['flag_on']
-            #     1.1 сбор
-            config['telethon']['flag_gather']
-            #     1.2 публикация
-            config['telethon']['flag_post']
-            # 2 tw включен
-            config['twitter']['flag_on']
-            #     2.1 сбор
-            config['twitter']['flag_gather']
-            #     2.2 публикация
-            config['twitter']['flag_post']
-            # 3 wp
-            config['wordpress']['flag_on']
-            #     3.1 сбор
-            config['wordpress']['flag_gather']
-            #     3.2 публикация
-            config['wordpress']['flag_post']
-            # 4 vk
-            config['vk']['flag_on']
-            #     4.1 сбор
-            config['vk']['flag_gather']
-            #     4.2 публикация
-            config['vk']['flag_post']
-            # 5 ig
-            config['ig']['flag_on']
-            #     5.1 сбор
-            config['ig']['flag_gather']
-            #     5.2 публикация
-            config['ig']['flag_post']
+
 
 
 
             # todo перенести из JNB бота VK
             # VK
 
+            # todo убрать ожидание
+            await asyncio.sleep(10)
+
+
             # TG
-            if (config['telethon']['flag_on']):
-                unProcessedQuantity = await CheckDB(0)
-                if unProcessedQuantity > 0:
-                    await DBprocessing()
-                    print('processed')
-                unPostedQuantity = await CheckDB(1)
-                if unPostedQuantity >0:
-                    if (config['telethon']['flag_post']):
-                        await DBposting()
-                        print('post')
-                    print('ready for send tg messages ', unPostedQuantity)
+            unProcessedQuantity = await CheckDB(0)
+            if unProcessedQuantity > 0:
+                await DBprocessing()
+                print('processed')
+            unPostedQuantity = await CheckDB(1)
+            if unPostedQuantity >0:
+                #await DBposting()
+                print('post')
+                print('ready for send tg messages ', unPostedQuantity)
+            print(unProcessedQuantity,"-",unPostedQuantity)
 
-                print(unProcessedQuantity,"-",unPostedQuantity)
-
-            #todo собирать статистику "успешно gathered" и "успешно posted"
             # TW
-            if (config['twitter']['flag_on']):
-                unProcessedQuantity_tw = await CheckDB_tw(0)
-                if unProcessedQuantity_tw > 0:
-                    await DBprocessing_tw()
-                    print('processed_tw')
-                unPostedQuantity_tw = await CheckDB_tw(1)
-                if unPostedQuantity_tw > 0:
-                    if (config['twitter']['flag_post']):
-                        await DBposting_tw()
-                        print('post_tw')
-                    print('ready for send tw messages', unPostedQuantity_tw)
-                print(unProcessedQuantity_tw, "-", unPostedQuantity_tw)
-                if (config['twitter']['flag_gather']):
-                    await getTwitterMessages()
+            unProcessedQuantity_tw = await CheckDB_tw(0)
+            if unProcessedQuantity_tw > 0:
+                await DBprocessing_tw()
+                print('processed_tw')
+            unPostedQuantity_tw = await CheckDB_tw(1)
+            if unPostedQuantity_tw > 0:
+                #await DBposting_tw()
+                print('post_tw')
+                print('ready for send tw messages', unPostedQuantity_tw)
+            print(unProcessedQuantity_tw, "-", unPostedQuantity_tw)
+            await getTwitterMessages()
 
 
             # todo вывести в стенозависимые
             #текущее время и проверка на возможность отправкии (бот работает с 9 до 18)
-            currentTime (datetime.now())
-            print(currentTime)
+            currentHour = int(datetime.now().strftime("%H"))
+            print(currentHour)
             print(lastHour)
             #tmp hardcode to test
-
-           !!!! if currentTime.strftime("%H") > 9 and currentHour > lastHour and currentHour <19 :
+            currentHour=10
+            if currentHour > 9 and currentHour > lastHour and currentHour <19 :
                 print('heatmap start')
                 #lastHour = await getHeatmap()
                 print('Twitter start')
