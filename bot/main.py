@@ -657,11 +657,19 @@ async def handler(event):
 async def main():
     async with client:
         lastHour=0
-        cicle=0
+        cycle=0
         startTime = datetime.now()
+        currentTime = datetime.now()
+        lastTimeTgGather = datetime.now()
+        lastTimeTgPost = datetime.now()
+        lastTimeTwGather = datetime.now()
+        lastTimeTwPost = datetime.now()
         while True:
+            print('Время работы бота')
+            print(currentTime - startTime)
+
             currentTime = datetime.now()
-            cicle = cicle+1
+            cycle = cycle+1
             #старт итерации цикла, сброс переменных
 
             #unProcessedQuantity = 0
@@ -711,18 +719,19 @@ async def main():
 
             # TG
             if (config['telethon']['flag_on']):
-                unProcessedQuantity = await CheckDB(0)
-                if unProcessedQuantity > 0:
-                    await DBprocessing()
-                    print('processed')
-                unPostedQuantity = await CheckDB(1)
-                if unPostedQuantity >0:
-                    if (config['telethon']['flag_post']):
-                        await DBposting()
-                        print('post')
-                    print('ready for send tg messages ', unPostedQuantity)
+                unProcessedQuantity_tg = await CheckDB_tg(0)
+                if unProcessedQuantity_tg > 0:
+                    await DBprocessing_tg()
+                    print('processed processed_tg')
+                unPostedQuantity_tg = await CheckDB_tg(1)
+                if unPostedQuantity_tg >0:
+                    if (config['telethon']['flag_post'] and (currentTime-lastTimeTgPost) > timedelta(minutes=config['twitter']['timeout_post'])):
+                        await DBposting_tg()
+                        print('posted post_tg')
+                        lastTimeTgPost = datetime.now()
+                    print('ready for send tg messages ', unPostedQuantity_tg)
 
-                print(unProcessedQuantity,"-",unPostedQuantity)
+                print("unProcessedQuantity_tg -",unProcessedQuantity_tg, "   ", "unPostedQuantity_tg -", unPostedQuantity_tg)
 
             #todo собирать статистику "успешно gathered" и "успешно posted"
             # TW
@@ -730,16 +739,18 @@ async def main():
                 unProcessedQuantity_tw = await CheckDB_tw(0)
                 if unProcessedQuantity_tw > 0:
                     await DBprocessing_tw()
-                    print('processed_tw')
+                    print('processed processed_tw')
                 unPostedQuantity_tw = await CheckDB_tw(1)
                 if unPostedQuantity_tw > 0:
-                    if (config['twitter']['flag_post']):
+                    if (config['twitter']['flag_post'] and (currentTime-lastTimeTwPost) > timedelta(minutes=config['twitter']['timeout_post'])):
                         await DBposting_tw()
-                        print('post_tw')
+                        print('posted post_tw')
+                        lastTimeTwPost = datetime.now()
                     print('ready for send tw messages', unPostedQuantity_tw)
-                print(unProcessedQuantity_tw, "-", unPostedQuantity_tw)
-                if (config['twitter']['flag_gather']):
+                print("unProcessedQuantity_tw -",unProcessedQuantity_tw, "   ", "unPostedQuantity_tw -", unPostedQuantity_tw)
+                if (config['twitter']['flag_gather'] and (currentTime-lastTimeTwGather) > timedelta(minutes=config['twitter']['timeout_gather'])):
                     await getTwitterMessages()
+                    lastTimeTwGather = datetime.now()
 
 
             # todo вывести в стенозависимые
@@ -756,7 +767,7 @@ async def main():
 
 
             print('-------------')
-            print(cicle)
+            print(cycle)
             print('-------------')
 
 
