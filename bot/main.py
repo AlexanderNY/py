@@ -16,7 +16,7 @@ from selenium.webdriver.support.wait import WebDriverWait
 from bs4 import BeautifulSoup
 from urllib import request
 from time import sleep
-from datetime import datetime
+from datetime import datetime, timedelta
 #todo try DeeplTranslator instead GoogleTranslator
 from deep_translator import GoogleTranslator
 
@@ -28,9 +28,10 @@ config.read(config_path)
 
 
 # Use your own values from my.telegram.org
+#config['telethon']['name'], config['telethon']['api_id'], config['telethon']['api_hash']
 #api_id = 15723016
 #api_hash = 'fd10c198eaa94bc4fe3f82415eb46ee6'
-client = TelegramClient(config['telethon']['name'], config['telethon']['api_id'], config['telethon']['api_hash'], system_version="4.16.30-vxASPA")
+client = TelegramClient(config['telethon']['name'], int(config['telethon']['api_id']), config['telethon']['api_hash'], system_version="4.16.30-vxASPA")
 #make message from html
 client.parse_mode = 'html'
 # Proxy for selenium webdriver
@@ -120,11 +121,11 @@ def get_chromedriver(use_proxy=False, user_agent=config['general']['user_agent']
     return driver
 
 
-async def getHeatmap(channel_to_post=config['telethon']['channel_to_post']):
+async def getHeatmap(channel_to_post=int(config['telethon']['channel_to_post']), heatmap_sl_url=config['heatmaps']['heatmap_sl_url_1'], heatmap_sl_xpath=config['heatmaps']['heatmap_sl_xpath_1'], heatmap_sl_comment=config['heatmaps']['heatmap_sl_comment_1'] ):
     try:
         driver = get_chromedriver(use_proxy=False, user_agent=config['general']['user_agent'], exec_path=config['general']['driver_path'])
         #hardcode
-        driver.get('https://smart-lab.ru/q/map/')
+        driver.get(heatmap_sl_url)
         await asyncio.sleep(10)
         s = datetime.now()
         path_to_file = config['general']['path_to_bot'] + '/images/' + s.strftime("%d_%m_%Y") + '/smartlab'
@@ -135,23 +136,10 @@ async def getHeatmap(channel_to_post=config['telethon']['channel_to_post']):
 
 
         path = path_to_file + '/hmmb' + ts + '.png'
-        catch = driver.find_element("xpath", "/html/body/div[1]/main/div[3]")  # мосбиржа
-        catch.screenshot(path)
-        #tg channel hardcoded
-        # совмещен гет и пост - нужно поменять
-        await client.send_message(channel_to_post, "текущая обстановка на московской бирже", file=path)
-
-        path = path_to_file + '/hmsb' + ts + '.png'
-        catch = driver.find_element("xpath", "/html/body/div[1]/main/div[5]")  # спббиржа
+        catch = driver.find_element("xpath", heatmap_sl_xpath)  # мосбиржа
         catch.screenshot(path)
         # совмещен гет и пост - нужно поменять
-        await client.send_message(channel_to_post, "текущая обстановка на СПБ бирже", file=path)
-
-        path = path_to_file + '/hmcom' + ts + '.png'
-        catch = driver.find_element("xpath", "/html/body/div[1]/main/div[8]")  # комментарии на смартлаб
-        catch.screenshot(path)
-        # совмещен гет и пост - нужно поменять
-        await client.send_message(channel_to_post, "ТОП тем по количеству комментариев на смартлаб", file=path)
+        await client.send_message(channel_to_post, heatmap_sl_comment, file=path)
 
         print('done heatmap')
         driver.close()
@@ -160,12 +148,11 @@ async def getHeatmap(channel_to_post=config['telethon']['channel_to_post']):
     except Exception as ex:
         print(ex)
     finally:
-        s = datetime.now()
-        hour = s.strftime(("%H"))
-    return int(hour)
+        print("getHeatmap done")
 
 
-async def getTwitterMessages():
+
+async def getTwitterMessages(proxy_user = config['proxy']['proxy_user'], proxy_pass = config['proxy']['proxy_pass'], proxy_host=config['proxy']['proxy_host'], proxy_port=config['proxy']['proxy_port']):
     hdr = {'User-Agent': 'Yandex'}
 
 #hardcode
@@ -174,7 +161,7 @@ async def getTwitterMessages():
     #PROXY_USER = 'QncvkH'  # username
     #PROXY_PASS = 'j3U9yK'  # password
 
-    proxy_url = 'https://'+ PROXY_USER + ':' + PROXY_PASS +'@' + PROXY_HOST + ':' + str(PROXY_PORT)
+    proxy_url = 'https://'+ proxy_user + ':' + proxy_pass +'@' + proxy_host + ':' + str(proxy_port)
     proxy = request.ProxyHandler({
         'https': proxy_url,
         'http': proxy_url
@@ -442,7 +429,7 @@ async def DBprocessing_tg(db_name=config['database']['db_name'],db_user=config['
     cursor.close()
     connection.close()
 
-async def DBposting_tg(db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host'],channel_to_post=config['telethon']['channel_to_post']):
+async def DBposting_tg(db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host'],channel_to_post=int(config['telethon']['channel_to_post'])):
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
@@ -498,7 +485,7 @@ async def DBprocessing_tw(db_name=config['database']['db_name'],db_user=config['
     cursor.close()
     connection.close()
 
-async def DBposting_tw(db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host'],channel_to_post=config['telethon']['channel_to_post']):
+async def DBposting_tw(db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host'],channel_to_post=int(config['telethon']['channel_to_post'])):
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
@@ -595,7 +582,7 @@ async def WritetoDB_tw(screen_path, avatar_src, user_a, user_a_t, time, ad, text
 
 # hardcode
 # включение бота на прослушивание каналов
-@client.on(events.NewMessage(chats=config['telethon']['chats_to_read']))
+@client.on(events.NewMessage(chats=json.loads(config['telethon']['chats_to_read'])))
 
 # hardcode
 # условия для сохранения сообщения
@@ -608,7 +595,7 @@ async def handler(event):
         status = 0
         type = 1
         image = "/images/static/1.jpg"
-        await WritetoDB(sender.id, sender.title, text, status, type, image)
+        await WritetoDB_tg(sender.id, sender.title, text, status, type, image)
     # Мастерская финансов
     elif 'Обзор важных событий на' in event.raw_text:
         text = event.raw_text
@@ -616,7 +603,7 @@ async def handler(event):
         status = 0
         type = 2
         image = "/images/static/masters.jpg"
-        await WritetoDB(sender.id, sender.title, text, status, type, image)
+        await WritetoDB_tg(sender.id, sender.title, text, status, type, image)
     # Профита нет. А если найду?
     elif 'Что да как? \n' in event.raw_text:
         text = event.raw_text
@@ -624,7 +611,8 @@ async def handler(event):
         status = 0
         type = 2
         image = "/images/static/profit.jpg"
-        await WritetoDB(sender.id, sender.title, text, status, type, image)
+        await WritetoDB_tg(sender.id, sender.title, text, status, type, image)
+        print('Что да как?')
     # СМАРТЛАБ
     elif '🔥Акции и инвестиции\n' in event.raw_text:
         text = event.raw_text
@@ -632,7 +620,7 @@ async def handler(event):
         status = 0
         type = 2
         image = "/images/static/smartlab.jpg"
-        await WritetoDB(sender.id, sender.title, text, status, type, image)
+        await WritetoDB_tg(sender.id, sender.title, text, status, type, image)
     # Сигналы для торговли
     elif 'Какие события нас ждут сегодня? Доброе утро' in event.raw_text:
         text = event.raw_text
@@ -640,16 +628,16 @@ async def handler(event):
         status = 0
         type = 2
         image = "/images/static/signal.jpg"
-        await WritetoDB(sender.id, sender.title, text, status, type, image)
+        await WritetoDB_tg(sender.id, sender.title, text, status, type, image)
     # после теста необходимо удалить
     else:
         senderid = '0'
-        text = "--------"
-        sendername = "--------"
+        text = event.raw_text
+        sender = await event.get_sender()
         status = 2
         type = 0
         image = "/images/static/2.jpg"
-        await WritetoDB(senderid, sendername, text, status, type, image)
+        await WritetoDB_tg(senderid, sender.title, text, status, type, image)
 
 # условия для асинхронного запуска функций бота
 
@@ -664,11 +652,11 @@ async def main():
         lastTimeTgPost = datetime.now()
         lastTimeTwGather = datetime.now()
         lastTimeTwPost = datetime.now()
+        lastTimeHMGather = datetime.now()
         while True:
             print('Время работы бота')
-            print(currentTime - startTime)
-
             currentTime = datetime.now()
+            print(currentTime - startTime)
             cycle = cycle+1
             #старт итерации цикла, сброс переменных
 
@@ -680,37 +668,37 @@ async def main():
             # unProcessedQuantity_tw - количество сообщений twitter
             # unProcessedQuantity_vk - количество сообщений VK
 
-            проверка, включен ли функционал
+            #проверка, включен ли функционал
             # 1 tg включен
-            config['telethon']['flag_on']
+            #config['telethon']['flag_on']
             #     1.1 сбор
-            config['telethon']['flag_gather']
+            #config['telethon']['flag_gather']
             #     1.2 публикация
-            config['telethon']['flag_post']
+            #config['telethon']['flag_post']
             # 2 tw включен
-            config['twitter']['flag_on']
+            #config['twitter']['flag_on']
             #     2.1 сбор
-            config['twitter']['flag_gather']
+            #config['twitter']['flag_gather']
             #     2.2 публикация
-            config['twitter']['flag_post']
+            #config['twitter']['flag_post']
             # 3 wp
-            config['wordpress']['flag_on']
+            #config['wordpress']['flag_on']
             #     3.1 сбор
-            config['wordpress']['flag_gather']
+            #config['wordpress']['flag_gather']
             #     3.2 публикация
-            config['wordpress']['flag_post']
+            #config['wordpress']['flag_post']
             # 4 vk
-            config['vk']['flag_on']
+            #config['vk']['flag_on']
             #     4.1 сбор
-            config['vk']['flag_gather']
+            #config['vk']['flag_gather']
             #     4.2 публикация
-            config['vk']['flag_post']
+            #config['vk']['flag_post']
             # 5 ig
-            config['ig']['flag_on']
+            #config['ig']['flag_on']
             #     5.1 сбор
-            config['ig']['flag_gather']
+            #config['ig']['flag_gather']
             #     5.2 публикация
-            config['ig']['flag_post']
+            #config['ig']['flag_post']
 
 
 
@@ -718,14 +706,14 @@ async def main():
             # VK
 
             # TG
-            if (config['telethon']['flag_on']):
+            if (config['telethon'].getboolean('flag_on')):
                 unProcessedQuantity_tg = await CheckDB_tg(0)
                 if unProcessedQuantity_tg > 0:
                     await DBprocessing_tg()
                     print('processed processed_tg')
                 unPostedQuantity_tg = await CheckDB_tg(1)
                 if unPostedQuantity_tg >0:
-                    if (config['telethon']['flag_post'] and (currentTime-lastTimeTgPost) > timedelta(minutes=config['twitter']['timeout_post'])):
+                    if (config['telethon'].getboolean('flag_post') and (currentTime-lastTimeTgPost) > timedelta(minutes=int(config['twitter']['timeout_post']))):
                         await DBposting_tg()
                         print('posted post_tg')
                         lastTimeTgPost = datetime.now()
@@ -735,35 +723,43 @@ async def main():
 
             #todo собирать статистику "успешно gathered" и "успешно posted"
             # TW
-            if (config['twitter']['flag_on']):
+            if (config['twitter'].getboolean('flag_on')):
                 unProcessedQuantity_tw = await CheckDB_tw(0)
                 if unProcessedQuantity_tw > 0:
                     await DBprocessing_tw()
                     print('processed processed_tw')
                 unPostedQuantity_tw = await CheckDB_tw(1)
                 if unPostedQuantity_tw > 0:
-                    if (config['twitter']['flag_post'] and (currentTime-lastTimeTwPost) > timedelta(minutes=config['twitter']['timeout_post'])):
+                    if (config['twitter'].getboolean('flag_post') and (currentTime-lastTimeTwPost) > timedelta(minutes=int(config['twitter']['timeout_post']))):
                         await DBposting_tw()
                         print('posted post_tw')
                         lastTimeTwPost = datetime.now()
                     print('ready for send tw messages', unPostedQuantity_tw)
                 print("unProcessedQuantity_tw -",unProcessedQuantity_tw, "   ", "unPostedQuantity_tw -", unPostedQuantity_tw)
-                if (config['twitter']['flag_gather'] and (currentTime-lastTimeTwGather) > timedelta(minutes=config['twitter']['timeout_gather'])):
+                if (config['twitter'].getboolean('flag_gather') and (currentTime-lastTimeTwGather) > timedelta(minutes=int(config['twitter']['timeout_gather']))):
                     await getTwitterMessages()
                     lastTimeTwGather = datetime.now()
 
 
             # todo вывести в стенозависимые
             #текущее время и проверка на возможность отправкии (бот работает с 9 до 18)
-            currentTime (datetime.now())
-            print(currentTime)
-            print(lastHour)
-            #tmp hardcode to test
 
-           !!!! if currentTime.strftime("%H") > 9 and currentHour > lastHour and currentHour <19 :
-                print('heatmap start')
-                #lastHour = await getHeatmap()
-                print('Twitter start')
+            #tmp hardcode to test
+            if (config['general'].getboolean('operating_time_flag') and (currentTime-lastTimeHMGather) > timedelta(minutes=int(config['heatmaps']['timeout_gather'])) ) :
+                print('Heatmap todo')
+                if int(currentTime.strftime("%H")) > int(config['general']['operating_time_start']) and int(currentTime.strftime("%H")) < int(config['general']['operating_time_finish']) :
+                    print('heatmap start')
+                    await getHeatmap(heatmap_sl_url=config['heatmaps']['heatmap_sl_url_1'],
+                                     heatmap_sl_xpath=config['heatmaps']['heatmap_sl_xpath_1'],
+                                     heatmap_sl_comment=config['heatmaps']['heatmap_sl_comment_1'])
+                    await getHeatmap(heatmap_sl_url=config['heatmaps']['heatmap_sl_url_2'],
+                                     heatmap_sl_xpath=config['heatmaps']['heatmap_sl_xpath_2'],
+                                     heatmap_sl_comment=config['heatmaps']['heatmap_sl_comment_2'])
+                    await getHeatmap(heatmap_sl_url=config['heatmaps']['heatmap_sl_url_3'],
+                                     heatmap_sl_xpath=config['heatmaps']['heatmap_sl_xpath_3'],
+                                     heatmap_sl_comment=config['heatmaps']['heatmap_sl_comment_3'])
+                    lastTimeHMGather = datetime.now()
+                    print('Heatmap done')
 
 
             print('-------------')
@@ -774,10 +770,10 @@ async def main():
 
 # todo вывести в стенозависимые
 # Повторяется цикл раз в n секунд, например 300
-            await asyncio.sleep(300)
+            await asyncio.sleep(30)
 
 if __name__ == '__main__':
-    workflow =
+    #workflow =
     asyncio.run(main())
 
 
