@@ -24,7 +24,7 @@ import configparser
 config_path = 'config.ini'
 config = configparser.ConfigParser()
 # config.sections()
-config.read(config_path)
+config.read(config_path, encoding="utf-8")
 
 
 # Use your own values from my.telegram.org
@@ -149,6 +149,42 @@ async def getHeatmap(channel_to_post=int(config['telethon']['channel_to_post']),
         print(ex)
     finally:
         print("getHeatmap done")
+
+
+async def getURL(channel_to_post=int(config['telethon']['channel_to_post']), site_to_scrap=config['smart-lab']['heatmap_sl'], heatmap_sl_xpath_1=config['smart-lab']['heatmap_sl_xpath_1'], heatmap_sl_xpath_2=config['smart-lab']['heatmap_sl_xpath_2'], heatmap_sl_xpath_3=config['smart-lab']['heatmap_sl_xpath_3']):
+    try:
+        driver = get_chromedriver(use_proxy=False, user_agent=config['general']['user_agent'], exec_path=config['general']['driver_path'])
+        #hardcode
+        # 1 comment
+        driver.get(site_to_scrap)
+        await asyncio.sleep(10)
+        comm_1=driver.find_element("xpath", heatmap_sl_xpath_1)
+        comm_1.click()
+        driver.find_element("xpath", heatmap_sl_xpath_1_1)
+
+        # 2 comment
+        driver.get(site_to_scrap)
+        await asyncio.sleep(10)
+        comm_2=driver.find_element("xpath", heatmap_sl_xpath_2)
+        # 3 comment
+        driver.get(site_to_scrap)
+        await asyncio.sleep(10)
+        comm_3=driver.find_element("xpath", heatmap_sl_xpath_3)
+
+
+        # совмещен гет и пост - нужно поменять
+        await client.send_message(channel_to_post, heatmap_sl_comment, file=path, parse_mode="html")
+
+        print('done heatmap')
+        driver.close()
+        driver.quit()
+
+    except Exception as ex:
+        print(ex)
+    finally:
+        print("getHeatmap done")
+
+
 
 
 
@@ -743,9 +779,11 @@ async def main():
 
             # todo вывести в стенозависимые
             #текущее время и проверка на возможность отправкии (бот работает с 9 до 18)
+            #if (config['general'].getboolean('operating_time_flag') and (currentTime - lastTimeHMGather) > timedelta(
+            #        minutes=int(config['heatmaps']['timeout_gather']))):
 
             #tmp hardcode to test
-            if (config['general'].getboolean('operating_time_flag') and (currentTime-lastTimeHMGather) > timedelta(minutes=int(config['heatmaps']['timeout_gather'])) ) :
+            if (config['heatmaps'].getboolean('flag_on') and (currentTime-lastTimeHMGather) > timedelta(minutes=int(config['heatmaps']['timeout_gather'])) ) :
                 print('Heatmap todo')
                 if int(currentTime.strftime("%H")) > int(config['general']['operating_time_start']) and int(currentTime.strftime("%H")) < int(config['general']['operating_time_finish']) :
                     print('heatmap start')
