@@ -6,6 +6,8 @@ db_user='postgres'
 db_password='1qaz!QAZ'
 db_host='localhost'
 
+#port 5432
+#port 6432
 #proxy - !!! hardcoded for tw imgs !!!
 
 PROXY_HOST = '38.170.122.135'  # rotating proxy or host
