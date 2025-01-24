@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 from deep_translator import GoogleTranslator
 
 import configparser
+# todo вынести встендозависимые???
 config_path = 'config.ini'
 config = configparser.ConfigParser()
 # config.sections()
@@ -45,6 +46,8 @@ client.parse_mode = 'html'
 #     string = str(sender) + "|" + str(text) + "|0\n"
 #     f.write(string)
 #     f.close()
+
+# todo вынести в отдельный файл - это костыль для использования плагинов в headless браузере, а также скрипт под использование прокси
 
 manifest_json = """
 {
@@ -95,7 +98,7 @@ chrome.webRequest.onAuthRequired.addListener(
 );
 """ % (config['proxy']['proxy_host'], config['proxy']['proxy_port'], config['proxy']['proxy_user'], config['proxy']['proxy_pass'])
 
-
+# подлючение webdriver
 def get_chromedriver(use_proxy=False, user_agent=config['general']['user_agent'], exec_path=config['general']['driver_path'] ):
     chrome_options = webdriver.ChromeOptions()
 
@@ -111,6 +114,33 @@ def get_chromedriver(use_proxy=False, user_agent=config['general']['user_agent']
     if user_agent:
         chrome_options.add_argument(f'--user-agent={user_agent}')
 
+    chrome_options.add_argument(f"--window-size=1366,768") # HD 1280×720(16: 9) WXGA 1366×768(16: 9) FullHD 1920×1080(16: 9) WQHD 2560×1440(16: 9) UWQHD 3100×1440(21: 9) 4K UHD 3840×2160(16: 9) 8K UHD 7680×4320(16: 9)
+
+    """        
+        options.add_argument(f"--window-size=1366,768")
+        options.add_argument(
+            f'--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.182 Safari/537.36')
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_argument("--disable-extensions")
+        options.add_argument("--proxy-server='direct://'")
+        options.add_argument("--proxy-bypass-list=*")
+        options.add_argument('--ignore-certificate-errors')
+        options.add_argument("--password-store=basic")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--enable-automation")
+        options.add_argument("--disable-browser-side-navigation")
+        options.add_argument("--disable-web-security")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-infobars")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-setuid-sandbox")
+        options.add_argument("--disable-software-rasterizer")
+            options.add_argument("--headless")  # Run in headless mode
+        options.add_argument(f"--user-data-dir=PATH_TO_CHROME_PROFILE")
+        options.add_argument('--proxy-server=IP_ADRESS:PORT')
+    """
+
     s = Service(
         executable_path=exec_path
     )
@@ -119,8 +149,8 @@ def get_chromedriver(use_proxy=False, user_agent=config['general']['user_agent']
         options=chrome_options
     )
     return driver
-
-
+# получить и запостить Heatmap
+# todo получение и пстинг нужно разделить, возможно выделить специфичную функцию SmartLab
 async def getHeatmap(channel_to_post=int(config['telethon']['channel_to_post']), heatmap_sl_url=config['heatmaps']['heatmap_sl_url_1'], heatmap_sl_xpath=config['heatmaps']['heatmap_sl_xpath_1'], heatmap_sl_comment=config['heatmaps']['heatmap_sl_comment_1'] ):
     try:
         driver = get_chromedriver(use_proxy=False, user_agent=config['general']['user_agent'], exec_path=config['general']['driver_path'])
@@ -149,8 +179,8 @@ async def getHeatmap(channel_to_post=int(config['telethon']['channel_to_post']),
         print(ex)
     finally:
         print("getHeatmap done")
-
-
+# посмотреть самое комментируемое на SmartLab и скопировать пост
+# todo получение и пстинг нужно разделить, возможно выделить специфичную функцию SmartLab
 async def getURL(channel_to_post=int(config['telethon']['channel_to_post']), site_to_scrap=config['smart-lab']['heatmap_sl'], heatmap_sl_xpath_1=config['smart-lab']['heatmap_sl_xpath_1'], heatmap_sl_xpath_2=config['smart-lab']['heatmap_sl_xpath_2'], heatmap_sl_xpath_3=config['smart-lab']['heatmap_sl_xpath_3']):
     try:
         driver = get_chromedriver(use_proxy=False, user_agent=config['general']['user_agent'], exec_path=config['general']['driver_path'])
@@ -187,7 +217,7 @@ async def getURL(channel_to_post=int(config['telethon']['channel_to_post']), sit
 
 
 
-
+# todo изменить алгоритм работы с твиттером (может насильный клик мышью по полю ввода?)
 async def getTwitterMessages(proxy_user = config['proxy']['proxy_user'], proxy_pass = config['proxy']['proxy_pass'], proxy_host=config['proxy']['proxy_host'], proxy_port=config['proxy']['proxy_port']):
     hdr = {'User-Agent': 'Yandex'}
 
@@ -390,7 +420,7 @@ async def getTwitterMessages(proxy_user = config['proxy']['proxy_user'], proxy_p
     print("getTwitterMessages done")
 
 # messages processing
-
+#todo обновить списки изменяемых смайликов
 def replaceMessage(message):
     REPLACEMENTS = [
         ("🔸", "💥"),
@@ -438,20 +468,24 @@ def replaceMessage(message):
     message = re.sub(r"Автор: *", "", message)
     return (message)
 
+# clear text from HTML tags
 def clearHTML(text):
+    '''clear text from HTML tags'''
     text=re.sub(r'\<[^>]*\>', '', text)
     return (text)
 
+# translate text from source language to targe language
 def translate(text):
     text = GoogleTranslator(source='en', target='ru').translate(text)
     return (text)
+
 #db tg
+# tg messages processing (replace simbols, emoticons, catch phrases)
 async def DBprocessing_tg(db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host']):
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
     SQLquery = "SELECT ID, TEXT FROM MESSAGES WHERE (STATUS=0 AND (TYPE=2))"
-
     cursor.execute(SQLquery)
     selectedrecords = cursor.fetchall()
 
@@ -465,7 +499,9 @@ async def DBprocessing_tg(db_name=config['database']['db_name'],db_user=config['
     cursor.close()
     connection.close()
 
-async def DBposting_tg(db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host'],channel_to_post=int(config['telethon']['channel_to_post'])):
+#db tg posting
+# tg messages posting
+async def DBposting_tg(db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host'],channel_to_post=int(config['telethon']['channel_to_post']),path_to_tg_image=config['telethon']['path_to_tg_image']):
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
@@ -477,56 +513,47 @@ async def DBposting_tg(db_name=config['database']['db_name'],db_user=config['dat
     for row in selectedrecords:
         id = row[0]
         text = row[1]
-        image = "K:/Project/py/bot" + str(row[2]) #todo вынести наружу
-        # change this shit!!!!
-
+        image = path_to_tg_image + str(row[2])
         if image == '' or len(text)>= 1000:
             await client.send_message(channel_to_post, text)
         else:
             await client.send_message(channel_to_post, text, file=image)
-
         status = 8
-
-
         cursor.execute(f"UPDATE MESSAGES SET STATUS = {status} WHERE id = {id}")
-        await asyncio.sleep(20)
+        await asyncio.sleep(20) #todo пдумать нужно ли это
 
     connection.commit()
     cursor.close()
     connection.close()
 
 # сейчас оптимизирую это
-#db tw
+# db collect twitter messages
+# todo изменить алгоритм работы с твиттером
 async def DBprocessing_tw(db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host']):
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
     SQLquery = "SELECT ID, TEXT, IMAGEOVERTEXT FROM TWITTER WHERE (STATUS=0 AND (TYPE=2))"
-
     cursor.execute(SQLquery)
     selectedrecords = cursor.fetchall()
-
     for row in selectedrecords:
         id = row[0]
         text = translate(clearHTML(row[1]))
         over = row[2]
         if over != '':
             over=translate(over)
-
-
         status = 1
         cursor.execute(f"UPDATE TWITTER SET TEXT = '{text}', IMAGEOVERTEXT = '{over}',STATUS = {status} WHERE id = {id}")
-
     connection.commit()
     cursor.close()
     connection.close()
-
+# db post twitter messages
+# todo изменить алгоритм работы с твиттером
 async def DBposting_tw(db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host'],channel_to_post=int(config['telethon']['channel_to_post'])):
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
     SQLquery = "SELECT ID, SCREENSHOT, TEXT, TWITTERUSER, IMAGEOVERTEXT FROM TWITTER WHERE (STATUS=1 AND (TYPE=2))"
-
     cursor.execute(SQLquery)
     selectedrecords = cursor.fetchall()
 
@@ -536,7 +563,6 @@ async def DBposting_tw(db_name=config['database']['db_name'],db_user=config['dat
         text = row[2]
         over = row[4]
         user = row[3]
-
         # change this shit!!!!
         text = user+':<br>' + text + '<br>' + over
         if image == '' or len(text)>= 1000:
@@ -546,72 +572,59 @@ async def DBposting_tw(db_name=config['database']['db_name'],db_user=config['dat
         status = 8
         cursor.execute(f"UPDATE TWITTER SET STATUS = {status} WHERE id = {id}")
         await asyncio.sleep(20)
-
     connection.commit()
     cursor.close()
     connection.close()
-
-
-async def CheckDB_tg(type, db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host']):
+#db tg
+# tg posted/processed messages count
+async def CheckDB_tg(status=1, db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host']):
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
-    if type == 0:
-        SQLquery = "SELECT COUNT (ID) FROM MESSAGES WHERE (STATUS=0)"
-    elif type == 1:
-        SQLquery = "SELECT COUNT (ID) FROM MESSAGES WHERE (STATUS=1)"
-
+    SQLquery = "SELECT COUNT (ID) FROM MESSAGES WHERE (STATUS=status)"
     cursor.execute(SQLquery)
     quantity = cursor.fetchone()[0]
-
     connection.commit()
     cursor.close()
     connection.close()
-
     return(quantity)
-
-async def CheckDB_tw(type, db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host']):
+#db tw
+# tw posted/processed messages count
+# todo изменить алгоритм работы с твиттером
+async def CheckDB_tw(status=1, db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host']):
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
-    if type == 0:
-        SQLquery = "SELECT COUNT (ID) FROM TWITTER WHERE (STATUS=0)"
-    elif type == 1:
-        SQLquery = "SELECT COUNT (ID) FROM TWITTER WHERE (STATUS=1)"
-
+    SQLquery = "SELECT COUNT (ID) FROM TWITTER WHERE (STATUS=status)"
     cursor.execute(SQLquery)
     quantity = cursor.fetchone()[0]
-
     connection.commit()
     cursor.close()
     connection.close()
-
     return(quantity)
 
 # запись в базу данных сообщения телеграмм
 # todo бъединить в одну функцию  запись в таблцы TG, TW, VK
+# todo скорректировать SQLquery на множество записей
 async def WritetoDB_tg(senderid, sendertitle, text, status=0, type=0, image='', db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host']):
     SQLquery = f"INSERT INTO MESSAGES (SENDERID,SENDERNAME,TEXT,STATUS,TYPE,IMAGE,TIMER) VALUES ('{senderid}', '{sendertitle}', '{text}', {status}, {type}, '{image}', CURRENT_TIMESTAMP)"
-
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
     cursor.execute(SQLquery)
-
     connection.commit()
     cursor.close()
     connection.close()
 
-
 #запись в базу данных сообщения twitter
+# todo бъединить в одну функцию  запись в таблцы TG, TW, VK
+# todo скорректировать SQLquery на множество записей
 async def WritetoDB_tw(screen_path, avatar_src, user_a, user_a_t, time, ad, text, img_arr, image_over, comments_count, reposts_count, likes_count, views_count, status, type, db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host']):
     SQLquery = f"INSERT INTO TWITTER (SCREENSHOT, AVATAR, TWITTERUSERLINK, TWITTERUSER, TIME, AD, TEXT, IMAGES, IMAGEOVERTEXT, COMMENTS, REPOSTS, LIKES, VIEWS, STATUS, TYPE) VALUES ({screen_path}, {avatar_src}, {user_a}, {user_a_t}, {time}, {ad}, {text}, {img_arr}, {image_over}, {comments_count}, {reposts_count}, {likes_count}, {views_count}, {status}, {type})"
-
     connection = psycopg2.connect(dbname=db_name, user=db_user,
                                   password=db_password, host=db_host)
     cursor = connection.cursor()
     cursor.execute(SQLquery)
-
     connection.commit()
     cursor.close()
     connection.close()
@@ -622,8 +635,9 @@ async def WritetoDB_tw(screen_path, avatar_src, user_a, user_a_t, time, ad, text
 
 # hardcode
 # условия для сохранения сообщения
+# todo вынести в отдельный конфигурационный файл
+# todo провести нагрузочное тестирование склько можно за 1 раз
 async def handler(event):
-    # todo вынести в отдельный конфигурационный файл
     # тестовое слово с командой 1
     if 'hello 1' in event.raw_text:
         text = event.raw_text
@@ -675,13 +689,16 @@ async def handler(event):
         image = "/images/static/2.jpg"
         await WritetoDB_tg(senderid, sender.title, text, status, type, image)
 
-# условия для асинхронного запуска функций бота
+# todo определить условия для асинхронного запуска функций бота
+# todo определить условия для запуска нескольких экземпляров бота единовременно
+# todo переработка бота в callable объект @bot.on
 
 
 async def main():
+    #подключение TG бота
     async with client:
-        lastHour=0
-        cycle=0
+
+        # сброс таймеров
         startTime = datetime.now()
         currentTime = datetime.now()
         lastTimeTgGather = datetime.now()
@@ -689,10 +706,19 @@ async def main():
         lastTimeTwGather = datetime.now()
         lastTimeTwPost = datetime.now()
         lastTimeHMGather = datetime.now()
+        #сбор статистики
+        lastHour=0
+        cycle=0
+        postedTG=0
+        postedPosts=0
+        operatingTime=0
+
+        # основной цикл
         while True:
             print('Время работы бота')
             currentTime = datetime.now()
-            print(currentTime - startTime)
+            operatingTime=currentTime - startTime
+            print(operatingTime)
             cycle = cycle+1
             #старт итерации цикла, сброс переменных
 
@@ -743,21 +769,20 @@ async def main():
 
             # TG
             if (config['telethon'].getboolean('flag_on')):
-                unProcessedQuantity_tg = await CheckDB_tg(0)
+                unProcessedQuantity_tg = await CheckDB_tg(status=0)
                 if unProcessedQuantity_tg > 0:
                     await DBprocessing_tg()
                     print('processed processed_tg')
-                unPostedQuantity_tg = await CheckDB_tg(1)
+                unPostedQuantity_tg = await CheckDB_tg(status=1)
                 if unPostedQuantity_tg >0:
+                    print('ready for send tg messages ', unPostedQuantity_tg)
                     if (config['telethon'].getboolean('flag_post') and (currentTime-lastTimeTgPost) > timedelta(minutes=int(config['twitter']['timeout_post']))):
                         await DBposting_tg()
                         print('posted post_tg')
                         lastTimeTgPost = datetime.now()
-                    print('ready for send tg messages ', unPostedQuantity_tg)
 
-                print("unProcessedQuantity_tg -",unProcessedQuantity_tg, "   ", "unPostedQuantity_tg -", unPostedQuantity_tg)
 
-            #todo собирать статистику "успешно gathered" и "успешно posted"
+
             # TW
             if (config['twitter'].getboolean('flag_on')):
                 unProcessedQuantity_tw = await CheckDB_tw(0)
@@ -777,22 +802,53 @@ async def main():
                     lastTimeTwGather = datetime.now()
 
 
+
+
+            # posts SmartLab
+            # todo collect urls and xpath then throw to function
+            #
+            #
+            #
+            if (config['twitter'].getboolean('flag_on')):
+                unProcessedQuantity_tw = await CheckDB_tw(0)
+                if unProcessedQuantity_tw > 0:
+                    await DBprocessing_tw()
+                    print('processed processed_tw')
+                unPostedQuantity_tw = await CheckDB_tw(1)
+                if unPostedQuantity_tw > 0:
+                    if (config['twitter'].getboolean('flag_post') and (currentTime-lastTimeTwPost) > timedelta(minutes=int(config['twitter']['timeout_post']))):
+                        await DBposting_tw()
+                        print('posted post_tw')
+                        lastTimeTwPost = datetime.now()
+                    print('ready for send tw messages', unPostedQuantity_tw)
+                print("unProcessedQuantity_tw -",unProcessedQuantity_tw, "   ", "unPostedQuantity_tw -", unPostedQuantity_tw)
+                if (config['twitter'].getboolean('flag_gather') and (currentTime-lastTimeTwGather) > timedelta(minutes=int(config['twitter']['timeout_gather']))):
+                    await getTwitterMessages()
+                    lastTimeTwGather = datetime.now()
+
+            # posts
+            # todo единый цикл
+
             # todo вывести в стенозависимые
+            # todo режим работы heatmaps
+
             #текущее время и проверка на возможность отправкии (бот работает с 9 до 18)
             #if (config['general'].getboolean('operating_time_flag') and (currentTime - lastTimeHMGather) > timedelta(
             #        minutes=int(config['heatmaps']['timeout_gather']))):
-
             #tmp hardcode to test
             if (config['heatmaps'].getboolean('flag_on') and (currentTime-lastTimeHMGather) > timedelta(minutes=int(config['heatmaps']['timeout_gather'])) ) :
                 print('Heatmap todo')
                 if int(currentTime.strftime("%H")) > int(config['general']['operating_time_start']) and int(currentTime.strftime("%H")) < int(config['general']['operating_time_finish']) :
                     print('heatmap start')
+                    # heatmap Мосбиржа
                     await getHeatmap(heatmap_sl_url=config['heatmaps']['heatmap_sl_url_1'],
                                      heatmap_sl_xpath=config['heatmaps']['heatmap_sl_xpath_1'],
                                      heatmap_sl_comment=config['heatmaps']['heatmap_sl_comment_1'])
+                    # heatmap СПБбиржа
                     await getHeatmap(heatmap_sl_url=config['heatmaps']['heatmap_sl_url_2'],
                                      heatmap_sl_xpath=config['heatmaps']['heatmap_sl_xpath_2'],
                                      heatmap_sl_comment=config['heatmaps']['heatmap_sl_comment_2'])
+                    # heatmap Обсуждаемое
                     await getHeatmap(heatmap_sl_url=config['heatmaps']['heatmap_sl_url_3'],
                                      heatmap_sl_xpath=config['heatmaps']['heatmap_sl_xpath_3'],
                                      heatmap_sl_comment=config['heatmaps']['heatmap_sl_comment_3'])
@@ -801,25 +857,30 @@ async def main():
 
 
             print('-------------')
+            print("unProcessedQuantity_tg -", unProcessedQuantity_tg, "   ", "unPostedQuantity_tg -",
+                  unPostedQuantity_tg)
+
             print(cycle)
             print('-------------')
 
 
 
-# todo вывести в стенозависимые
-# Повторяется цикл раз в n секунд, например 300
-            await asyncio.sleep(30)
+# todo тут требуется тест с парсером selenium небудет ли конфликта при частых циклах (если уже запущен сбрщик)
+# todo тут требуется тест с teegraph, выцепит ли он сообщения если сборщик на паузе (например стоит цикл проверки раз в час)
+# Повторяется цикл раз в n секунд, например 300, но кажется излише часто (3600 секунд = 1 час, 14400 секунд = 4 часа)
+            await asyncio.sleep(int(config['general']['operating_time_start']))
 
 if __name__ == '__main__':
     #workflow =
     asyncio.run(main())
 
-
-# todo
-# twitter does't work via proxy
-# variables to ENV
-# proxy for download img to ENV
-# VK
-# instagram
-# triggers to switch functions
-# each variable to ENV file
+# todo собрать посты со SmartLab
+# todo придумать как обогащать таблицу domains, может загрузка csv?
+# todo собирать статистику "успешно gathered" и "успешно posted" в отдельную таблицу
+# todo здесь собираем список долгосрочных задач
+# todo twitter does't work via proxy
+# todo variables to ENV ()
+# todo proxy for download img to ENV
+# todo VK
+# todo instagram
+# todo triggers to switch functions
