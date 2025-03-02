@@ -617,7 +617,7 @@ async def WritetoDB_tg(senderid, sendertitle, text, status=0, type=0, image='', 
     connection.close()
 
 #запись в базу данных сообщения twitter
-# todo бъединить в одну функцию  запись в таблцы TG, TW, VK
+# todo объединить в одну функцию  запись в таблцы TG, TW, VK
 # todo скорректировать SQLquery на множество записей
 async def WritetoDB_tw(screen_path, avatar_src, user_a, user_a_t, time, ad, text, img_arr, image_over, comments_count, reposts_count, likes_count, views_count, status, type, db_name=config['database']['db_name'],db_user=config['database']['db_user'],db_password=config['database']['db_password'],db_host=config['database']['db_host']):
     SQLquery = f"INSERT INTO TWITTER (SCREENSHOT, AVATAR, TWITTERUSERLINK, TWITTERUSER, TIME, AD, TEXT, IMAGES, IMAGEOVERTEXT, COMMENTS, REPOSTS, LIKES, VIEWS, STATUS, TYPE) VALUES ({screen_path}, {avatar_src}, {user_a}, {user_a_t}, {time}, {ad}, {text}, {img_arr}, {image_over}, {comments_count}, {reposts_count}, {likes_count}, {views_count}, {status}, {type})"
@@ -828,7 +828,6 @@ async def main():
 
             # posts
             # todo единый цикл
-
             # todo вывести в стенозависимые
             # todo режим работы heatmaps
 
