@@ -419,6 +419,15 @@ async def getTwitterMessages(proxy_user = config['proxy']['proxy_user'], proxy_p
             print(ex)
     print("getTwitterMessages done")
 
+
+# собрать посты по отобранным доменам
+async def getDomainsPosts(proxy_user=config['proxy']['proxy_user'], proxy_pass=config['proxy']['proxy_pass'],
+                                 proxy_host=config['proxy']['proxy_host'], proxy_port=config['proxy']['proxy_port']):
+
+
+
+
+
 # messages processing
 #todo обновить списки изменяемых смайликов
 def replaceMessage(message):
@@ -478,6 +487,224 @@ def clearHTML(text):
 def translate(text):
     text = GoogleTranslator(source='en', target='ru').translate(text)
     return (text)
+
+# day number to day name
+#!!!!!
+def int_value_from_num_day(day_num):
+    RU_DAY_VALUES = {
+        'понедельник': 0,
+        'вторник': 1,
+        'среда': 2,
+        'четверг': 3,
+        'пятница': 4,
+        'суббота': 5,
+        'воскресенье': 6,
+    }
+
+    for k, v in RU_DAY_VALUES.items():
+        day_num = str(day_num).replace(str(v), k)
+
+    return day_num
+
+# установить высоту и ширину браузера для webdriver
+def set_viewport_size(driver, width, height):
+    window_size = driver.execute_script("""
+        return [window.outerWidth - window.innerWidth + arguments[0],
+          window.outerHeight - window.innerHeight + arguments[1]];
+        """, width, height)
+    driver.set_window_size(*window_size)
+
+# преобразуем месяц в цифру
+def int_value_from_ru_month(date_str):
+    RU_MONTH_VALUES = {
+        'января': 1,
+        'февраля': 2,
+        'марта': 3,
+        'апреля': 4,
+        'мая': 5,
+        'июня': 6,
+        'июля': 7,
+        'августа': 8,
+        'сентября': 9,
+        'октября': 10,
+        'ноября': 11,
+        'декабря': 12,
+    }
+
+    for k, v in RU_MONTH_VALUES.items():
+        date_str = date_str.replace(k, str(v))
+
+    return date_str
+
+# преобразовать в единый формат
+def date_format(date_str, datetype):
+    if datetype == 1:
+        date_str = int_value_from_ru_month(date_str)
+        # приводим к формату '%d %m %Y, %H:%M' для strptime и превращения в datetime
+    # if datetype == 2:
+    # if datetype == 3:
+    # if datetype == 4:
+    # разные форматы приводим к единому ('%d %m %Y, %H:%M') для дальнейшей
+    return date_str
+
+
+xpath_to_grab_dict['ECpresence'] = "/html/body/div[2]/div[4]/div[3]/div[2]/div[1]/div[1]"
+xpath_to_grab_dict['domain'] =
+xpath_to_grab_dict['titlexp'] = "/html/body/div[2]/div[4]/div[3]/div[2]/div[1]/h1"
+xpath_to_grab_dict['authorxp'] = "/html[1]/body[1]/div[2]/div[4]/div[3]/div[2]/div[1]/ul[1]/ul[1]/li[3]/a[1]"
+xpath_to_grab_dict['datexp'] = "/html[1]/body[1]/div[2]/div[4]/div[3]/div[2]/div[1]/ul[1]/ul[1]/li[1]"
+xpath_to_grab_dict['textxp'] = "/html/body/div[2]/div[4]/div[3]/div[2]/div[1]/div[1]"
+xpath_to_grab_dict['imagesxp'] = ""
+xpath_to_grab_dict['commentsxp'] = "/html[1]/body[1]/div[2]/div[4]/div[3]/div[2]/div[2]/div[2]"
+xpath_to_grab_dict['likesxp'] = "/html/body/div[2]/div[4]/div[3]/div[2]/div[1]/ul[3]"
+xpath_to_grab_dict['viewsxp'] = "/html/body/div[2]/div[4]/div[3]/div[2]/div[1]/div[2]/span[1]"
+xpath_to_grab_dict['page_url'] = ""
+xpath_to_grab_dict['datetype'] = 1
+
+
+
+
+def (driver, xpath_to_grab_dict)
+    WebDriverWait(driver, 60).until(
+        EC.presence_of_element_located(("xpath", xpath_to_grab_dict['ECpresence']))
+        # ecpresence
+    )
+    current_url = driver.current_url
+    # print(current_url)
+    result_page_content_array = {}
+    if xpath_to_grab_dict['page_url'] in xpath_to_grab_dict:
+        try:
+            result_page_content_array['page_url'] = driver.current_url
+            result_page_content_array['page_domain'] = urlparse(result_page_content_array['page_url']).netloc
+        except NoSuchElementException:
+            result_page_content_array['page_url'] = ''
+            result_page_content_array['page_domain'] = ''
+            print("no page_url !")
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! nen
+    if 'page_title' in xpath_to_grab_dict:
+        try:
+            result_page_content_array['page_title'] = driver.find_element("xpath",
+                                                                          xpath_to_grab_dict['titlexp']).text
+        except NoSuchElementException:
+            result_page_content_array['page_title'] = ''
+            print("no page_title !")
+
+    if 'page_author' in xpath_to_grab_dict:
+        try:
+            result_page_content_array['page_author'] = driver.find_element("xpath",
+                                                                           "/html[1]/body[1]/div[2]/div[4]/div[3]/div[2]/div[1]/ul[1]/ul[1]/li[3]/a[1]").text
+        except NoSuchElementException:
+            result_page_content_array['page_author'] = ''
+            print("no page_author !")
+
+    if 'page_date' in xpath_to_grab_dict:
+        try:
+            result_page_content_array['page_date'] = driver.find_element("xpath",
+                                                                         "/html[1]/body[1]/div[2]/div[4]/div[3]/div[2]/div[1]/ul[1]/ul[1]/li[1]").text
+
+            result_page_content_array['page_date'] = (date_format(result_page_content_array['page_date'], 1))
+            result_page_content_array['page_date'] = datetime.strptime(result_page_content_array['page_date'],
+                                                                       '%d %m %Y, %H:%M')
+            # result_page_content_array['page_date'] = datetime.timestamp(result_page_content_array['page_date'])
+            result_page_content_array['page_date'] = result_page_content_array['page_date'].strftime(
+                '%d %B %Y, %H:%M')
+
+        except NoSuchElementException:
+            result_page_content_array['page_date'] = ''
+            print("no page_date !")
+
+    if 'page_text' in xpath_to_grab_dict:
+        try:
+            result_page_content_array['page_text'] = driver.find_element("xpath",
+                                                                         "/html/body/div[2]/div[4]/div[3]/div[2]/div[1]/div[1]").text
+        except NoSuchElementException:
+            result_page_content_array['page_text'] = ''
+            print("no page_text !")
+
+    if 'page_images' in xpath_to_grab_dict:
+        try:
+            result_page_content_array['page_images'] = ""
+        except NoSuchElementException:
+            result_page_content_array['page_images'] = ""
+            print("no page_images !")
+
+    if 'page_comments' in xpath_to_grab_dict:
+        try:
+            result_page_content_array['page_comments'] = driver.find_element("xpath",
+                                                                             "/html[1]/body[1]/div[2]/div[4]/div[3]/div[2]/div[2]/div[2]").text
+        except NoSuchElementException:
+            result_page_content_array['page_comments'] = ''
+            print("no page_comments !")
+
+    if 'page_likes' in xpath_to_grab_dict:
+        try:
+            result_page_content_array['page_likes'] = driver.find_element("xpath",
+                                                                          "/html/body/div[2]/div[4]/div[3]/div[2]/div[1]/ul[3]").text
+        except NoSuchElementException:
+            result_page_content_array['page_likes'] = ''
+            print("no page_likes !")
+
+    if 'page_views' in xpath_to_grab_dict:
+        try:
+            result_page_content_array['page_views'] = driver.find_element("xpath",
+                                                                          "/html/body/div[2]/div[4]/div[3]/div[2]/div[1]/div[2]/span[1]").text
+        except NoSuchElementException:
+            result_page_content_array['page_views'] = ''
+            print("no page_views !")
+
+
+# прокликать по координатам
+
+# todo ОСТАНОВИЛСЯ ТУТ убрать query и далее рвем на разные функции
+def click_coords(coords_array, driver, xpath_to_grab_dict):
+    query = "INSERT INTO POSTS (DOMAIN, URL, TITLE, AUTHOR, DATE, TEXT, IMAGES, COMMENTS, LIKES, VIEWS, STATUS, TYPE) VALUES"
+    count = 0
+    for coords in range(0, len(coords_array)):
+        action = ActionBuilder(driver)
+        action.pointer_action.move_to_location(coords_array[coords][0], coords_array[coords][1])
+        action.pointer_action.click()
+        action.perform()
+        #print(coords_array[coords][0], coords_array[coords][1])
+
+        try:
+
+            driver.switch_to.window(driver.window_handles[1])
+
+
+            driver.close()
+            driver.switch_to.window(driver.window_handles[0])
+            result_page_content_array['page_status'] = 0
+            result_page_content_array['page_type'] = 3
+            # DOMAIN, URL, TITLE, AUTHOR, DATE, TEXT, IMAGES, COMMENTS, LIKES, VIEWS, STATUS, TYPE
+
+            if count == 0:
+                query = query + ", "
+
+            count = count + 1
+
+            query = query + "('" + str(result_page_content_array['page_domain']) + "', '" + str(
+                result_page_content_array['page_url']) + "', '" + str(
+                result_page_content_array['page_title']) + "', '" + str(
+                result_page_content_array['page_author']) + "', '" + str(
+                result_page_content_array['page_date']) + "', '" + str(
+                result_page_content_array['page_text']) + "', '" + str(
+                result_page_content_array['page_images']) + "', '" + str(
+                result_page_content_array['page_comments']) + "', '" + str(
+                result_page_content_array['page_likes']) + "', '" + str(
+                result_page_content_array['page_views']) + "', '" + str(
+                result_page_content_array['page_status']) + "', '" + str(result_page_content_array['page_type']) + "')"
+
+            print(result_page_content_array)
+
+        except IndexError:
+            print("no page opened ! ", coords_array[coords][0], coords_array[coords][1])
+            print(IndexError)
+        print("!!!!!")
+        print(query)
+        print("!!!!!")
+    # это смартлаб хитмэпы (раз в час)
+
+
 
 #db tg
 # tg messages processing (replace simbols, emoticons, catch phrases)
@@ -689,9 +916,6 @@ async def handler(event):
         image = "/images/static/2.jpg"
         await WritetoDB_tg(senderid, sender.title, text, status, type, image)
 
-# todo определить условия для асинхронного запуска функций бота
-# todo определить условия для запуска нескольких экземпляров бота единовременно
-# todo переработка бота в callable объект @bot.on
 
 
 async def main():
@@ -706,6 +930,8 @@ async def main():
         lastTimeTwGather = datetime.now()
         lastTimeTwPost = datetime.now()
         lastTimeHMGather = datetime.now()
+        lastTimeDoGather = datetime.now()
+        lastTimeDoPost = datetime.now()
         #сбор статистики
         lastHour=0
         cycle=0
@@ -717,7 +943,11 @@ async def main():
         while True:
             print('Время работы бота')
             currentTime = datetime.now()
+            print('Текущее время':)
+            print currentTime.strftime("%d-%m-%Y %H:%M")
+            print(int_value_from_num_day(datetime.weekday(currentTime)))
             operatingTime=currentTime - startTime
+            print('Работа без перерыва:')
             print(operatingTime)
             cycle = cycle+1
             #старт итерации цикла, сброс переменных
@@ -804,27 +1034,25 @@ async def main():
 
 
 
-            # posts SmartLab
+            # domains
             # todo collect urls and xpath then throw to function
-            #
-            #
-            #
-            if (config['twitter'].getboolean('flag_on')):
-                unProcessedQuantity_tw = await CheckDB_tw(0)
-                if unProcessedQuantity_tw > 0:
-                    await DBprocessing_tw()
-                    print('processed processed_tw')
-                unPostedQuantity_tw = await CheckDB_tw(1)
-                if unPostedQuantity_tw > 0:
-                    if (config['twitter'].getboolean('flag_post') and (currentTime-lastTimeTwPost) > timedelta(minutes=int(config['twitter']['timeout_post']))):
-                        await DBposting_tw()
-                        print('posted post_tw')
-                        lastTimeTwPost = datetime.now()
-                    print('ready for send tw messages', unPostedQuantity_tw)
-                print("unProcessedQuantity_tw -",unProcessedQuantity_tw, "   ", "unPostedQuantity_tw -", unPostedQuantity_tw)
-                if (config['twitter'].getboolean('flag_gather') and (currentTime-lastTimeTwGather) > timedelta(minutes=int(config['twitter']['timeout_gather']))):
-                    await getTwitterMessages()
-                    lastTimeTwGather = datetime.now()
+
+            if (config['domains'].getboolean('flag_on')):
+                # unProcessedQuantity_tw = await CheckDB_tw(0)
+                # if unProcessedQuantity_tw > 0:
+                #     await DBprocessing_tw()
+                #     print('processed processed_tw')
+                # unPostedQuantity_tw = await CheckDB_tw(1)
+                # if unPostedQuantity_tw > 0:
+                #     if (config['twitter'].getboolean('flag_post') and (currentTime-lastTimeTwPost) > timedelta(minutes=int(config['twitter']['timeout_post']))):
+                #         await DBposting_tw()
+                #         print('posted post_tw')
+                #         lastTimeTwPost = datetime.now()
+                #     print('ready for send tw messages', unPostedQuantity_tw)
+                # print("unProcessedQuantity_tw -",unProcessedQuantity_tw, "   ", "unPostedQuantity_tw -", unPostedQuantity_tw)
+                if (config['domains'].getboolean('flag_gather') and (currentTime-lastTimeDoGather) > timedelta(minutes=int(config['domains']['timeout_gather']))):
+                     await getDomainsPosts()
+                     lastTimeDoGather = datetime.now()
 
             # posts
             # todo единый цикл
@@ -864,22 +1092,32 @@ async def main():
 
 
 
-# todo тут требуется тест с парсером selenium небудет ли конфликта при частых циклах (если уже запущен сбрщик)
+# todo тут требуется тест с парсером selenium не будет ли конфликта при частых циклах (если уже запущен сбрщик)
 # todo тут требуется тест с teegraph, выцепит ли он сообщения если сборщик на паузе (например стоит цикл проверки раз в час)
 # Повторяется цикл раз в n секунд, например 300, но кажется излише часто (3600 секунд = 1 час, 14400 секунд = 4 часа)
-            await asyncio.sleep(int(config['general']['operating_time_start']))
+
+            await asyncio.sleep(int(config['general']['timeout_bot_main_cicle'])) # остановка только корутины main, остальное будет работать фоном
 
 if __name__ == '__main__':
     #workflow =
     asyncio.run(main())
 
+
+# todo здесь собираем список долгосрочных задач
+
 # todo собрать посты со SmartLab
+# DONE in JNB
 # todo придумать как обогащать таблицу domains, может загрузка csv?
 # todo собирать статистику "успешно gathered" и "успешно posted" в отдельную таблицу
-# todo здесь собираем список долгосрочных задач
 # todo twitter does't work via proxy
 # todo variables to ENV ()
 # todo proxy for download img to ENV
 # todo VK
 # todo instagram
 # todo triggers to switch functions
+# todo gather used CPU, Memory and Network
+
+
+# todo определить условия для асинхронного запуска функций бота
+# todo определить условия для запуска нескольких экземпляров бота единовременно
+# todo переработка бота в callable объект @bot.on
