@@ -548,6 +548,7 @@ def date_format(date_str, datetype):
     return date_str
 
 
+# delete this shit
 xpath_to_grab_dict['ECpresence'] = "/html/body/div[2]/div[4]/div[3]/div[2]/div[1]/div[1]"
 xpath_to_grab_dict['domain'] =
 xpath_to_grab_dict['titlexp'] = "/html/body/div[2]/div[4]/div[3]/div[2]/div[1]/h1"
@@ -572,7 +573,7 @@ def (driver, xpath_to_grab_dict)
     current_url = driver.current_url
     # print(current_url)
     result_page_content_array = {}
-    if xpath_to_grab_dict['page_url'] in xpath_to_grab_dict:
+    if 'page_url' in xpath_to_grab_dict:
         try:
             result_page_content_array['page_url'] = driver.current_url
             result_page_content_array['page_domain'] = urlparse(result_page_content_array['page_url']).netloc
@@ -580,8 +581,8 @@ def (driver, xpath_to_grab_dict)
             result_page_content_array['page_url'] = ''
             result_page_content_array['page_domain'] = ''
             print("no page_url !")
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! nen
-    if 'page_title' in xpath_to_grab_dict:
+
+    if 'titlexp' in xpath_to_grab_dict:
         try:
             result_page_content_array['page_title'] = driver.find_element("xpath",
                                                                           xpath_to_grab_dict['titlexp']).text
@@ -589,20 +590,20 @@ def (driver, xpath_to_grab_dict)
             result_page_content_array['page_title'] = ''
             print("no page_title !")
 
-    if 'page_author' in xpath_to_grab_dict:
+    if 'authorxp' in xpath_to_grab_dict:
         try:
             result_page_content_array['page_author'] = driver.find_element("xpath",
-                                                                           "/html[1]/body[1]/div[2]/div[4]/div[3]/div[2]/div[1]/ul[1]/ul[1]/li[3]/a[1]").text
+                                                                           xpath_to_grab_dict['authorxp']).text
         except NoSuchElementException:
             result_page_content_array['page_author'] = ''
             print("no page_author !")
 
-    if 'page_date' in xpath_to_grab_dict:
+    if 'datexp' in xpath_to_grab_dict:
         try:
             result_page_content_array['page_date'] = driver.find_element("xpath",
-                                                                         "/html[1]/body[1]/div[2]/div[4]/div[3]/div[2]/div[1]/ul[1]/ul[1]/li[1]").text
+                                                                         xpath_to_grab_dict['datexp']).text
 
-            result_page_content_array['page_date'] = (date_format(result_page_content_array['page_date'], 1))
+            result_page_content_array['page_date'] = (date_format(result_page_content_array['page_date'], xpath_to_grab_dict['datetype']))
             result_page_content_array['page_date'] = datetime.strptime(result_page_content_array['page_date'],
                                                                        '%d %m %Y, %H:%M')
             # result_page_content_array['page_date'] = datetime.timestamp(result_page_content_array['page_date'])
@@ -613,45 +614,46 @@ def (driver, xpath_to_grab_dict)
             result_page_content_array['page_date'] = ''
             print("no page_date !")
 
-    if 'page_text' in xpath_to_grab_dict:
+    if 'textxp' in xpath_to_grab_dict:
         try:
             result_page_content_array['page_text'] = driver.find_element("xpath",
-                                                                         "/html/body/div[2]/div[4]/div[3]/div[2]/div[1]/div[1]").text
+                                                                         xpath_to_grab_dict['textxp']).text
         except NoSuchElementException:
             result_page_content_array['page_text'] = ''
             print("no page_text !")
 
-    if 'page_images' in xpath_to_grab_dict:
+    if 'imagesxp' in xpath_to_grab_dict:
         try:
             result_page_content_array['page_images'] = ""
         except NoSuchElementException:
             result_page_content_array['page_images'] = ""
             print("no page_images !")
 
-    if 'page_comments' in xpath_to_grab_dict:
+    if 'commentsxp' in xpath_to_grab_dict:
         try:
             result_page_content_array['page_comments'] = driver.find_element("xpath",
-                                                                             "/html[1]/body[1]/div[2]/div[4]/div[3]/div[2]/div[2]/div[2]").text
+                                                                             xpath_to_grab_dict['commentsxp']).text
         except NoSuchElementException:
             result_page_content_array['page_comments'] = ''
             print("no page_comments !")
 
-    if 'page_likes' in xpath_to_grab_dict:
+    if 'likesxp' in xpath_to_grab_dict:
         try:
             result_page_content_array['page_likes'] = driver.find_element("xpath",
-                                                                          "/html/body/div[2]/div[4]/div[3]/div[2]/div[1]/ul[3]").text
+                                                                          xpath_to_grab_dict['likesxp']).text
         except NoSuchElementException:
             result_page_content_array['page_likes'] = ''
             print("no page_likes !")
 
-    if 'page_views' in xpath_to_grab_dict:
+    if 'viewsxp' in xpath_to_grab_dict:
         try:
             result_page_content_array['page_views'] = driver.find_element("xpath",
-                                                                          "/html/body/div[2]/div[4]/div[3]/div[2]/div[1]/div[2]/span[1]").text
+                                                                          xpath_to_grab_dict['viewsxp']).text
         except NoSuchElementException:
             result_page_content_array['page_views'] = ''
             print("no page_views !")
 
+    return(result_page_content_array)
 
 # прокликать по координатам
 
