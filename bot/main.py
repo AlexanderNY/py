@@ -545,6 +545,10 @@ def date_format(date_str, datetype):
     # if datetype == 3:
     # if datetype == 4:
     # разные форматы приводим к единому ('%d %m %Y, %H:%M') для дальнейшей
+
+    date_str = datetime.strptime(date_str, '%d %m %Y, %H:%M')
+    date_str = date_str.strftime('%d %B %Y, %H:%M')
+
     return date_str
 
 
@@ -604,11 +608,6 @@ def (driver, xpath_to_grab_dict)
                                                                          xpath_to_grab_dict['datexp']).text
 
             result_page_content_array['page_date'] = (date_format(result_page_content_array['page_date'], xpath_to_grab_dict['datetype']))
-            result_page_content_array['page_date'] = datetime.strptime(result_page_content_array['page_date'],
-                                                                       '%d %m %Y, %H:%M')
-            # result_page_content_array['page_date'] = datetime.timestamp(result_page_content_array['page_date'])
-            result_page_content_array['page_date'] = result_page_content_array['page_date'].strftime(
-                '%d %B %Y, %H:%M')
 
         except NoSuchElementException:
             result_page_content_array['page_date'] = ''
