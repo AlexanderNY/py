@@ -1,0 +1,19 @@
+version: '3.8'
+services:
+  server:
+    build: ./server
+    ports:
+      - "8000:8000"
+    networks:
+      - app-network
+
+  client:
+    build: ./consumer
+    depends_on:
+      - server
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
