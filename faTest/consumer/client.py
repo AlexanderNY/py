@@ -4,7 +4,7 @@ import time
 
 
 # URL сервиса
-SERVER_URL = "server"
+SERVER_URL = "http://server:8000"
 #"http://0.0.0.0:8000"
 # host = 'http://127.0.0.1:8001'
 # Заголовки запроса
