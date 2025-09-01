@@ -1,0 +1,6 @@
+# api_gateway/requirements.txt
+fastapi
+uvicorn
+httpx
+pydantic
+pydantic[email]

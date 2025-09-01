@@ -1,0 +1,6 @@
+# user_interface/requirements.txt
+fastapi
+uvicorn
+httpx
+pydantic
+pydantic[email]

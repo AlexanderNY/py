@@ -1,0 +1,6 @@
+# scheduler/requirements.txt
+fastapi
+uvicorn
+httpx
+pydantic
+pydantic[email]
