@@ -1,70 +1,97 @@
-import React, { useState } from "react";
+import React, { useState } from 'react';
 
-export default function LogInForm() {
-  // states for registration
-  const [formData, setFormData] = useState({
-    name: "",
-    password: "",
-  });
+const LoginForm = () => {
+  const [user, setUser] = useState({ name: '', pwd: '' , timer: 30, });
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
-  // states for errors, form submission, and password match
-  const [error, setError] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  // handling input changes
-  const handleChange = (event) => {
-    const { name, value, type, checked } = event.target;
-    setFormData((prevFormData) => ({
-      ...prevFormData,
-      [name]: type === "checkbox" ? checked : value,
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const response = await fetch('http://localhost:8003/auth', {
+        method: 'POST',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(user),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Ошибка сервера');
+      }
+
+      const result = await response.json();
+      setMessage('Успешная авторизация!');
+      setUser({ name: '', pwd: '', timer: '' }); // Очищаем форму
+
+    } catch (err) {
+      setError(err.message);
+      setMessage(JSON.stringify(user));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setUser(prev => ({
+      ...prev,
+      [name]: value
     }));
   };
 
-  // handling form submission
-  const handleSubmit = (event) => {
-    event.preventDefault();
-    if (
-      formData.name === "" ||
-      formData.password === ""
-    ) {
-      setError(true);
-    } else {
-      setSubmitted(true);
-      setError(false);
-    }
-
-  };
-
-  // show success message
-  const successMessage = () => {
-    return (
-      <div className="success" style={{ display: submitted ? "" : "none" }}>
-        <h1>Successfully Logged in!!!</h1>
-      </div>
-    );
-  };
-
   return (
-          <form onSubmit={handleSubmit} className="auth-form">
-        <h3>Вход в систему</h3>
-        <div className="form-group">
-          <label>Имя пользователя или Email:</label>
+    <div>
+      <form onSubmit={handleSubmit}>
+        <div>
+          <label>Имя:</label>
           <input
             type="text"
-            value={formData.username}
-            onChange={(e) => setFormData({...formData, username: e.target.value})}
+            name="name"
+            value={user.name}
+            onChange={handleChange}
             required
           />
         </div>
-        <div className="form-group">
-          <label>Пароль:</label>
+
+        <div>
+          <label>Password:</label>
           <input
             type="password"
-            value={formData.password}
-            onChange={(e) => setFormData({...formData, password: e.target.value})}
+            name="pwd"
+            value={user.pwd}
+            onChange={handleChange}
             required
           />
         </div>
-        <button type="submit" className="submit-btn">Войти</button>
+
+        <div>
+          <label>Timer:</label>
+          <input
+            type="timer"
+            name="timer"
+            value={user.timer}
+            onChange={handleChange}
+            required
+          />
+        </div>
+
+        <button type="submit" disabled={loading}>
+          {loading ? 'Отправка...' : 'Войти в личный кабинет'}
+        </button>
       </form>
+
+      {message && <div style={{color: 'green'}}>{message}</div>}
+      {error && <div style={{color: 'red'}}>Ошибка: {error}</div>}
+    </div>
   );
-}
+};
+
+export default LoginForm;

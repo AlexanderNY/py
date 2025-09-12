@@ -21,11 +21,23 @@ services:
       - monitoring_network
 
   user_interface:
-    build: back_core
+    build: ./back_core
     ports:
       - "8002:8002"
     environment:
       - API_GATEWAY_URL=http://api_gateway:8000
+    networks:
+      - monitoring_network
+
+  auth:
+    build: ./auth
+    ports:
+      - "8003:8003"
+    environment:
+      - API_GATEWAY_URL=http://api_gateway:8000
+      - LOG_SETTINGS_JOURNALD_LEVEL=DEBUG  # Для приложений, которые поддерживают эту переменную
+      # Или, например, для Java-приложений
+      - LOG_LEVEL=DEBUG
     networks:
       - monitoring_network
 
