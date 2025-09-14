@@ -9,9 +9,7 @@ import Dashboard from "./components/Dashboard";
 export default function App() {
       const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-      const handleLoginSuccess = () => {
-        setIsLoggedIn(true);
-      };
+
 
 
 

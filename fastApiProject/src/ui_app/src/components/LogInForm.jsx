@@ -12,6 +12,10 @@ const LoginForm = () => {
     setError('');
     setMessage('');
 
+  const handleLoginSuccess = () => {
+  setIsLoggedIn(true);
+  };
+
     try {
       const response = await fetch('http://localhost:8003/auth', {
         method: 'POST',
@@ -30,6 +34,9 @@ const LoginForm = () => {
       const result = await response.json();
       setMessage('Успешная авторизация!');
       setUser({ name: '', pwd: '', timer: '' }); // Очищаем форму
+      handleLoginSuccess(true)
+
+
 
     } catch (err) {
       setError(err.message);
