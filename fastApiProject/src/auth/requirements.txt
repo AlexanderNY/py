@@ -1,3 +1,6 @@
 # auth/requirements.txt
 fastapi
 uvicorn
+asyncio
+jwt
+pydantic
