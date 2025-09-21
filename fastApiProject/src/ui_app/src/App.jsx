@@ -1,123 +1,93 @@
-import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
-import HomeForm from "./components/HomeForm";
-import SignupForm from "./components/SignupForm";
-import LoginForm from "./components/LoginForm";
-import ResetPassword from "./components/ResetPassword";
-import Dashboard from "./components/Dashboard";
+import Header from './components/Header/Header'
+import TeachingSection from './components/TeachingSection'
+import DifferencesSection from './components/DifferencesSection'
+import IntroSection from './components/IntroSection'
+import TabsSection from './components/TabsSection'
+import FeedbackSection from './components/FeedbackSection'
+import { useState } from 'react'
+import EffectSection from './components/EffectSection'
+import { BrowserRouter, Routes, Route, Link, Outlet, NavLink } from 'react-router';
+
+import Home from "./components/Home.jsx";
+import User from "./components/User.jsx";
+
+const Navigation = () => {
+  return (
+    <nav
+      style={{
+        borderBottom: "solid 1px",
+        paddingBottom: "1rem",
+      }}
+    >
+      <Link to="/home">Home</Link>
+      <Link to="/user">User</Link>
+    </nav>
+
+  );
+};
+
+const Layout = () => {
+
+
+  return (
+    <>
+      <h1>React Router</h1>
+
+      <nav
+        style={{
+          borderBottom: "solid 1px",
+          paddingBottom: "1rem",
+        }}
+      >
+        <NavLink to="/home" >Home</NavLink>
+        <NavLink to="/user" >Users</NavLink>
+      </nav>
+
+      <main style={{ padding: "1rem 0" }}>
+        <Outlet />
+      </main>
+    </>
+  );
+};
+
 
 export default function App() {
-      const [isLoggedIn, setIsLoggedIn] = useState(false);
+  //const [visible, setVisible] = useState(true)
+  const [tab, setTab] = useState('effect')
 
-
-
-
+  // setTimeout(() => {
+  //   setVisible(false)
+  // }, 3000)
 
   return (
-    <Router>
-       <div>
-          {isLoggedIn ? (
-            // Рендер страниц после логина (например, дашборд)
- <div>
-          <nav>
-            <ul>
-                <li>
-                    <Link to="/">Home</Link>
-                </li>
-                <li>
-                    <Link to="/login">Login</Link>
-                </li>
-                <li>
-                    <Link to="/signup">Signup</Link>
-                </li>
-                <li>
-                    <Link to="/reset">Reset Passord</Link>
-                </li>
-            </ul>
-        </nav>
-        <div>
-          <Routes>
-          <Route path="/" element={<HomeForm/>}/>
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="/reset" element={<Reset />} />
-          <Route path="/dashboard" element={<Dashboard2 />} />
-          </Routes>
-        </div>
- </div>
-          ) : (
-            // Рендер страницы логина
-              <div>
-        <nav>
-            <ul>
-                <li>
-                    <Link to="/">Home</Link>
-                </li>
-                <li>
-                    <Link to="/reset">Reset Passord</Link>
-                </li>
-                <li>
-                    <Link to="/dashboard">Dashboard</Link>
-                </li>
-            </ul>
-        </nav>
-        <div>
-          <Routes>
-          <Route path="/" element={<HomeForm/>}/>
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="/reset" element={<Reset />} />
-          <Route path="/dashboard" element={<Dashboard2 />} />
-        </Routes>
-        </div>
-                  </div>
+      <>
+          <h1>React Router</h1>
+    <Routes>
+      <Route element={<Layout />}>
+        <Route path="home" element={<Home />} />
+        <Route path="user" element={<User />} />
+      </Route>
+    </Routes>
+          <div> 2</div>
+
+
+          <Header/>
+          <IntroSection/>
+
+
+          <TabsSection active={tab} onChange={(current) => setTab(current)}/>
+
+          {tab === 'main' && (
+              <>
+                  <TeachingSection/>
+                  <DifferencesSection/>
+              </>
           )}
-        </div>
-    </Router>
-  );
-}
+          {tab === 'feedback' && <FeedbackSection/>}
+          {//tab === 'effect' && <EffectSection />
+          }
 
-function Home() {
-  return (
-    <div>
-      <h2>Home</h2>
-      <HomeForm />
-    </div>
-  );
-}
 
-function Login() {
-  return (
-    <div>
-      <h2>Login</h2>
-      <LoginForm/>
-    </div>
-  );
-}
-
-function Signup() {
-  return (
-    <div>
-      <h2>Signup</h2>
-      <SignupForm/>
-    </div>
-  );
-}
-
-function Reset() {
-  return (
-    <div>
-      <h2>Password Reset</h2>
-      <ResetPassword />
-    </div>
-  );
-}
-
-function Dashboard2() {
-  return (
-    <div>
-      <h2>Dashboard</h2>
-      <Dashboard/>
-    </div>
-  );
+      </>
+  )
 }
