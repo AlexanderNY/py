@@ -177,3 +177,9 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+.active {
+  color: #667eea;
+  border-bottom: 3px solid #667eea;
+}
