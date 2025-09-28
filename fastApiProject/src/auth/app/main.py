@@ -9,7 +9,7 @@ import jwt
 import time, datetime
 from datetime import timedelta
 from typing import Union
-
+import bcrypt
 
 from pydantic import BaseModel
 
@@ -56,6 +56,9 @@ fake_users_db = {
         "disabled": False,
     }
 }
+
+def get_hashed_password(password: str) -> str:
+    return password_context.hash(password)
 
 
 def create_access_token(self, data:dict, expires_delta: timedelta) -> str:
@@ -156,21 +159,26 @@ async def get_auth_status(name: str = Body(embed=True, min_length=3, max_length=
     """Получить статус авторизации"""
     try:
         # Получаем данные из БД
-        asyncio.sleep(5)
-        if (name == "Alex" or name == "Bob") and (pwd == "1234567890" or pwd == "1234567890123") and timer>=30:
-            return {"user_name": name, "user_pwd": pwd, "user_auth": True }
+        pw = b'1234567890'
+        s = SECRET_KEY # salt
+        h = bcrypt.hashpw(pw, s)  # Hash password
+        pwd = bcrypt.hashpw(pwd, s)
+        if (name == "Alex" or name == "Bob") and (pwd == h) and timer>=30:
+            encoded = jwt.encode({"some": "payload"}, SECRET_KEY, algorithm=ALGORITHM)
+            return {"user_name": name, "user_pwd": pwd, "user_auth": True, "user_token": encoded  }
         else:
             return {
                 "user_name": name,
                 "user_pwd": pwd,
                 "user_auth": False
             }
+
     except:
         print("An error occurred:")
 
 
 @app.post("/signup")
-async def root():
+async def signup():
     """Страница для регистрации"""
     return {
         "message": "Auth System",
@@ -179,19 +187,19 @@ async def root():
         }
     }
 @app.post("/signin")
-async def login(user: UserLogin):
+async def login(user):
     #получаем токен и возращаем клиенту
     token = user_auth.login_for_access_token(user.email, user.password)
     return token
 
 @app.post("/me")
-async def read_me(token: TokenGet):
+async def read_me(token):
     #декодируем токен и получаем обьект пользователя
     return user_auth.decode_token(token.token)
 
 
 @app.post("/refresh")
-async def root():
+async def refresh():
     """Страница для обновления токена авторизации"""
     return {
         "message": "Auth System",
