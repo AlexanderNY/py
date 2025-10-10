@@ -133,6 +133,7 @@ origins = [
     "http://localhost:5173/",
     "http://localhost",
     "http://localhost:8080",
+    "http://127.0.0.1:8001/",
     "*"
 ]
 
@@ -150,7 +151,7 @@ app.add_middleware(
 async def get_auth_status_test():
     """Получить статус options , для проверки доступности при обращении из браузера с помощью fetch"""
     content = {"message": "Hello handshake"}
-    headers = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, PUT", "Access-Control-Allow-Headers": "Content-Type"}
+    headers = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "*", "Access-Control-Allow-Headers": "Content-Type"}
     return JSONResponse(content=content, headers=headers)
 @app.post("/auth")
 async def get_auth_status(name: str = Body(embed=True, min_length=3, max_length=20),

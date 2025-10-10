@@ -10,11 +10,6 @@ import Dashboard from "./components/Dashboard.jsx";
 import Home from "./components/Home.jsx";
 import User from "./components/User.jsx";
 
-
-
-
-
-
 export default function App() {
   //const [visible, setVisible] = useState(true)
   //const [tab, setTab] = useState('effect')
@@ -45,10 +40,6 @@ export default function App() {
   </Route>
 </Routes>
 
-
-
-
-
-      </>
+</>
   )
 }
