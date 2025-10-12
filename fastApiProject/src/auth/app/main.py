@@ -157,6 +157,7 @@ async def get_auth_status_test():
 async def get_auth_status(name: str = Body(embed=True, min_length=3, max_length=20),
                           pwd: str = Body(embed=True,  min_length=10, max_length=20),
                           timer: int = Body(embed=True, lt=1000)):
+
     """Получить статус авторизации"""
     try:
         # Получаем данные из БД
@@ -175,7 +176,7 @@ async def get_auth_status(name: str = Body(embed=True, min_length=3, max_length=
             }
 
     except:
-        print("An error occurred:")
+        return {"message": "nothing works"}
 
 
 @app.post("/signup")
