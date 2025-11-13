@@ -1,5 +1,5 @@
 # auth/app/main.py
-from fastapi import FastAPI, Body
+from fastapi import FastAPI, Body, Response
 from pydantic import BaseModel, EmailStr
 import asyncio
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,8 +24,9 @@ class UserDTO(BaseModel):
     email: str
     password: str
 
+
 #todo to ENV
-SECRET_KEY = "secret-key"  # Заменить на надежный ключ
+SECRET_KEY = "$2b$12$xyiAcpacCfrFN3wl3ayJT."  # Заменить на надежный ключ, но по праввилам генсолт
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE = 30
 REFRESH_TOKEN_EXPIRE = 7
@@ -57,8 +58,11 @@ fake_users_db = {
     }
 }
 
-def get_hashed_password(password: str) -> str:
-    return password_context.hash(password)
+def get_hashed_password(password: str) -> bytes:
+    password = bytes(password, 'utf-8')
+    s = bytes(SECRET_KEY, 'utf-8')
+    password = bcrypt.hashpw(password, s)
+    return (password)
 
 
 def create_access_token(self, data:dict, expires_delta: timedelta) -> str:
@@ -67,65 +71,65 @@ def create_access_token(self, data:dict, expires_delta: timedelta) -> str:
 def decode_token(self, token: str):
     return False
 
-def validate_user(self, email: str, password: str) -> Union[UserDTO, bool]:
-    user: UserDTO = user_repository.select_user_by_email(email)
-    if user and user.password.__eq__(password):
-        return user
-    else:
-        return False
+# def validate_user(self, email: str, password: str) -> Union[UserDTO, bool]:
+#     user: UserDTO = user_repository.select_user_by_email(email)
+#     if user and user.password.__eq__(password):
+#         return user
+#     else:
+#         return False
 
 
-def login_for_access_token(self, email: str, password: str) -> Token:
-    user: UserDTO = self.validate_user(email, password)  # проверка введенных данных
+# def login_for_access_token(self, email: str, password: str) -> Token:
+#     user: UserDTO = self.validate_user(email, password)  # проверка введенных данных
+#
+#     if not user:
+#         raise HTTPException(
+#             status_code=status.HTTP_401_UNAUTHORIZED,
+#             detail="Incorrect username or password",
+#             headers={"WWW-Authenticate": "Bearer"},
+#         )
+#
+#     access_token_expires = timedelta(minutes=15)  # время действия токена
+#     # данные для кодирования
+#     access_token = self.create_access_token(
+#         data={"email": user.email, "password": user.password},
+#         expires_delta=access_token_expires
+#     )  # создание токена
+#     return Token(access_token=access_token, token_type="bearer", access_token_expires=str(access_token_expire))
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    access_token_expires = timedelta(minutes=15)  # время действия токена
-    # данные для кодирования
-    access_token = self.create_access_token(
-        data={"email": user.email, "password": user.password},
-        expires_delta=access_token_expires
-    )  # создание токена
-    return Token(access_token=access_token, token_type="bearer", access_token_expires=str(access_token_expire))
-
-def get_current_user(self, token: str):
-    # заранее подготовим исключение
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        # декодировка токена
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-
-        # данные из токена
-        email: str = payload.get("email")
-        password: str = payload.get("password")
-        exp: str = payload.get("exp")
-
-        # если в токене нет поля email
-        if email is None:
-            raise credentials_exception
-
-        # если время жизни токена истекло
-        if datetime.fromtimestamp(float(exp)) - datetime.now() < timedelta(0):
-            raise credentials_exception
-
-    except InvalidTokenError:
-        raise credentials_exception
-
-    # проверка данных
-    user: UserDTO = self.validate_user(email, password)
-
-    if user is None:
-        raise credentials_exception
-    return user
+# def get_current_user(self, token: str):
+#     # заранее подготовим исключение
+#     credentials_exception = HTTPException(
+#         status_code=status.HTTP_401_UNAUTHORIZED,
+#         detail="Could not validate credentials",
+#         headers={"WWW-Authenticate": "Bearer"},
+#     )
+#     try:
+#         # декодировка токена
+#         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+#
+#         # данные из токена
+#         email: str = payload.get("email")
+#         password: str = payload.get("password")
+#         exp: str = payload.get("exp")
+#
+#         # если в токене нет поля email
+#         if email is None:
+#             raise credentials_exception
+#
+#         # если время жизни токена истекло
+#         if datetime.fromtimestamp(float(exp)) - datetime.now() < timedelta(0):
+#             raise credentials_exception
+#
+#     except InvalidTokenError:
+#         raise credentials_exception
+#
+#     # проверка данных
+#     user: UserDTO = self.validate_user(email, password)
+#
+#     if user is None:
+#         raise credentials_exception
+#     return user
 
 app = FastAPI(title="Auth Service")
 
@@ -146,6 +150,16 @@ app.add_middleware(
 
 )
 
+def get_user(name):
+    # Получаем данные из БД
+    pw = "a1234567890"
+    pw = bytes(pw, 'utf-8')
+    s = bytes(SECRET_KEY, 'utf-8') # salt
+    hpwd_db = bcrypt.hashpw(pw, s)  # Hash password
+    name_db = "Alex"
+
+    return (name_db,hpwd_db)
+
 
 @app.options("/auth")
 async def get_auth_status_test():
@@ -158,25 +172,44 @@ async def get_auth_status(name: str = Body(embed=True, min_length=3, max_length=
                           pwd: str = Body(embed=True,  min_length=10, max_length=20),
                           timer: int = Body(embed=True, lt=1000)):
 
+    pwd = get_hashed_password(pwd)
+    s = bytes(SECRET_KEY, 'utf-8')
+    name_db, hpwd_db = get_user(name)
+    print(name)
+    print(name_db)
+    print(pwd)
+    print(hpwd_db)
     """Получить статус авторизации"""
     try:
-        # Получаем данные из БД
-        pw = b'1234567890'
-        s = SECRET_KEY # salt
-        h = bcrypt.hashpw(pw, s)  # Hash password
-        pwd = bcrypt.hashpw(pwd, s)
-        if (name == "Alex" or name == "Bob") and (pwd == h) and timer>=30:
+        name_db,hpwd_db=get_user(name)
+        print(name_db,hpwd_db)
+        if (name == name_db) and (pwd == hpwd_db) and timer>=30:
             encoded = jwt.encode({"some": "payload"}, SECRET_KEY, algorithm=ALGORITHM)
-            return {"user_name": name, "user_pwd": pwd, "user_auth": True, "user_token": encoded  }
+            #Response.headers["Secret-Code"] = "123459"
+            return {
+                    "message": "it works!",
+                    "user_name": name,
+                    "user_pwd": pwd,
+                    "user_auth": True,
+                    "user_token": encoded
+                    }
         else:
             return {
-                "user_name": name,
-                "user_pwd": pwd,
-                "user_auth": False
-            }
+                   "message": "Nonono",
+                   "user_name": name,
+                   "user_pwd": pwd,
+                   "user_auth": False,
+                   "user_token": ""
+                   }
 
     except:
-        return {"message": "nothing works"}
+        return {
+                "message": "nothing works",
+                "user_name": name,
+                "user_pwd": pwd,
+                "user_auth": False,
+                "user_token": ""
+               }
 
 
 @app.post("/signup")
@@ -188,16 +221,16 @@ async def signup():
             "setup_monitoring": "POST /auth",
         }
     }
-@app.post("/signin")
-async def login(user):
-    #получаем токен и возращаем клиенту
-    token = user_auth.login_for_access_token(user.email, user.password)
-    return token
+# @app.post("/signin")
+# async def login(user):
+#     #получаем токен и возращаем клиенту
+#     token = user_auth.login_for_access_token(user.email, user.password)
+#     return token
 
-@app.post("/me")
-async def read_me(token):
-    #декодируем токен и получаем обьект пользователя
-    return user_auth.decode_token(token.token)
+# @app.post("/me")
+# async def read_me(token):
+#     #декодируем токен и получаем обьект пользователя
+#     return user_auth.decode_token(token.token)
 
 
 @app.post("/refresh")
