@@ -14,16 +14,46 @@ import bcrypt
 from pydantic import BaseModel
 
 class Token(BaseModel):
-    access_token: str
-    token_type: str
-    access_token_expires: str
+    def __init__(self, secret_key, algorithm='HS256'):
+        self.secret_key = secret_key
+        self.algorithm = algorithm
 
-class UserDTO(BaseModel):
-    id: int
-    login: str
-    email: str
-    password: str
+    def generate_token(self, user_data, expires_in_hours=24):
+        """
+        Генерация JWT токена
+        """
+        payload = {
+            **user_data,
+            'iat': datetime.datetime.utcnow(),
+            'exp': datetime.datetime.utcnow() + timedelta(hours=expires_in_hours)
+        }
 
+        return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
+
+    def verify_token(self, token):
+        """
+        Проверка и декодирование JWT токена
+        """
+        try:
+            payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
+            return payload
+        except jwt.ExpiredSignatureError:
+            raise Exception("Token has expired")
+        except jwt.InvalidTokenError:
+            raise Exception("Invalid token")
+
+    def refresh_token(self, token, expires_in_hours=24):
+        """
+        Обновление токена
+        """
+        payload = self.verify_token(token)
+
+        # Удаляем временные метки из старого payload
+        payload.pop('iat', None)
+        payload.pop('exp', None)
+
+        # Генерируем новый токен
+        return self.generate_token(payload, expires_in_hours)
 
 #todo to ENV
 SECRET_KEY = "$2b$12$xyiAcpacCfrFN3wl3ayJT."  # Заменить на надежный ключ, но по праввилам генсолт
@@ -32,31 +62,7 @@ ACCESS_TOKEN_EXPIRE = 30
 REFRESH_TOKEN_EXPIRE = 7
 
 
-fake_users_db = {
-    "johndoe": {
-        "username": "johndoe",
-        "full_name": "John Doe",
-        "email": "johndoe@example.com",
-        "hashed_password": "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",  # "secret"
-        "disabled": False,
-    }
-    ,
-    "johndoe": {
-        "username": "johndoe",
-        "full_name": "John Doe",
-        "email": "johndoe@example.com",
-        "hashed_password": "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",  # "secret"
-        "disabled": False,
-    }
-    ,
-    "johndoe": {
-        "username": "johndoe",
-        "full_name": "John Doe",
-        "email": "johndoe@example.com",
-        "hashed_password": "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",  # "secret"
-        "disabled": False,
-    }
-}
+
 
 def get_hashed_password(password: str) -> bytes:
     password = bytes(password, 'utf-8')
@@ -65,11 +71,8 @@ def get_hashed_password(password: str) -> bytes:
     return (password)
 
 
-def create_access_token(self, data:dict, expires_delta: timedelta) -> str:
-    return False
 
-def decode_token(self, token: str):
-    return False
+
 
 # def validate_user(self, email: str, password: str) -> Union[UserDTO, bool]:
 #     user: UserDTO = user_repository.select_user_by_email(email)
@@ -184,7 +187,16 @@ async def get_auth_status(name: str = Body(embed=True, min_length=3, max_length=
         name_db,hpwd_db=get_user(name)
         print(name_db,hpwd_db)
         if (name == name_db) and (pwd == hpwd_db) and timer>=30:
-            encoded = jwt.encode({"some": "payload"}, SECRET_KEY, algorithm=ALGORITHM)
+            print('name=name')
+            user_data = {
+                'name': 'name',
+                'id': '12',
+                'email': 'aaa@google.com',
+                'role': 'owner'
+            }
+            encoded = Token.generate_token(user_data, expires_in_hours=48)
+            print('encoded')
+            #encoded = jwt.encode(payload ={"id": "123","role": "owner","data": "payload"}, key=SECRET_KEY, algorithm=ALGORITHM)
             #Response.headers["Secret-Code"] = "123459"
             return {
                     "message": "it works!",
@@ -210,6 +222,9 @@ async def get_auth_status(name: str = Body(embed=True, min_length=3, max_length=
                 "user_auth": False,
                 "user_token": ""
                }
+
+
+
 
 
 @app.post("/signup")
