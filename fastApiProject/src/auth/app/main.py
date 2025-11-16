@@ -11,9 +11,9 @@ from datetime import timedelta
 from typing import Union
 import bcrypt
 
-from pydantic import BaseModel
+#from pydantic import BaseModel
 
-class Token(BaseModel):
+class Token():
     def __init__(self, secret_key, algorithm='HS256'):
         self.secret_key = secret_key
         self.algorithm = algorithm
@@ -56,7 +56,7 @@ class Token(BaseModel):
         return self.generate_token(payload, expires_in_hours)
 
 #todo to ENV
-SECRET_KEY = "$2b$12$xyiAcpacCfrFN3wl3ayJT."  # Заменить на надежный ключ, но по праввилам генсолт
+SECRET_KEY = "$2b$12$xyiAcpacCfrFN3wl3ayJT."  # Заменить на надежный ключ, но по правилам gensault+a-string-secret-at-least-256-bits-long
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE = 30
 REFRESH_TOKEN_EXPIRE = 7
@@ -174,7 +174,8 @@ async def get_auth_status_test():
 async def get_auth_status(name: str = Body(embed=True, min_length=3, max_length=20),
                           pwd: str = Body(embed=True,  min_length=10, max_length=20),
                           timer: int = Body(embed=True, lt=1000)):
-
+    #SECRET_KEY="$2b$12$xyiAcpacCfrFN3wl3ayJT."
+    encoded=Token(SECRET_KEY, algorithm='HS256')
     pwd = get_hashed_password(pwd)
     s = bytes(SECRET_KEY, 'utf-8')
     name_db, hpwd_db = get_user(name)
@@ -194,7 +195,8 @@ async def get_auth_status(name: str = Body(embed=True, min_length=3, max_length=
                 'email': 'aaa@google.com',
                 'role': 'owner'
             }
-            encoded = Token.generate_token(user_data, expires_in_hours=48)
+
+            encoded = encoded.generate_token(user_data, expires_in_hours=48)
             print('encoded')
             #encoded = jwt.encode(payload ={"id": "123","role": "owner","data": "payload"}, key=SECRET_KEY, algorithm=ALGORITHM)
             #Response.headers["Secret-Code"] = "123459"
