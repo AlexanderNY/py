@@ -10,7 +10,7 @@ import time, datetime
 from datetime import timedelta
 from typing import Union
 import bcrypt
-
+import json
 #from pydantic import BaseModel
 
 class Token():
@@ -24,6 +24,7 @@ class Token():
         """
         payload = {
             **user_data,
+            'token_id': uuid.uuid4(),
             'iat': datetime.datetime.utcnow(),
             'exp': datetime.datetime.utcnow() + timedelta(hours=expires_in_hours)
         }
@@ -53,7 +54,7 @@ class Token():
         payload.pop('exp', None)
 
         # Генерируем новый токен
-        return self.generate_token(payload, expires_in_hours)
+        return self.generate_token(user_data, expires_in_hours)
 
 #todo to ENV
 SECRET_KEY = "$2b$12$xyiAcpacCfrFN3wl3ayJT."  # Заменить на надежный ключ, но по правилам gensault+a-string-secret-at-least-256-bits-long
@@ -70,6 +71,160 @@ def get_hashed_password(password: str) -> bytes:
     password = bcrypt.hashpw(password, s)
     return (password)
 
+
+
+
+
+
+app = FastAPI(title="Auth Service")
+
+origins = [
+    "http://localhost:5173/",
+    "http://localhost",
+    "http://localhost:8080",
+    "http://127.0.0.1:8001/",
+    "*"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+
+)
+
+def get_user(name):
+    # Получаем данные из БД
+    pw = "a1234567890"
+    pw = bytes(pw, 'utf-8')
+    s = bytes(SECRET_KEY, 'utf-8') # salt
+    hpwd_db = bcrypt.hashpw(pw, s)  # Hash password
+    name_db = "Alex"
+
+    return (name_db,hpwd_db)
+
+
+@app.options("/auth")
+async def get_auth_status_test():
+    """Получить статус options , для проверки доступности при обращении из браузера с помощью fetch"""
+    content = {"message": "Hello handshake"}
+    headers = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "*", "Access-Control-Allow-Headers": "Content-Type"}
+    return JSONResponse(json=content, headers=headers)
+@app.post("/auth")
+async def get_auth_status(name: str = Body(embed=True, min_length=3, max_length=20),
+                          pwd: str = Body(embed=True,  min_length=10, max_length=20),
+                          timer: int = Body(embed=True, lt=1000)):
+    #SECRET_KEY="$2b$12$xyiAcpacCfrFN3wl3ayJT."
+    encoded=Token(SECRET_KEY, algorithm='HS256')
+    pwd = get_hashed_password(pwd)
+    s = bytes(SECRET_KEY, 'utf-8')
+    name_db, hpwd_db = get_user(name)
+    print(name)
+    print(name_db)
+    print(pwd)
+    print(hpwd_db)
+    """Получить статус авторизации"""
+    try:
+        name_db,hpwd_db=get_user(name)
+        print(name_db,hpwd_db)
+        if (name == name_db) and (pwd == hpwd_db) and timer>=30:
+            print('name=name')
+            user_data = {
+                'user_name': 'name',
+                'user_id': '12',
+                'token_id': 'q',
+                'user_role': 'owner'
+            }
+
+            encoded = encoded.generate_token(user_data, expires_in_hours=48)
+            print('encoded')
+            #encoded = jwt.encode(payload ={"id": "123","role": "owner","data": "payload"}, key=SECRET_KEY, algorithm=ALGORITHM)
+            #Response.headers["Secret-Code"] = "123459"
+            content= {
+                "message": "it works!",
+                "user_name": name,
+                #"user_pwd": pwd,
+                "user_auth": True,
+                "user_token":"header"
+            }
+            headers = {"X-My-Custom-Header": encoded}
+            return JSONResponse(content=content, headers=headers)
+        else:
+            content = {
+                "message": "Nonono",
+                "user_name": name,
+                #"user_pwd": pwd,
+                "user_auth": False,
+                "user_token": ""
+            }
+            headers = {"X-My-Custom-Header": "Value"}
+            return JSONResponse(content=content, headers=headers)
+
+
+    except:
+        content = {
+            "message": "nothing works",
+            "user_name": name,
+           # "user_pwd": pwd,
+            "user_auth": False,
+            "user_token": ""
+        }
+        headers = {"X-My-Custom-Header": "Value"}
+        return JSONResponse(content=content, headers=headers)
+
+
+
+
+
+@app.post("/signup")
+async def signup():
+    """Страница для регистрации"""
+    return {
+        "message": "Auth System",
+        "endpoints": {
+            "setup_monitoring": "POST /auth",
+        }
+    }
+# @app.post("/signin")
+# async def login(user):
+#     #получаем токен и возращаем клиенту
+#     token = user_auth.login_for_access_token(user.email, user.password)
+#     return token
+
+# @app.post("/me")
+# async def read_me(token):
+#     #декодируем токен и получаем обьект пользователя
+#     return user_auth.decode_token(token.token)
+
+
+@app.post("/refresh")
+async def refresh():
+    """Страница для обновления токена авторизации"""
+    return {
+        "message": "Auth System",
+        "endpoints": {
+            "setup_monitoring": "POST /auth",
+        }
+    }
+
+
+@app.get("/")
+async def root():
+    """Главная страница AUTH"""
+    return {
+        "message": "Auth System",
+        "endpoints": {
+            "setup_monitoring": "POST /auth",
+        }
+    }
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "service": "user_auth"}
 
 
 
@@ -133,146 +288,3 @@ def get_hashed_password(password: str) -> bytes:
 #     if user is None:
 #         raise credentials_exception
 #     return user
-
-app = FastAPI(title="Auth Service")
-
-origins = [
-    "http://localhost:5173/",
-    "http://localhost",
-    "http://localhost:8080",
-    "http://127.0.0.1:8001/",
-    "*"
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-
-)
-
-def get_user(name):
-    # Получаем данные из БД
-    pw = "a1234567890"
-    pw = bytes(pw, 'utf-8')
-    s = bytes(SECRET_KEY, 'utf-8') # salt
-    hpwd_db = bcrypt.hashpw(pw, s)  # Hash password
-    name_db = "Alex"
-
-    return (name_db,hpwd_db)
-
-
-@app.options("/auth")
-async def get_auth_status_test():
-    """Получить статус options , для проверки доступности при обращении из браузера с помощью fetch"""
-    content = {"message": "Hello handshake"}
-    headers = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "*", "Access-Control-Allow-Headers": "Content-Type"}
-    return JSONResponse(content=content, headers=headers)
-@app.post("/auth")
-async def get_auth_status(name: str = Body(embed=True, min_length=3, max_length=20),
-                          pwd: str = Body(embed=True,  min_length=10, max_length=20),
-                          timer: int = Body(embed=True, lt=1000)):
-    #SECRET_KEY="$2b$12$xyiAcpacCfrFN3wl3ayJT."
-    encoded=Token(SECRET_KEY, algorithm='HS256')
-    pwd = get_hashed_password(pwd)
-    s = bytes(SECRET_KEY, 'utf-8')
-    name_db, hpwd_db = get_user(name)
-    print(name)
-    print(name_db)
-    print(pwd)
-    print(hpwd_db)
-    """Получить статус авторизации"""
-    try:
-        name_db,hpwd_db=get_user(name)
-        print(name_db,hpwd_db)
-        if (name == name_db) and (pwd == hpwd_db) and timer>=30:
-            print('name=name')
-            user_data = {
-                'name': 'name',
-                'id': '12',
-                'email': 'aaa@google.com',
-                'role': 'owner'
-            }
-
-            encoded = encoded.generate_token(user_data, expires_in_hours=48)
-            print('encoded')
-            #encoded = jwt.encode(payload ={"id": "123","role": "owner","data": "payload"}, key=SECRET_KEY, algorithm=ALGORITHM)
-            #Response.headers["Secret-Code"] = "123459"
-            return {
-                    "message": "it works!",
-                    "user_name": name,
-                    "user_pwd": pwd,
-                    "user_auth": True,
-                    "user_token": encoded
-                    }
-        else:
-            return {
-                   "message": "Nonono",
-                   "user_name": name,
-                   "user_pwd": pwd,
-                   "user_auth": False,
-                   "user_token": ""
-                   }
-
-    except:
-        return {
-                "message": "nothing works",
-                "user_name": name,
-                "user_pwd": pwd,
-                "user_auth": False,
-                "user_token": ""
-               }
-
-
-
-
-
-@app.post("/signup")
-async def signup():
-    """Страница для регистрации"""
-    return {
-        "message": "Auth System",
-        "endpoints": {
-            "setup_monitoring": "POST /auth",
-        }
-    }
-# @app.post("/signin")
-# async def login(user):
-#     #получаем токен и возращаем клиенту
-#     token = user_auth.login_for_access_token(user.email, user.password)
-#     return token
-
-# @app.post("/me")
-# async def read_me(token):
-#     #декодируем токен и получаем обьект пользователя
-#     return user_auth.decode_token(token.token)
-
-
-@app.post("/refresh")
-async def refresh():
-    """Страница для обновления токена авторизации"""
-    return {
-        "message": "Auth System",
-        "endpoints": {
-            "setup_monitoring": "POST /auth",
-        }
-    }
-
-
-@app.get("/")
-async def root():
-    """Главная страница AUTH"""
-    return {
-        "message": "Auth System",
-        "endpoints": {
-            "setup_monitoring": "POST /auth",
-        }
-    }
-
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "service": "user_auth"}

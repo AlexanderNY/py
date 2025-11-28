@@ -1,46 +1,57 @@
 # docker-compose.yml
-version: '3.11'
-
 services:
-  api_gateway:
-    build: ./api_gateway
-    ports:
-      - "8000:8000"
-    environment:
-      - SCHEDULER_URL=http://scheduler:8001
-    networks:
-      - monitoring_network
-
-  scheduler:
-    build: ./scheduler
-    ports:
-      - "8001:8001"
-    environment:
-      - API_GATEWAY_URL=http://api_gateway:8000
-    networks:
-      - monitoring_network
-
-  user_interface:
-    build: ./back_core
-    ports:
-      - "8002:8002"
-    environment:
-      - API_GATEWAY_URL=http://api_gateway:8000
-    networks:
-      - monitoring_network
 
   auth:
     build: ./auth
     ports:
-      - "8003:8003"
+      - "8001:8001"
     environment:
       - API_GATEWAY_URL=http://api_gateway:8000
       - LOG_SETTINGS_JOURNALD_LEVEL=DEBUG  # Для приложений, которые поддерживают эту переменную
       # Или, например, для Java-приложений
       - LOG_LEVEL=DEBUG
     networks:
-      - monitoring_network
+      monitoring_network:
+        ipv4_address: 172.10.10.1
+
+  front:
+    build: ./ui_app
+    ports:
+      - "8002:8002"
+    environment:
+      - API_GATEWAY_URL=http://api_gateway:8000
+    networks:
+      monitoring_network:
+        ipv4_address: 172.10.10.2
+    develop:
+      watch:
+        - action: sync
+          path: .
+          target: /src
+
+  core:
+    build: ./back_core
+    ports:
+      - "8003:8003"
+    environment:
+      - API_GATEWAY_URL=http://api_gateway:8000
+    networks:
+      monitoring_network:
+        ipv4_address: 172.10.10.3
+
+  scheduler:
+    build: ./scheduler
+    ports:
+      - "8004:8004"
+    environment:
+      - API_GATEWAY_URL=http://api_gateway:8000
+    networks:
+      monitoring_network:
+        ipv4_address: 172.10.10.4
 
 networks:
   monitoring_network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.10.0.0/16
