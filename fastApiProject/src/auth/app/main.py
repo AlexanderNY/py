@@ -62,7 +62,16 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE = 30
 REFRESH_TOKEN_EXPIRE = 7
 
+'''
+UserCreate
+UserRead
+UserUpdate
 
+
+register, login, reset password and verify e-mail routes
+OAuth2 login flow
+JWT
+'''
 
 
 def get_hashed_password(password: str) -> bytes:
