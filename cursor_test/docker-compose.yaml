@@ -1,0 +1,38 @@
+# docker-compose.yml
+services:
+
+  auth:
+    build: ./auth
+    ports:
+      - "8001:8001"
+    environment:
+      - API_GATEWAY_URL=http://api_gateway:8000
+      - LOG_SETTINGS_JOURNALD_LEVEL=DEBUG  # Для приложений, которые поддерживают эту переменную
+      # Или, например, для Java-приложений
+      - LOG_LEVEL=DEBUG
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.1
+
+  gateway:
+    build: ./api-gateway
+    ports:
+      - "8000:8000"
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.250
+
+  ui:
+    build: ./ui-app
+    ports:
+      - "8100:8100"
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.100
+
+networks:
+  monitoring_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
