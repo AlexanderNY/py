@@ -1,4 +1,7 @@
 export { apiClient, getErrorMessage } from './api-client'
 export { authService } from './auth-service'
+export { coreService } from './core-service'
+export { telegramService } from './telegram-service'
+export { wordpressService } from './wordpress-service'
 
 

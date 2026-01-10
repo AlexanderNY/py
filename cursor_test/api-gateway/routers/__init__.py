@@ -1,10 +1,12 @@
 from .auth_routes import router as auth_router
 from .core_routes import router as core_router
+from .wp_routes import router as wp_router
 from .stubs import router as stubs_router
 
 __all__ = [
     "auth_router",
     "core_router",
+    "wp_router",
     "stubs_router",
 ]
 

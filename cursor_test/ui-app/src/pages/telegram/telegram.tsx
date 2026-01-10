@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { telegramService } from '@/services/telegram-service'
 
 interface DynamicField {
   id: string
@@ -14,11 +15,13 @@ function generateId(): string {
 }
 
 export function TelegramPage() {
+  const [collectMessages, setCollectMessages] = useState(false)
+  const [sendMessages, setSendMessages] = useState(false)
   const [apiId, setApiId] = useState('')
   const [apiHash, setApiHash] = useState('')
   const [chatsToRead, setChatsToRead] = useState<DynamicField[]>([{ id: generateId(), value: '' }])
   const [saveConditions, setSaveConditions] = useState<DynamicField[]>([{ id: generateId(), value: '' }])
-  const [channelsToPost, setChannelsToPost] = useState<DynamicField[]>([{ id: generateId(), value: '' }])
+  const [channelToPost, setChannelToPost] = useState('')
   const [shouldProcess, setShouldProcess] = useState(false)
   const [processingDescription, setProcessingDescription] = useState('')
   
@@ -51,18 +54,19 @@ export function TelegramPage() {
     setIsLoading(true)
 
     const config = {
+      collect_messages: collectMessages,
+      send_messages: sendMessages,
       api_id: apiId,
       api_hash: apiHash,
       chats_to_read: chatsToRead.map(f => f.value).filter(Boolean),
       save_conditions: saveConditions.map(f => f.value).filter(Boolean),
-      channels_to_post: channelsToPost.map(f => f.value).filter(Boolean),
+      channel_to_post: channelToPost,
       should_process: shouldProcess,
-      processing_description: shouldProcess ? processingDescription : '',
+      processing_description: shouldProcess ? processingDescription : undefined,
     }
 
     try {
-      // TODO: Send config to API
-      console.log('Telegram config:', config)
+      await telegramService.saveConfig(config)
       setSuccess('Configuration saved successfully')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save configuration')
@@ -92,8 +96,49 @@ export function TelegramPage() {
 
       <form onSubmit={handleSubmit}>
         <div className="grid gap-6">
-          {/* API Credentials */}
+          {/* Message Collection Options */}
           <Card className="animate-slide-up animate-stagger-1">
+            <CardHeader>
+              <CardTitle>Message Options</CardTitle>
+              <CardDescription>Configure message collection and sending</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={collectMessages}
+                    onChange={(e) => setCollectMessages(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                  <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                </div>
+                <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                  Collect messages
+                </span>
+              </label>
+
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={sendMessages}
+                    onChange={(e) => setSendMessages(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                  <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                </div>
+                <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                  Send messages
+                </span>
+              </label>
+            </CardContent>
+          </Card>
+
+          {/* API Credentials */}
+          <Card className="animate-slide-up animate-stagger-2">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" viewBox="0 0 24 24" fill="currentColor">
@@ -122,7 +167,7 @@ export function TelegramPage() {
           </Card>
 
           {/* Chats to Read */}
-          <Card className="animate-slide-up animate-stagger-2">
+          <Card className="animate-slide-up animate-stagger-3">
             <CardHeader>
               <CardTitle>Chats to Read</CardTitle>
               <CardDescription>Specify chat IDs to monitor for messages</CardDescription>
@@ -166,7 +211,7 @@ export function TelegramPage() {
           </Card>
 
           {/* Save Conditions */}
-          <Card className="animate-slide-up animate-stagger-3">
+          <Card className="animate-slide-up animate-stagger-4">
             <CardHeader>
               <CardTitle>Save Conditions</CardTitle>
               <CardDescription>Define conditions for saving messages</CardDescription>
@@ -209,52 +254,24 @@ export function TelegramPage() {
             </CardContent>
           </Card>
 
-          {/* Channels to Post */}
-          <Card className="animate-slide-up animate-stagger-4">
+          {/* Channel to Post */}
+          <Card className="animate-slide-up animate-stagger-5">
             <CardHeader>
-              <CardTitle>Channels to Post</CardTitle>
-              <CardDescription>Specify channel IDs where messages will be posted</CardDescription>
+              <CardTitle>Channel to Post</CardTitle>
+              <CardDescription>Specify channel ID where messages will be posted</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {channelsToPost.map((field) => (
-                <div key={field.id} className="flex gap-3">
-                  <Input
-                    placeholder="e.g., -1002009872429"
-                    value={field.value}
-                    onChange={(e) => updateField(setChannelsToPost, field.id, e.target.value)}
-                    className="flex-1"
-                  />
-                  {channelsToPost.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeField(setChannelsToPost, field.id)}
-                      className="px-3 text-red-400 hover:text-red-300"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </Button>
-                  )}
-                </div>
-              ))}
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => addField(setChannelsToPost)}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add Channel
-              </Button>
+            <CardContent>
+              <Input
+                label="Channel ID"
+                placeholder="e.g., -1002009872429"
+                value={channelToPost}
+                onChange={(e) => setChannelToPost(e.target.value)}
+              />
             </CardContent>
           </Card>
 
           {/* Message Processing */}
-          <Card className="animate-slide-up animate-stagger-5">
+          <Card className="animate-slide-up animate-stagger-6">
             <CardHeader>
               <CardTitle>Message Processing</CardTitle>
               <CardDescription>Configure how messages should be processed before posting</CardDescription>

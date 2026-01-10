@@ -1,11 +1,13 @@
 export interface TelegramConfig {
+  collect_messages: boolean
+  send_messages: boolean
   api_id: string
   api_hash: string
   chats_to_read: string[]
   save_conditions: string[]
-  channels_to_post: string[]
+  channel_to_post: string
   should_process: boolean
-  processing_description: string
+  processing_description?: string
 }
 
 export interface TelegramMessage {

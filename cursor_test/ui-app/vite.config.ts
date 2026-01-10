@@ -11,11 +11,12 @@ export default defineConfig({
   },
   server: {
     port: 8100,
+    host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://gateway:8000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
+        // Не убираем /api, так как gateway ожидает /api/auth/*
       },
     },
   },

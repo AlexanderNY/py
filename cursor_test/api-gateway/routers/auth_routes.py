@@ -6,7 +6,7 @@ from services.proxy_service import get_proxy_service
 from middleware.jwt_validator import get_current_user
 
 
-router = APIRouter(prefix="/auth", tags=["Auth"])
+router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
 
 async def forward_to_auth(
@@ -57,7 +57,7 @@ async def handle_login(request: Request) -> Response:
 async def handle_refresh(request: Request) -> Response:
     """Обрабатывает запрос обновления токена.
     
-    POST /auth/refresh -> POST /refresh на auth сервисе
+    POST /api/auth/refresh -> POST /refresh на auth сервисе
     """
     return await forward_to_auth("/refresh", request)
 
@@ -69,7 +69,7 @@ async def handle_logout(
 ) -> Response:
     """Обрабатывает запрос выхода пользователя.
     
-    POST /auth/logout -> POST /logout на auth сервисе
+    POST /api/auth/logout -> POST /logout на auth сервисе
     Требует JWT аутентификации.
     """
     return await forward_to_auth("/logout", request)
@@ -82,7 +82,7 @@ async def get_profile(
 ) -> Response:
     """Получает профиль текущего пользователя.
     
-    GET /auth/profile -> GET /profile на auth сервисе
+    GET /api/auth/profile -> GET /profile на auth сервисе
     Требует JWT аутентификации.
     """
     return await forward_to_auth("/profile", request)
@@ -95,7 +95,7 @@ async def update_profile(
 ) -> Response:
     """Обновляет профиль текущего пользователя.
     
-    POST /auth/profile -> PUT /profile на auth сервисе
+    POST /api/auth/profile -> PUT /profile на auth сервисе
     Требует JWT аутентификации.
     Внимание: метод меняется с POST на PUT!
     """
@@ -106,16 +106,16 @@ async def update_profile(
 async def handle_verify(request: Request) -> Response:
     """Обрабатывает верификацию email.
     
-    POST /auth/verify -> POST /verify на auth сервисе
+    POST /api/auth/verify -> POST /verify-token на auth сервисе
     """
-    return await forward_to_auth("/verify", request)
+    return await forward_to_auth("/verify-token", request)
 
 
 @router.post("/reset-password")
 async def handle_reset_password(request: Request) -> Response:
     """Обрабатывает сброс пароля.
     
-    POST /auth/reset-password -> POST /reset-password на auth сервисе
+    POST /api/auth/reset-password -> POST /reset-password на auth сервисе
     """
     return await forward_to_auth("/reset-password", request)
 
@@ -124,7 +124,7 @@ async def handle_reset_password(request: Request) -> Response:
 async def handle_reset_password_confirm(request: Request) -> Response:
     """Обрабатывает подтверждение сброса пароля.
     
-    POST /auth/reset-password/confirm -> POST /reset-password/confirm на auth сервисе
+    POST /api/auth/reset-password/confirm -> POST /reset-password/confirm на auth сервисе
     """
     return await forward_to_auth("/reset-password/confirm", request)
 
@@ -136,9 +136,9 @@ async def handle_all_logout(
 ) -> Response:
     """Обрабатывает выход со всех устройств.
     
-    POST /auth/all-logout -> POST /all-logout на auth сервисе
+    POST /api/auth/all-logout -> POST /all_logout на auth сервисе
     Требует JWT аутентификации.
     """
-    return await forward_to_auth("/all-logout", request)
+    return await forward_to_auth("/all_logout", request)
 
 

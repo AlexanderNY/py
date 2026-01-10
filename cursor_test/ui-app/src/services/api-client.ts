@@ -1,5 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 
+// Используем относительный путь - Vite proxy обработает запрос
 const API_BASE_URL = '/api'
 
 export const apiClient = axios.create({

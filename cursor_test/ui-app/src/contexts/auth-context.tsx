@@ -54,7 +54,13 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
         isLoading: false,
       }
     case 'UPDATE_USER':
-      return { ...state, user: action.payload }
+      return { 
+        ...state, 
+        user: action.payload,
+        // Обновляем токены, если они пришли в ответе профиля
+        accessToken: action.payload.access_token || state.accessToken,
+        refreshToken: action.payload.refresh_token || state.refreshToken,
+      }
     case 'UPDATE_TOKENS':
       return {
         ...state,
@@ -101,16 +107,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     try {
       const user = await authService.getProfile()
-      const storedTokens = getStoredTokens()
+      // Используем токены из ответа профиля, если они есть, иначе из localStorage
+      const tokens = user.access_token && user.refresh_token
+        ? {
+            access_token: user.access_token,
+            refresh_token: user.refresh_token,
+            token_type: 'bearer',
+          }
+        : {
+            access_token: getStoredTokens().accessToken!,
+            refresh_token: getStoredTokens().refreshToken!,
+            token_type: 'bearer',
+          }
+      
+      // Обновляем localStorage, если токены пришли из API
+      if (user.access_token && user.refresh_token) {
+        storeTokens(tokens)
+      }
+      
       dispatch({
         type: 'AUTH_SUCCESS',
         payload: {
           user,
-          tokens: {
-            access_token: storedTokens.accessToken!,
-            refresh_token: storedTokens.refreshToken!,
-            token_type: 'bearer',
-          },
+          tokens,
         },
       })
     } catch {
@@ -129,7 +148,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const tokens = await authService.login(credentials)
       storeTokens(tokens)
       const user = await authService.getProfile()
-      dispatch({ type: 'AUTH_SUCCESS', payload: { user, tokens } })
+      // Используем токены из ответа профиля, если они есть
+      const finalTokens = user.access_token && user.refresh_token
+        ? {
+            access_token: user.access_token,
+            refresh_token: user.refresh_token,
+            token_type: 'bearer',
+          }
+        : tokens
+      if (user.access_token && user.refresh_token) {
+        storeTokens(finalTokens)
+      }
+      dispatch({ type: 'AUTH_SUCCESS', payload: { user, tokens: finalTokens } })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Login failed'
       dispatch({ type: 'AUTH_FAILURE', payload: message })
@@ -143,7 +173,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const tokens = await authService.register(credentials)
       storeTokens(tokens)
       const user = await authService.getProfile()
-      dispatch({ type: 'AUTH_SUCCESS', payload: { user, tokens } })
+      // Используем токены из ответа профиля, если они есть
+      const finalTokens = user.access_token && user.refresh_token
+        ? {
+            access_token: user.access_token,
+            refresh_token: user.refresh_token,
+            token_type: 'bearer',
+          }
+        : tokens
+      if (user.access_token && user.refresh_token) {
+        storeTokens(finalTokens)
+      }
+      dispatch({ type: 'AUTH_SUCCESS', payload: { user, tokens: finalTokens } })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Registration failed'
       dispatch({ type: 'AUTH_FAILURE', payload: message })
@@ -175,6 +216,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const updateProfile = useCallback(async (data: ProfileUpdate) => {
     try {
       const updatedUser = await authService.updateProfile(data)
+      // Обновляем токены, если они пришли в ответе
+      if (updatedUser.access_token && updatedUser.refresh_token) {
+        storeTokens({
+          access_token: updatedUser.access_token,
+          refresh_token: updatedUser.refresh_token,
+          token_type: 'bearer',
+        })
+      }
       dispatch({ type: 'UPDATE_USER', payload: updatedUser })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Profile update failed'

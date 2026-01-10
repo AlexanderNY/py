@@ -13,8 +13,17 @@ CORS
         запрос с ui-app post /auth/profile нужно преобразовать в put /profile на сервис auth
         запрос с ui-app post /auth/verify нужно преобразовать в post /verify на сервис auth
         запрос с ui-app post /auth/reset-password нужно преобразовать в post /reset-password на сервис auth      
-        запрос с ui-app post /auth/all-logout нужно преобразовать в post /all-logout на сервис auth             
+        запрос с ui-app post /auth/all-logout нужно преобразовать в post /all-logout на сервис auth     
+        
     сервис core
+        общие запросы
+            запрос с ui-app get /core/healthchecks нужно преобразовать в get /healthchecks на сервис core
+            запрос с ui-app get /core/statistics нужно преобразовать в get /statistics на сервис core
+        для работы с WP
+            запрос с ui-app GET /wp/profile нужно преобразовать в  GET /wp/profile на сервис core
+            запрос с ui-app POST /wp/profile нужно преобразовать в POST /wp/profile на сервис core
+            запрос с ui-app POST /wp/post нужно преобразовать в  POST /wp/post на сервис core
+            
     сервис scheduler
     сервис tg-bot
     сервис vk-bot

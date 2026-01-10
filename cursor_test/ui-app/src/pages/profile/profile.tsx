@@ -135,13 +135,13 @@ export function ProfilePage() {
             <div>
               <label className="text-sm text-[var(--text-secondary)] block mb-2">Access Token</label>
               <div className="p-3 bg-[var(--bg-tertiary)] rounded-xl font-mono text-xs break-all text-[var(--text-muted)] max-h-20 overflow-y-auto">
-                {accessToken ? `${accessToken.substring(0, 50)}...` : 'No token'}
+                {(user?.access_token || accessToken) ? `${(user?.access_token || accessToken || '').substring(0, 50)}...` : 'No token'}
               </div>
             </div>
             <div>
               <label className="text-sm text-[var(--text-secondary)] block mb-2">Refresh Token</label>
               <div className="p-3 bg-[var(--bg-tertiary)] rounded-xl font-mono text-xs break-all text-[var(--text-muted)] max-h-20 overflow-y-auto">
-                {refreshToken ? `${refreshToken.substring(0, 50)}...` : 'No token'}
+                {(user?.refresh_token || refreshToken) ? `${(user?.refresh_token || refreshToken || '').substring(0, 50)}...` : 'No token'}
               </div>
             </div>
           </CardContent>

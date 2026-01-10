@@ -26,6 +26,15 @@ services:
     build: ./ui-app
     ports:
       - "8100:8100"
+    environment:
+      - VITE_API_GATEWAY_URL=http://gateway:8000
+      - VITE_AUTH_SERVICE_URL=http://auth:8001
+      - VITE_CORE_SERVICE_URL=http://core:8002
+      - VITE_SCHEDULER_SERVICE_URL=http://scheduler:8003
+      - VITE_TG_BOT_SERVICE_URL=http://tg-bot:8004
+      - VITE_VK_BOT_SERVICE_URL=http://vk-bot:8005
+      - VITE_WP_BOT_SERVICE_URL=http://wp-bot:8006
+      - VITE_URL_BOT_SERVICE_URL=http://url-bot:8007
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.100

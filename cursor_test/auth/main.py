@@ -40,7 +40,11 @@ app.include_router(security.router)
 @app.get("/")
 async def root():
     """Корневой эндпоинт."""
-    return {"message": "Auth Service API"}
+    return {
+        "service": "Auth Service API",
+        "version": "1.0.0",
+        "status": "running"
+    }
 
 
 @app.get("/health")
