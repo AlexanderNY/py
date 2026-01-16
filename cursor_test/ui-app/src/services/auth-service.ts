@@ -89,6 +89,14 @@ export const authService = {
       throw new Error(getErrorMessage(error))
     }
   },
+
+  async verifyEmail(code: string): Promise<void> {
+    try {
+      await apiClient.post('/auth/verify', { code })
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
 }
 
 

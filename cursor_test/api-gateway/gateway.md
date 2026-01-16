@@ -23,7 +23,27 @@ CORS
             запрос с ui-app GET /wp/profile нужно преобразовать в  GET /wp/profile на сервис core
             запрос с ui-app POST /wp/profile нужно преобразовать в POST /wp/profile на сервис core
             запрос с ui-app POST /wp/post нужно преобразовать в  POST /wp/post на сервис core
-            
+        для работы с TG
+            запрос с ui-app GET /tg/profile нужно преобразовать в  GET /tg/profile на сервис core
+            запрос с ui-app POST /tg/profile нужно преобразовать в POST /tg/profile на сервис core
+            запрос с ui-app POST /tg/post нужно преобразовать в  POST /tg/post на сервис core
+        для работы с TW
+            запрос с ui-app GET /tw/profile нужно преобразовать в  GET /tw/profile на сервис core
+            запрос с ui-app POST /tw/profile нужно преобразовать в POST /tw/profile на сервис core
+            запрос с ui-app POST /tw/post нужно преобразовать в  POST /tw/post на сервис core
+        для работы с VK
+            запрос с ui-app GET /vk/profile нужно преобразовать в  GET /vk/profile на сервис core
+            запрос с ui-app POST /vk/profile нужно преобразовать в POST /vk/profile на сервис core
+            запрос с ui-app POST /vk/post нужно преобразовать в  POST /vk/post на сервис core       
+        для работы с curl
+            запрос с ui-app GET /curl/settings нужно преобразовать в  GET /curl/settings на сервис core
+            запрос с ui-app POST /curl/settings нужно преобразовать в POST /curl/settings на сервис core  
+        для работы с cpost
+            запрос с ui-app GET /cpost/profile нужно преобразовать в  GET /cpost/profile на сервис core
+            запрос с ui-app POST /cpost/profile нужно преобразовать в POST /cpost/profile на сервис core
+            запрос с ui-app POST /cpost/post нужно преобразовать в  POST /cpost/post на сервис core
+
+
     сервис scheduler
     сервис tg-bot
     сервис vk-bot

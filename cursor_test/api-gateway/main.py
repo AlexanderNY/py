@@ -8,7 +8,17 @@ from config import settings
 from services.proxy_service import initialize_proxy_service
 from middleware.rate_limiter import RateLimitMiddleware
 from middleware.jwt_validator import validate_jwt_middleware
-from routers import auth_router, core_router, wp_router, stubs_router
+from routers import (
+    auth_router,
+    core_router,
+    wp_router,
+    tg_router,
+    tw_router,
+    vk_router,
+    curl_router,
+    cpost_router,
+    stubs_router
+)
 from utils.exceptions import (
     GatewayException,
     handle_gateway_exception,
@@ -69,6 +79,11 @@ def register_routers(application: FastAPI) -> None:
     application.include_router(auth_router)
     application.include_router(core_router)
     application.include_router(wp_router)
+    application.include_router(tg_router)
+    application.include_router(tw_router)
+    application.include_router(vk_router)
+    application.include_router(curl_router)
+    application.include_router(cpost_router)
     application.include_router(stubs_router)
 
 

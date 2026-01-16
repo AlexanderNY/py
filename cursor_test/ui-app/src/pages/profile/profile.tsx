@@ -1,21 +1,29 @@
-import { useState, FormEvent } from 'react'
+import { useState, FormEvent, useEffect } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { authService } from '@/services/auth-service'
 
 export function ProfilePage() {
   const { user, accessToken, refreshToken, updateProfile, logout, logoutAll, refreshUserData } = useAuth()
   
   const [isEditing, setIsEditing] = useState(false)
   const [email, setEmail] = useState(user?.email || '')
+  const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   
   const [verificationCode, setVerificationCode] = useState('')
   const [isVerifying, setIsVerifying] = useState(false)
+
+  useEffect(() => {
+    if (user?.email) {
+      setEmail(user.email)
+    }
+  }, [user])
 
   async function handleUpdateProfile(e: FormEvent) {
     e.preventDefault()
@@ -24,9 +32,24 @@ export function ProfilePage() {
     setIsLoading(true)
     
     try {
-      await updateProfile({ email })
+      const updateData: { email?: string; password?: string } = {}
+      if (email !== user?.email) {
+        updateData.email = email
+      }
+      if (password) {
+        updateData.password = password
+      }
+      
+      if (Object.keys(updateData).length === 0) {
+        setError('No changes to save')
+        setIsLoading(false)
+        return
+      }
+      
+      await updateProfile(updateData)
       setSuccess('Profile updated successfully')
       setIsEditing(false)
+      setPassword('')
       await refreshUserData()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update profile')
@@ -39,12 +62,13 @@ export function ProfilePage() {
     e.preventDefault()
     setIsVerifying(true)
     setError('')
+    setSuccess('')
     
-    // Placeholder for email verification
     try {
-      // TODO: Implement email verification endpoint call
-      console.log('Verification code:', verificationCode)
-      setSuccess('Email verification submitted')
+      await authService.verifyEmail(verificationCode)
+      setSuccess('Email verified successfully')
+      setVerificationCode('')
+      await refreshUserData()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed')
     } finally {
@@ -116,6 +140,10 @@ export function ProfilePage() {
               <span className="text-[var(--text-secondary)]">Email</span>
               <span className="font-medium">{user?.email}</span>
             </div>
+            <div className="flex justify-between items-center py-3 border-b border-[var(--border-color)]">
+              <span className="text-[var(--text-secondary)]">Password</span>
+              <span className="font-medium text-[var(--text-muted)]">••••••••</span>
+            </div>
             <div className="flex justify-between items-center py-3">
               <span className="text-[var(--text-secondary)]">Member since</span>
               <span className="font-medium">
@@ -163,6 +191,13 @@ export function ProfilePage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Enter new email"
                 />
+                <Input
+                  label="Password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter new password (leave empty to keep current)"
+                />
                 <div className="flex gap-3">
                   <Button type="submit" isLoading={isLoading}>
                     Save Changes
@@ -173,6 +208,7 @@ export function ProfilePage() {
                     onClick={() => {
                       setIsEditing(false)
                       setEmail(user?.email || '')
+                      setPassword('')
                     }}
                   >
                     Cancel

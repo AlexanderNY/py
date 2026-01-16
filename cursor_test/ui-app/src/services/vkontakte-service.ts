@@ -1,11 +1,11 @@
 import { apiClient, getErrorMessage } from './api-client'
 import axios from 'axios'
-import type { TelegramConfig, TelegramPost } from '@/types/telegram'
+import type { VKontakteProfile, VKontaktePost } from '@/types/vkontakte'
 
-export const telegramService = {
-  async getProfile(): Promise<TelegramConfig | null> {
+export const vkontakteService = {
+  async getProfile(): Promise<VKontakteProfile | null> {
     try {
-      const response = await apiClient.get<TelegramConfig>('/tg/profile')
+      const response = await apiClient.get<VKontakteProfile>('/vk/profile')
       return response.data
     } catch (error) {
       // Если профиль не найден, возвращаем null
@@ -16,17 +16,17 @@ export const telegramService = {
     }
   },
 
-  async saveConfig(config: TelegramConfig): Promise<void> {
+  async saveProfile(profile: VKontakteProfile): Promise<void> {
     try {
-      await apiClient.post('/tg/profile', config)
+      await apiClient.post('/vk/profile', profile)
     } catch (error) {
       throw new Error(getErrorMessage(error))
     }
   },
 
-  async createPost(post: TelegramPost): Promise<void> {
+  async createPost(post: VKontaktePost): Promise<void> {
     try {
-      await apiClient.post('/tg/post', post)
+      await apiClient.post('/vk/post', post)
     } catch (error) {
       throw new Error(getErrorMessage(error))
     }

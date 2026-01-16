@@ -1,11 +1,11 @@
 import { apiClient, getErrorMessage } from './api-client'
 import axios from 'axios'
-import type { TelegramConfig, TelegramPost } from '@/types/telegram'
+import type { TwitterProfile, TwitterPost } from '@/types/twitter'
 
-export const telegramService = {
-  async getProfile(): Promise<TelegramConfig | null> {
+export const twitterService = {
+  async getProfile(): Promise<TwitterProfile | null> {
     try {
-      const response = await apiClient.get<TelegramConfig>('/tg/profile')
+      const response = await apiClient.get<TwitterProfile>('/tw/profile')
       return response.data
     } catch (error) {
       // Если профиль не найден, возвращаем null
@@ -16,17 +16,17 @@ export const telegramService = {
     }
   },
 
-  async saveConfig(config: TelegramConfig): Promise<void> {
+  async saveProfile(profile: TwitterProfile): Promise<void> {
     try {
-      await apiClient.post('/tg/profile', config)
+      await apiClient.post('/tw/profile', profile)
     } catch (error) {
       throw new Error(getErrorMessage(error))
     }
   },
 
-  async createPost(post: TelegramPost): Promise<void> {
+  async createPost(post: TwitterPost): Promise<void> {
     try {
-      await apiClient.post('/tg/post', post)
+      await apiClient.post('/tw/post', post)
     } catch (error) {
       throw new Error(getErrorMessage(error))
     }

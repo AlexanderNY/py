@@ -1,9 +1,10 @@
-import { useState, FormEvent } from 'react'
+import { useState, FormEvent, useEffect } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { telegramService } from '@/services/telegram-service'
+import type { TimeInterval } from '@/types/telegram'
 
 interface DynamicField {
   id: string
@@ -17,6 +18,10 @@ function generateId(): string {
 export function TelegramPage() {
   const [collectMessages, setCollectMessages] = useState(false)
   const [sendMessages, setSendMessages] = useState(false)
+  const [publishScheduleType, setPublishScheduleType] = useState<'on_new_messages' | 'by_intervals'>('on_new_messages')
+  const [timeIntervals, setTimeIntervals] = useState<Array<{ id: string; start: string; end: string }>>([
+    { id: generateId(), start: '', end: '' }
+  ])
   const [apiId, setApiId] = useState('')
   const [apiHash, setApiHash] = useState('')
   const [chatsToRead, setChatsToRead] = useState<DynamicField[]>([{ id: generateId(), value: '' }])
@@ -25,9 +30,52 @@ export function TelegramPage() {
   const [shouldProcess, setShouldProcess] = useState(false)
   const [processingDescription, setProcessingDescription] = useState('')
   
+  // Post creation state
+  const [postText, setPostText] = useState('')
+  const [isCreatingPost, setIsCreatingPost] = useState(false)
+  
   const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+
+  useEffect(() => {
+    async function loadProfile() {
+      setIsLoadingProfile(true)
+      try {
+        const profile = await telegramService.getProfile()
+        if (profile) {
+          setCollectMessages(profile.collect_messages)
+          setSendMessages(profile.send_messages)
+          setPublishScheduleType(profile.publish_schedule_type || 'on_new_messages')
+          if (profile.time_intervals && profile.time_intervals.length > 0) {
+            setTimeIntervals(profile.time_intervals.map(interval => ({
+              id: generateId(),
+              start: interval.start,
+              end: interval.end
+            })))
+          }
+          setApiId(profile.api_id || '')
+          setApiHash(profile.api_hash || '')
+          if (profile.chats_to_read && profile.chats_to_read.length > 0) {
+            setChatsToRead(profile.chats_to_read.map(chat => ({ id: generateId(), value: chat })))
+          }
+          if (profile.save_conditions && profile.save_conditions.length > 0) {
+            setSaveConditions(profile.save_conditions.map(condition => ({ id: generateId(), value: condition })))
+          }
+          setChannelToPost(profile.channel_to_post || '')
+          setShouldProcess(profile.should_process)
+          setProcessingDescription(profile.processing_description || '')
+        }
+      } catch (err) {
+        // Игнорируем ошибки загрузки профиля
+        console.error('Failed to load profile:', err)
+      } finally {
+        setIsLoadingProfile(false)
+      }
+    }
+    loadProfile()
+  }, [])
 
   function addField(setter: React.Dispatch<React.SetStateAction<DynamicField[]>>) {
     setter(prev => [...prev, { id: generateId(), value: '' }])
@@ -47,6 +95,24 @@ export function TelegramPage() {
     ))
   }
 
+  function addTimeInterval() {
+    if (timeIntervals.length < 3) {
+      setTimeIntervals([...timeIntervals, { id: generateId(), start: '', end: '' }])
+    }
+  }
+
+  function removeTimeInterval(id: string) {
+    if (timeIntervals.length > 1) {
+      setTimeIntervals(timeIntervals.filter(interval => interval.id !== id))
+    }
+  }
+
+  function updateTimeInterval(id: string, field: 'start' | 'end', value: string) {
+    setTimeIntervals(timeIntervals.map(interval =>
+      interval.id === id ? { ...interval, [field]: value } : interval
+    ))
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
@@ -56,6 +122,13 @@ export function TelegramPage() {
     const config = {
       collect_messages: collectMessages,
       send_messages: sendMessages,
+      publish_schedule_type: publishScheduleType,
+      time_intervals: publishScheduleType === 'by_intervals' 
+        ? timeIntervals.filter(interval => interval.start && interval.end).map(interval => ({
+            start: interval.start,
+            end: interval.end
+          }))
+        : undefined,
       api_id: apiId,
       api_hash: apiHash,
       chats_to_read: chatsToRead.map(f => f.value).filter(Boolean),
@@ -72,6 +145,29 @@ export function TelegramPage() {
       setError(err instanceof Error ? err.message : 'Failed to save configuration')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  async function handleCreatePost(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    setSuccess('')
+    setIsCreatingPost(true)
+
+    if (postText.length > 4096) {
+      setError('Post text cannot exceed 4096 characters')
+      setIsCreatingPost(false)
+      return
+    }
+
+    try {
+      await telegramService.createPost({ text: postText })
+      setSuccess('Post created successfully')
+      setPostText('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create post')
+    } finally {
+      setIsCreatingPost(false)
     }
   }
 
@@ -137,8 +233,84 @@ export function TelegramPage() {
             </CardContent>
           </Card>
 
-          {/* API Credentials */}
+          {/* Publish Schedule */}
           <Card className="animate-slide-up animate-stagger-2">
+            <CardHeader>
+              <CardTitle>Publish Schedule</CardTitle>
+              <CardDescription>Configure when messages should be published</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="publishSchedule"
+                    value="on_new_messages"
+                    checked={publishScheduleType === 'on_new_messages'}
+                    onChange={(e) => setPublishScheduleType('on_new_messages')}
+                    className="w-4 h-4 text-primary-500"
+                  />
+                  <span className="text-[var(--text-primary)]">Immediately when a new post is detected</span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="publishSchedule"
+                    value="by_intervals"
+                    checked={publishScheduleType === 'by_intervals'}
+                    onChange={(e) => setPublishScheduleType('by_intervals')}
+                    className="w-4 h-4 text-primary-500"
+                  />
+                  <span className="text-[var(--text-primary)]">By time intervals</span>
+                </label>
+              </div>
+
+              {publishScheduleType === 'by_intervals' && (
+                <div className="space-y-3 mt-4 animate-slide-down">
+                  {timeIntervals.map((interval, index) => (
+                    <div key={interval.id} className="flex gap-3 items-end">
+                      <Input
+                        label={`Interval ${index + 1}`}
+                        type="time"
+                        value={interval.start}
+                        onChange={(e) => updateTimeInterval(interval.id, 'start', e.target.value)}
+                        className="flex-1"
+                      />
+                      {timeIntervals.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeTimeInterval(interval.id)}
+                          className="px-3 text-red-400 hover:text-red-300"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  {timeIntervals.length < 3 && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={addTimeInterval}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add Interval
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* API Credentials */}
+          <Card className="animate-slide-up animate-stagger-3">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" viewBox="0 0 24 24" fill="currentColor">
@@ -315,6 +487,37 @@ export function TelegramPage() {
           </Card>
         </div>
       </form>
+
+      {/* Post Creation */}
+      <Card className="animate-slide-up animate-stagger-7">
+        <CardHeader>
+          <CardTitle>Telegram Post</CardTitle>
+          <CardDescription>Create a new Telegram post (max 4096 characters)</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleCreatePost} className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">
+                Post Text
+              </label>
+              <textarea
+                value={postText}
+                onChange={(e) => setPostText(e.target.value)}
+                maxLength={4096}
+                rows={8}
+                className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
+                placeholder="Enter your post text..."
+              />
+              <p className="text-xs text-[var(--text-muted)] mt-2">
+                {postText.length} / 4096 characters
+              </p>
+            </div>
+            <Button type="submit" isLoading={isCreatingPost} className="w-full">
+              Create Post
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   )
 }

@@ -11,6 +11,7 @@ import { WordPressPage } from '@/pages/stubs/wordpress'
 import { TwitterPage } from '@/pages/stubs/twitter'
 import { VKontaktePage } from '@/pages/stubs/vkontakte'
 import { CustomURLPage } from '@/pages/stubs/custom-url'
+import { CreatePostPage } from '@/pages/create-post'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -72,6 +73,7 @@ function App() {
         <Route path="twitter" element={<TwitterPage />} />
         <Route path="vkontakte" element={<VKontaktePage />} />
         <Route path="custom-url" element={<CustomURLPage />} />
+        <Route path="create-post" element={<CreatePostPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

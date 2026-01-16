@@ -27,6 +27,11 @@ export interface RegisterCredentials {
 export interface ProfileUpdate {
   username?: string
   email?: string
+  password?: string
+}
+
+export interface EmailVerificationRequest {
+  code: string
 }
 
 export interface PasswordResetRequest {
