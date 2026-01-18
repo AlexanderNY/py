@@ -1,5 +1,25 @@
 # docker-compose.yml
 services:
+  core:
+    build: ./core
+    ports:
+      - "8002:8002"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=core_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - API_GATEWAY_URL=http://gateway:8000
+      - AUTH_SERVICE_URL=http://auth:8001
+      - TG_BOT_SERVICE_URL=http://tg-bot:8004
+      - VK_BOT_SERVICE_URL=http://vk-bot:8005
+      - WP_BOT_SERVICE_URL=http://wp-bot:8006
+      - URL_BOT_SERVICE_URL=http://url-bot:8007
+      - SCHEDULER_SERVICE_URL=http://scheduler:8003
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.2
 
   auth:
     build: ./auth
@@ -38,6 +58,9 @@ services:
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.100
+
+volumes:
+  postgres_data:
 
 networks:
   monitoring_network:

@@ -6,7 +6,7 @@ from services.proxy_service import get_proxy_service
 from middleware.jwt_validator import get_current_user
 
 
-router = APIRouter(prefix="/api/auth", tags=["Auth"])
+router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
 async def forward_to_auth(

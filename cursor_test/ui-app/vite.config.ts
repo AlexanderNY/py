@@ -16,7 +16,7 @@ export default defineConfig({
       '/api': {
         target: 'http://gateway:8000',
         changeOrigin: true,
-        // Не убираем /api, так как gateway ожидает /api/auth/*
+        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
   },

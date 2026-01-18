@@ -91,8 +91,8 @@ class JwtValidator:
         """
         payload = self.decode_token(token)
         return {
-            "user_id": payload.get("sub"),
-            "email": payload.get("email"),
+            "user_id": payload.get("user_id"),  # auth service использует user_id
+            "type": payload.get("type"),
             "exp": payload.get("exp"),
         }
 

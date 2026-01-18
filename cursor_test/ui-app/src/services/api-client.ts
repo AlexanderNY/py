@@ -16,6 +16,8 @@ apiClient.interceptors.request.use(
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    // Debug: проверка отправки токена
+    console.log('[API] Request:', config.url, 'Token:', token ? 'present' : 'missing')
     return config
   },
   (error) => Promise.reject(error)
@@ -23,10 +25,14 @@ apiClient.interceptors.request.use(
 
 apiClient.interceptors.response.use(
   (response) => response,
-  async (error: AxiosError) => {
+  async (error: AxiosError<ApiError>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
     
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Проверяем что это именно ошибка истечения токена, а не другая 401 ошибка
+    const errorDetail = error.response?.data?.detail || ''
+    const isTokenExpired = errorDetail.includes('Token has expired')
+    
+    if (error.response?.status === 401 && isTokenExpired && !originalRequest._retry) {
       originalRequest._retry = true
       
       const refreshToken = localStorage.getItem('refresh_token')

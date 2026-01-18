@@ -67,5 +67,3 @@ async def get_healthchecks(
     Требует JWT аутентификации.
     """
     return await forward_to_core("/healthchecks", request)
-
-

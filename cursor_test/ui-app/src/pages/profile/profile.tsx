@@ -5,6 +5,88 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { authService } from '@/services/auth-service'
+import { decodeJwt, formatTokenDate, getTimeUntilExpiry } from '@/utils/jwt-utils'
+
+// Компонент для отображения токена с возможностью копирования
+function TokenDisplay({ 
+  label, 
+  token 
+}: { 
+  label: string
+  token: string | null 
+}) {
+  const [copied, setCopied] = useState(false)
+  const payload = token ? decodeJwt(token) : null
+  
+  const handleCopy = async () => {
+    if (!token) return
+    try {
+      await navigator.clipboard.writeText(token)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+  
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-medium text-[var(--text-secondary)]">{label}</label>
+        {token && (
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+            title="Copy to clipboard"
+          >
+            {copied ? (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span className="text-emerald-400">Copied!</span>
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <span>Copy</span>
+              </>
+            )}
+          </button>
+        )}
+      </div>
+      
+      {payload && (
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="flex items-center gap-1 text-[var(--text-muted)]">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Issued: {formatTokenDate(payload.iat)}</span>
+          </div>
+          <div className="flex items-center gap-1 text-[var(--text-muted)]">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Expires: {formatTokenDate(payload.exp)}</span>
+          </div>
+          <div className="col-span-2 flex items-center gap-1 text-[var(--text-muted)]">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            <span>Time left: {getTimeUntilExpiry(token!)}</span>
+          </div>
+        </div>
+      )}
+      
+      <div className="p-3 bg-[var(--bg-tertiary)] rounded-xl font-mono text-xs break-all text-[var(--text-muted)] max-h-24 overflow-y-auto">
+        {token || 'No token'}
+      </div>
+    </div>
+  )
+}
 
 export function ProfilePage() {
   const { user, accessToken, refreshToken, updateProfile, logout, logoutAll, refreshUserData } = useAuth()
@@ -157,21 +239,17 @@ export function ProfilePage() {
         <Card className="animate-slide-up animate-stagger-2">
           <CardHeader>
             <CardTitle>Session Tokens</CardTitle>
-            <CardDescription>Your current authentication tokens</CardDescription>
+            <CardDescription>Your current authentication tokens with expiry info</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="text-sm text-[var(--text-secondary)] block mb-2">Access Token</label>
-              <div className="p-3 bg-[var(--bg-tertiary)] rounded-xl font-mono text-xs break-all text-[var(--text-muted)] max-h-20 overflow-y-auto">
-                {(user?.access_token || accessToken) ? `${(user?.access_token || accessToken || '').substring(0, 50)}...` : 'No token'}
-              </div>
-            </div>
-            <div>
-              <label className="text-sm text-[var(--text-secondary)] block mb-2">Refresh Token</label>
-              <div className="p-3 bg-[var(--bg-tertiary)] rounded-xl font-mono text-xs break-all text-[var(--text-muted)] max-h-20 overflow-y-auto">
-                {(user?.refresh_token || refreshToken) ? `${(user?.refresh_token || refreshToken || '').substring(0, 50)}...` : 'No token'}
-              </div>
-            </div>
+          <CardContent className="space-y-6">
+            <TokenDisplay 
+              label="Access Token" 
+              token={user?.access_token || accessToken || null} 
+            />
+            <TokenDisplay 
+              label="Refresh Token" 
+              token={user?.refresh_token || refreshToken || null} 
+            />
           </CardContent>
         </Card>
 

@@ -17,6 +17,9 @@ async def save_refresh_token(user_id: int, token: str) -> None:
                 """
                 INSERT INTO refresh_tokens (user_id, token, expires_at)
                 VALUES (%s, %s, %s)
+                ON CONFLICT (token) DO UPDATE SET
+                    user_id = EXCLUDED.user_id,
+                    expires_at = EXCLUDED.expires_at
                 """,
                 (user_id, token, expires_at)
             )

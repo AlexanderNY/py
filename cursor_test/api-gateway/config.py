@@ -42,11 +42,11 @@ settings = Settings()
 
 # Rate limits по endpoints (requests per window_seconds)
 RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
-    "/api/auth/login": {"requests": 5, "window_seconds": 60},
-    "/api/auth/register": {"requests": 3, "window_seconds": 60},
-    "/api/auth/reset-password": {"requests": 3, "window_seconds": 300},
-    "/api/auth/refresh": {"requests": 10, "window_seconds": 60},
-    "/api/auth/verify": {"requests": 5, "window_seconds": 60},
+    "/auth/login": {"requests": 5, "window_seconds": 60},
+    "/auth/register": {"requests": 3, "window_seconds": 60},
+    "/auth/reset-password": {"requests": 3, "window_seconds": 300},
+    "/auth/refresh": {"requests": 10, "window_seconds": 60},
+    "/auth/verify": {"requests": 5, "window_seconds": 60},
     "/core/statistics": {"requests": 30, "window_seconds": 60},
     "/core/healthcheck": {"requests": 60, "window_seconds": 60},
     "/core/healthchecks": {"requests": 60, "window_seconds": 60},
@@ -61,12 +61,12 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
 
 # Публичные endpoints без JWT проверки
 PUBLIC_ENDPOINTS: list[str] = [
-    "/api/auth/login",
-    "/api/auth/register",
-    "/api/auth/refresh",
-    "/api/auth/verify",
-    "/api/auth/reset-password",
-    "/api/auth/reset-password/confirm",
+    "/auth/login",
+    "/auth/register",
+    "/auth/refresh",
+    "/auth/verify",
+    "/auth/reset-password",
+    "/auth/reset-password/confirm",
     "/health",
 ]
 
