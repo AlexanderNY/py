@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     VK_BOT_SERVICE_URL: str = "http://localhost:8005"
     WP_BOT_SERVICE_URL: str = "http://localhost:8006"
     URL_BOT_SERVICE_URL: str = "http://localhost:8007"
+    SELECTCB_SERVICE_URL: str = "http://172.20.10.8:8008" #"http://localhost:8008"
     
     # CORS настройки
     CORS_ORIGINS: list[str] = [
@@ -52,6 +53,8 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/core/healthchecks": {"requests": 60, "window_seconds": 60},
     "/wp/profile": {"requests": 30, "window_seconds": 60},
     "/wp/post": {"requests": 20, "window_seconds": 60},
+    "/test/search": {"requests": 2, "window_seconds": 60},
+    "/test/submit": {"requests": 2, "window_seconds": 60},
     "default": {
         "requests": settings.DEFAULT_RATE_LIMIT_REQUESTS,
         "window_seconds": settings.DEFAULT_RATE_LIMIT_WINDOW_SECONDS

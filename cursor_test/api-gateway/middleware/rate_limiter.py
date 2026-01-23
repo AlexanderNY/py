@@ -40,8 +40,21 @@ class RateLimiter:
         Returns:
             Словарь с requests и window_seconds
         """
-        # Ищем точное совпадение или используем default
-        return RATE_LIMITS_CONFIG.get(endpoint_path, RATE_LIMITS_CONFIG["default"])
+        # Ищем точное совпадение
+        if endpoint_path in RATE_LIMITS_CONFIG:
+            return RATE_LIMITS_CONFIG[endpoint_path]
+        
+        # Для путей с параметрами ищем по префиксу
+        # Например, /test/search/123 -> /test/search
+        path_parts = endpoint_path.rstrip('/').split('/')
+        if len(path_parts) > 1:
+            # Пробуем найти конфиг по префиксу (без последнего сегмента)
+            prefix_path = '/'.join(path_parts[:-1])
+            if prefix_path in RATE_LIMITS_CONFIG:
+                return RATE_LIMITS_CONFIG[prefix_path]
+        
+        # Используем default
+        return RATE_LIMITS_CONFIG["default"]
     
     def check_rate_limit(self, client_ip: str, endpoint_path: str) -> bool:
         """Проверяет, не превышен ли лимит запросов.

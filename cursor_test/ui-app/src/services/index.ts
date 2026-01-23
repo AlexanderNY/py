@@ -7,5 +7,6 @@ export { twitterService } from './twitter-service'
 export { vkontakteService } from './vkontakte-service'
 export { customURLService } from './custom-url-service'
 export { createPostService } from './create-post-service'
+export { testService } from './test-service'
 
 

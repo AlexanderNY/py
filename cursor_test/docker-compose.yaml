@@ -59,6 +59,18 @@ services:
       monitoring_network:
         ipv4_address: 172.20.10.100
 
+  test:
+    build: ./selectcb
+    ports:
+      - "8008:8008"
+    environment:
+      - VITE_API_GATEWAY_URL=http://gateway:8000
+      - VITE_AUTH_SERVICE_URL=http://auth:8001
+      - VITE_CORE_SERVICE_URL=http://core:8002
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.8
+
 volumes:
   postgres_data:
 

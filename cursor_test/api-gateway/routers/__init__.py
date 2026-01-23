@@ -7,6 +7,7 @@ from .vk_routes import router as vk_router
 from .curl_routes import router as curl_router
 from .cpost_routes import router as cpost_router
 from .stubs import router as stubs_router
+from .test_routes import router as test_router
 
 __all__ = [
     "auth_router",
@@ -18,6 +19,7 @@ __all__ = [
     "curl_router",
     "cpost_router",
     "stubs_router",
+    "test_router",
 ]
 
 

@@ -12,6 +12,7 @@ import { TwitterPage } from '@/pages/stubs/twitter'
 import { VKontaktePage } from '@/pages/stubs/vkontakte'
 import { CustomURLPage } from '@/pages/stubs/custom-url'
 import { CreatePostPage } from '@/pages/create-post'
+import { TestPage } from '@/pages/test'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -74,6 +75,7 @@ function App() {
         <Route path="vkontakte" element={<VKontaktePage />} />
         <Route path="custom-url" element={<CustomURLPage />} />
         <Route path="create-post" element={<CreatePostPage />} />
+        <Route path="test" element={<TestPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
