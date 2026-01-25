@@ -5,11 +5,15 @@ from typing import List
 class Settings(BaseSettings):
     """Конфигурация Core сервиса из переменных окружения."""
     
-    # База данных (тот же формат что и auth)
+      # База данных (тот же формат что и auth)
     DATABASE_URL: str = "dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal"
     
     # API Gateway URL для healthcheck запросов
     API_GATEWAY_URL: str = "http://localhost:8000"
+    
+    # JWT настройки (должны совпадать с auth сервисом)
+    JWT_SECRET_KEY: str = "$2b$12$xyiAcpacCfrFN3wl3ayJT."
+    JWT_ALGORITHM: str = "HS256"
     
     # Список сервисов для healthcheck
     HEALTHCHECK_SERVICES: List[str] = [

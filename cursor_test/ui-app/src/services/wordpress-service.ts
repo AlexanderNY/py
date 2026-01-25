@@ -1,5 +1,5 @@
 import { apiClient, getErrorMessage } from './api-client'
-import type { WordPressProfile, WordPressPost } from '@/types/wordpress'
+import type { WordPressProfile, WordPressPost, WordPressPostListItem } from '@/types/wordpress'
 
 export const wordpressService = {
   async getProfile(): Promise<WordPressProfile> {
@@ -22,6 +22,15 @@ export const wordpressService = {
   async createPost(post: WordPressPost): Promise<void> {
     try {
       await apiClient.post('/wp/post', post)
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getPosts(): Promise<WordPressPostListItem[]> {
+    try {
+      const response = await apiClient.get<WordPressPostListItem[]>('/wp/posts')
+      return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))
     }

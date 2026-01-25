@@ -55,6 +55,19 @@ async def save_tg_profile(
     return await forward_to_core("/tg/profile", request)
 
 
+@router.get("/profiles")
+async def get_all_tg_profiles(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает все профили Telegram из core сервиса.
+    
+    GET /tg/profiles -> GET /tg/profiles на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core("/tg/profiles", request)
+
+
 @router.post("/post")
 async def create_tg_post(
     request: Request,

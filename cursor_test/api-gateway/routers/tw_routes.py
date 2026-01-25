@@ -55,6 +55,19 @@ async def save_tw_profile(
     return await forward_to_core("/tw/profile", request)
 
 
+@router.get("/profiles")
+async def get_all_tw_profiles(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает все профили Twitter из core сервиса.
+    
+    GET /tw/profiles -> GET /tw/profiles на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core("/tw/profiles", request)
+
+
 @router.post("/post")
 async def create_tw_post(
     request: Request,

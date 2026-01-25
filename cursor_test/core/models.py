@@ -89,9 +89,50 @@ CREATE TABLE IF NOT EXISTS wp_profiles (
     collect_enabled BOOLEAN DEFAULT FALSE,
     schedule_type VARCHAR(20) DEFAULT 'immediate',
     time_intervals JSONB DEFAULT '[]',
+    site_url TEXT,
+    username VARCHAR(255),
+    app_password VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+"""
+
+# Таблица wp_posts - посты WordPress (структура аналогична posts)
+WP_POSTS_TABLE = """
+CREATE TABLE IF NOT EXISTS wp_posts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    domain VARCHAR(255),
+    url TEXT,
+    title VARCHAR(500),
+    author VARCHAR(255),
+    avatar TEXT,
+    post_date TIMESTAMP,
+    post_text TEXT,
+    screenshot TEXT,
+    images JSONB DEFAULT '[]',
+    image_over_text TEXT,
+    comments INTEGER DEFAULT 0,
+    reposts INTEGER DEFAULT 0,
+    likes INTEGER DEFAULT 0,
+    views INTEGER DEFAULT 0,
+    is_ad BOOLEAN DEFAULT FALSE,
+    status VARCHAR(50) DEFAULT 'collected',
+    post_type VARCHAR(50),
+    to_tg BOOLEAN DEFAULT FALSE,
+    to_tw BOOLEAN DEFAULT FALSE,
+    to_wp BOOLEAN DEFAULT FALSE,
+    to_vk BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+# Индексы для wp_posts
+WP_POSTS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_wp_posts_user_id ON wp_posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_wp_posts_status ON wp_posts(status);
+CREATE INDEX IF NOT EXISTS idx_wp_posts_created_at ON wp_posts(created_at);
 """
 
 # Таблица vk_profiles - настройки VKontakte
@@ -153,6 +194,8 @@ ALL_TABLES = [
     TG_PROFILES_TABLE,
     TW_PROFILES_TABLE,
     WP_PROFILES_TABLE,
+    WP_POSTS_TABLE,
+    WP_POSTS_INDEXES,
     VK_PROFILES_TABLE,
     CURL_SETTINGS_TABLE,
     CPOST_PROFILES_TABLE,

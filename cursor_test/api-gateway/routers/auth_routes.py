@@ -142,3 +142,16 @@ async def handle_all_logout(
     return await forward_to_auth("/all_logout", request)
 
 
+@router.get("/users")
+async def get_users(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает список всех пользователей (только для администраторов).
+    
+    GET /api/auth/users -> GET /users на auth сервисе
+    Требует JWT аутентификации и роли admin.
+    """
+    return await forward_to_auth("/users", request)
+
+

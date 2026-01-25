@@ -13,6 +13,7 @@ import { VKontaktePage } from '@/pages/stubs/vkontakte'
 import { CustomURLPage } from '@/pages/stubs/custom-url'
 import { CreatePostPage } from '@/pages/create-post'
 import { TestPage } from '@/pages/test'
+import { AdministrationPage } from '@/pages/administration'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -31,6 +32,32 @@ function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (!isAuthenticated) {
     return <Navigate to="/sign-in" replace />
+  }
+
+  return <>{children}</>
+}
+
+interface AdminRouteProps {
+  children: React.ReactNode
+}
+
+function AdminRoute({ children }: AdminRouteProps) {
+  const { isAuthenticated, isLoading, user } = useAuth()
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-pulse-subtle text-primary-400">Loading...</div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/sign-in" replace />
+  }
+
+  if (user?.role !== 'admin') {
+    return <Navigate to="/profile" replace />
   }
 
   return <>{children}</>
@@ -76,6 +103,7 @@ function App() {
         <Route path="custom-url" element={<CustomURLPage />} />
         <Route path="create-post" element={<CreatePostPage />} />
         <Route path="test" element={<TestPage />} />
+        <Route path="administration" element={<AdminRoute><AdministrationPage /></AdminRoute>} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -3,6 +3,7 @@ from fastapi import Request, Response
 from typing import Optional
 
 from utils.exceptions import ServiceUnavailableException, BadGatewayException
+from middleware.jwt_validator import jwt_validator
 
 
 class ProxyService:
@@ -39,6 +40,20 @@ class ProxyService:
         """
         actual_method = override_method or method
         request_headers = self.prepare_headers(dict(request.headers))
+
+        # Добавляем X-User-Id из JWT (если есть валидный токен)
+        authorization_header = request_headers.get("authorization") or request_headers.get("Authorization")
+        if authorization_header:
+            try:
+                token = jwt_validator.extract_token_from_header(authorization_header)
+                user_payload = jwt_validator.get_user_from_token(token)
+                user_id = user_payload.get("user_id")
+                if user_id is not None:
+                    request_headers["X-User-Id"] = str(user_id)
+            except Exception:
+                # Если токен невалидный или отсутствует user_id, просто не добавляем заголовок.
+                # Валидацию и ошибки обрабатывает слой аутентификации.
+                pass
         request_body = await request.body()
         query_params = dict(request.query_params)
         

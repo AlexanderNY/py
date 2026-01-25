@@ -1,6 +1,8 @@
 export interface User {
+  id?: number
   username: string
   email: string
+  role: 'guest' | 'user' | 'admin'
   is_email_verified: boolean
   created_at: string
   access_token?: string

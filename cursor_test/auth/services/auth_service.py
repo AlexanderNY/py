@@ -26,8 +26,7 @@ from utils.exceptions import (
 
 async def register_user(username: str, email: str, password: str) -> Dict:
     """Регистрация нового пользователя."""
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             # Проверка существования пользователя
             await cur.execute(
@@ -42,12 +41,12 @@ async def register_user(username: str, email: str, password: str) -> Dict:
             # Хеширование пароля
             password_hash = hash_password(password)
             
-            # Создание пользователя
+            # Создание пользователя (роль по умолчанию 'guest')
             await cur.execute(
                 """
-                INSERT INTO users (username, email, password_hash)
-                VALUES (%s, %s, %s)
-                RETURNING id, username, email, is_email_verified, created_at
+                INSERT INTO users (username, email, password_hash, role)
+                VALUES (%s, %s, %s, 'guest')
+                RETURNING id, username, email, role, is_email_verified, created_at
                 """,
                 (username, email, password_hash)
             )
@@ -57,10 +56,11 @@ async def register_user(username: str, email: str, password: str) -> Dict:
                 raise RuntimeError("Failed to create user")
             
             user_id = user_row[0]
+            user_role = user_row[3]
             
             # Создание токенов
-            access_token = create_access_token(user_id)
-            refresh_token = create_refresh_token(user_id)
+            access_token = create_access_token(user_id, user_role)
+            refresh_token = create_refresh_token(user_id, user_role)
             
             # Сохранение refresh токена
             await save_refresh_token(user_id, refresh_token)
@@ -73,22 +73,20 @@ async def register_user(username: str, email: str, password: str) -> Dict:
                 "user_id": user_id,
                 "username": user_row[1],
                 "email": user_row[2],
+                "role": user_role,
                 "access_token": access_token,
                 "refresh_token": refresh_token,
                 "email_verification_token": email_verification_token
             }
-    finally:
-        conn.close()
 
 
 async def authenticate_user(username: str, password: str) -> Optional[Dict]:
     """Аутентификация пользователя по логину и паролю."""
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, username, email, password_hash, is_email_verified
+                SELECT id, username, email, password_hash, role, is_email_verified
                 FROM users WHERE username = %s
                 """,
                 (username,)
@@ -98,15 +96,15 @@ async def authenticate_user(username: str, password: str) -> Optional[Dict]:
             if not user_row:
                 return None
             
-            user_id, db_username, db_email, password_hash, is_email_verified = user_row
+            user_id, db_username, db_email, password_hash, user_role, is_email_verified = user_row
             
             # Проверка пароля
             if not verify_password(password, password_hash):
                 return None
             
             # Создание токенов
-            access_token = create_access_token(user_id)
-            refresh_token = create_refresh_token(user_id)
+            access_token = create_access_token(user_id, user_role)
+            refresh_token = create_refresh_token(user_id, user_role)
             
             # Сохранение refresh токена
             await save_refresh_token(user_id, refresh_token)
@@ -115,12 +113,11 @@ async def authenticate_user(username: str, password: str) -> Optional[Dict]:
                 "user_id": user_id,
                 "username": db_username,
                 "email": db_email,
+                "role": user_role,
                 "is_email_verified": is_email_verified,
                 "access_token": access_token,
                 "refresh_token": refresh_token
             }
-    finally:
-        conn.close()
 
 
 async def verify_email_token(token: str) -> bool:
@@ -130,8 +127,7 @@ async def verify_email_token(token: str) -> bool:
     if not user_id:
         raise TokenNotFoundError("Invalid or expired email verification token")
     
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             # Проверка, не верифицирован ли уже email
             await cur.execute(
@@ -156,8 +152,6 @@ async def verify_email_token(token: str) -> bool:
             await delete_email_verification_token(token)
             
             return True
-    finally:
-        conn.close()
 
 
 async def reset_password(token: str, new_password: str) -> bool:
@@ -170,8 +164,7 @@ async def reset_password(token: str, new_password: str) -> bool:
     # Хеширование нового пароля
     password_hash = hash_password(new_password)
     
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             # Обновление пароля
             await cur.execute(
@@ -187,18 +180,15 @@ async def reset_password(token: str, new_password: str) -> bool:
             await revoke_all_refresh_tokens(user_id)
             
             return True
-    finally:
-        conn.close()
 
 
 async def get_user_by_id(user_id: int) -> Optional[Dict]:
     """Получение пользователя по ID."""
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, username, email, is_email_verified, created_at
+                SELECT id, username, email, role, is_email_verified, created_at
                 FROM users WHERE id = %s
                 """,
                 (user_id,)
@@ -212,17 +202,15 @@ async def get_user_by_id(user_id: int) -> Optional[Dict]:
                 "id": user_row[0],
                 "username": user_row[1],
                 "email": user_row[2],
-                "is_email_verified": user_row[3],
-                "created_at": user_row[4]
+                "role": user_row[3],
+                "is_email_verified": user_row[4],
+                "created_at": user_row[5]
             }
-    finally:
-        conn.close()
 
 
 async def update_user_profile(user_id: int, username: Optional[str] = None, email: Optional[str] = None) -> Dict:
     """Обновление профиля пользователя."""
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             # Проверка существования пользователя
             await cur.execute("SELECT id FROM users WHERE id = %s", (user_id,))
@@ -263,7 +251,7 @@ async def update_user_profile(user_id: int, username: Optional[str] = None, emai
                 updates.append("updated_at = CURRENT_TIMESTAMP")
                 params.append(user_id)
                 
-                query = f"UPDATE users SET {', '.join(updates)} WHERE id = %s RETURNING id, username, email, is_email_verified, created_at"
+                query = f"UPDATE users SET {', '.join(updates)} WHERE id = %s RETURNING id, username, email, role, is_email_verified, created_at"
                 await cur.execute(query, params)
                 user_row = await cur.fetchone()
                 
@@ -272,20 +260,18 @@ async def update_user_profile(user_id: int, username: Optional[str] = None, emai
                         "id": user_row[0],
                         "username": user_row[1],
                         "email": user_row[2],
-                        "is_email_verified": user_row[3],
-                        "created_at": user_row[4]
+                        "role": user_row[3],
+                        "is_email_verified": user_row[4],
+                        "created_at": user_row[5]
                     }
             
             # Если ничего не обновлялось, возвращаем текущего пользователя
             return await get_user_by_id(user_id)
-    finally:
-        conn.close()
 
 
 async def initiate_password_reset(email: str) -> str:
     """Инициация сброса пароля (создание токена)."""
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute("SELECT id FROM users WHERE email = %s", (email,))
             user_row = await cur.fetchone()
@@ -302,6 +288,30 @@ async def initiate_password_reset(email: str) -> str:
             await save_password_reset_token(user_id, reset_token)
             
             return reset_token
-    finally:
-        conn.close()
+
+
+async def get_all_users() -> list[Dict]:
+    """Получение списка всех пользователей (только для администраторов)."""
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id, username, email, role, is_email_verified, created_at
+                FROM users
+                ORDER BY created_at DESC
+                """
+            )
+            rows = await cur.fetchall()
+            
+            return [
+                {
+                    "id": row[0],
+                    "username": row[1],
+                    "email": row[2],
+                    "role": row[3],
+                    "is_email_verified": row[4],
+                    "created_at": row[5]
+                }
+                for row in rows
+            ]
 

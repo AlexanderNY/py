@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Literal
 
 
 class UserRegister(BaseModel):
@@ -30,8 +30,10 @@ class RefreshTokenRequest(BaseModel):
 
 class UserProfile(BaseModel):
     """Схема профиля пользователя."""
+    id: Optional[int] = None
     username: str
     email: EmailStr
+    role: Literal["guest", "user", "admin"]
     is_email_verified: bool
     created_at: datetime
     

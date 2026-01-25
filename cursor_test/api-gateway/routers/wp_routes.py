@@ -55,6 +55,32 @@ async def save_wp_profile(
     return await forward_to_core("/wp/profile", request)
 
 
+@router.get("/profiles")
+async def get_all_wp_profiles(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает все профили WordPress из core сервиса.
+    
+    GET /wp/profiles -> GET /wp/profiles на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core("/wp/profiles", request)
+
+
+@router.get("/posts")
+async def list_wp_posts(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Возвращает список постов WordPress из core сервиса.
+    
+    GET /wp/posts -> GET /wp/posts на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core("/wp/posts", request)
+
+
 @router.post("/post")
 async def create_wp_post(
     request: Request,

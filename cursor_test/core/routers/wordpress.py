@@ -25,7 +25,7 @@ async def get_wp_profile(x_user_id: Optional[str] = Header(None)):
     """Получает профиль WordPress пользователя.
     
     Returns:
-        Профиль WordPress или пустой объект
+        Профиль WordPress или базовый объект по умолчанию
     """
     user_id = get_user_id_from_header(x_user_id)
     profile = await profile_service.get_wp_profile(user_id)
@@ -35,7 +35,10 @@ async def get_wp_profile(x_user_id: Optional[str] = Header(None)):
         "publish_enabled": False,
         "collect_enabled": False,
         "schedule_type": "immediate",
-        "time_intervals": []
+        "time_intervals": [],
+        "site_url": None,
+        "username": None,
+        "app_password": None,
     }
 
 
@@ -57,15 +60,47 @@ async def save_wp_profile(
     return profile
 
 
+@router.get("/profiles")
+async def get_all_wp_profiles():
+    """Получает все профили WordPress.
+    
+    Returns:
+        Список всех профилей WordPress
+    """
+    profiles = await profile_service.get_all_wp_profiles()
+    return {"profiles": profiles}
+
+
+@router.get("/posts")
+async def get_wp_posts(
+    x_user_id: Optional[str] = Header(None),
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Возвращает список постов WordPress пользователя из таблицы wp_posts.
+    
+    Args:
+        x_user_id: ID пользователя из заголовка
+        limit: Максимальное количество записей
+        offset: Смещение для постраничной загрузки
+    
+    Returns:
+        Список постов WordPress
+    """
+    user_id = get_user_id_from_header(x_user_id)
+    posts = await post_service.get_wp_posts(user_id=user_id, limit=limit, offset=offset)
+    return posts
+
+
 @router.post("/post")
 async def create_wp_post(
     data: WordPressPost,
     x_user_id: Optional[str] = Header(None)
 ):
-    """Создает пост для WordPress (max 150000 символов).
+    """Создает пост WordPress в таблице wp_posts.
     
     Args:
-        data: Данные поста
+        data: Данные поста в формате ui-app (реальный WordPress)
         
     Returns:
         Созданный пост
@@ -73,15 +108,10 @@ async def create_wp_post(
     user_id = get_user_id_from_header(x_user_id)
     
     try:
-        post = await post_service.create_post(
+        post = await post_service.create_wp_post_record(
             user_id=user_id,
-            text=data.text,
-            platform="wp",
-            title=data.title,
-            to_tg=data.to_tg,
-            to_tw=data.to_tw,
-            to_wp=data.to_wp,
-            to_vk=data.to_vk
+            text=data.post.content,
+            title=data.post.title,
         )
         return post
     except ValueError as e:

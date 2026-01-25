@@ -55,13 +55,24 @@ async def save_tw_profile(
     
     Args:
         data: Данные профиля
-        
+    
     Returns:
         Сохраненный профиль
     """
     user_id = get_user_id_from_header(x_user_id)
     profile = await profile_service.save_tw_profile(user_id, data.model_dump())
     return profile
+
+
+@router.get("/profiles")
+async def get_all_tw_profiles():
+    """Получает все профили Twitter.
+    
+    Returns:
+        Список всех профилей Twitter
+    """
+    profiles = await profile_service.get_all_tw_profiles()
+    return {"profiles": profiles}
 
 
 @router.post("/post")

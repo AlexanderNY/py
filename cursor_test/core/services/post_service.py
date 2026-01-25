@@ -100,6 +100,56 @@ class PostService:
                 return self._row_to_post(row, cur.description)
         finally:
             conn.close()
+
+    async def create_wp_post_record(
+        self,
+        user_id: int,
+        text: str,
+        title: Optional[str] = None,
+    ) -> Dict:
+        """Создает пост WordPress в таблице wp_posts.
+        
+        Args:
+            user_id: ID пользователя
+            text: Текст поста (HTML, до 150000 символов)
+            title: Заголовок поста
+        
+        Returns:
+            Созданный пост из таблицы wp_posts
+        """
+        # Проверка лимита символов для WordPress
+        limit = self.PLATFORM_LIMITS.get("wp", 150000)
+        if len(text) > limit:
+            raise ValueError(f"Text exceeds wp limit of {limit} characters")
+        
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO wp_posts (
+                        user_id, post_text, title, domain, url, author, avatar,
+                        post_date, screenshot, images, image_over_text,
+                        comments, reposts, likes, views, is_ad, status,
+                        post_type, to_tg, to_tw, to_wp, to_vk
+                    ) VALUES (
+                        %s, %s, %s, NULL, NULL, NULL, NULL,
+                        NULL, NULL, '[]', NULL,
+                        0, 0, 0, 0, FALSE, 'collected',
+                        'wp', FALSE, FALSE, TRUE, FALSE
+                    )
+                    RETURNING *
+                    """,
+                    (
+                        user_id,
+                        text,
+                        title,
+                    )
+                )
+                row = await cur.fetchone()
+                return self._row_to_post(row, cur.description)
+        finally:
+            conn.close()
     
     async def get_posts(
         self,
@@ -147,6 +197,40 @@ class PostService:
                 await cur.execute(query, params)
                 rows = await cur.fetchall()
                 
+                return [self._row_to_post(row, cur.description) for row in rows]
+        finally:
+            conn.close()
+
+    async def get_wp_posts(
+        self,
+        user_id: int,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[Dict]:
+        """Получает посты WordPress пользователя из таблицы wp_posts.
+        
+        Args:
+            user_id: ID пользователя
+            limit: Лимит записей
+            offset: Смещение
+        
+        Returns:
+            Список постов WordPress
+        """
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT *
+                    FROM wp_posts
+                    WHERE user_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (user_id, limit, offset)
+                )
+                rows = await cur.fetchall()
                 return [self._row_to_post(row, cur.description) for row in rows]
         finally:
             conn.close()

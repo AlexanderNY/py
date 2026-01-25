@@ -65,13 +65,24 @@ async def save_tg_profile(
     
     Args:
         data: Данные профиля
-        
+    
     Returns:
         Сохраненный профиль
     """
     user_id = get_user_id_from_header(x_user_id)
     profile = await profile_service.save_tg_profile(user_id, data.model_dump())
     return profile
+
+
+@router.get("/profiles")
+async def get_all_tg_profiles():
+    """Получает все профили Telegram.
+    
+    Returns:
+        Список всех профилей Telegram
+    """
+    profiles = await profile_service.get_all_tg_profiles()
+    return {"profiles": profiles}
 
 
 @router.post("/post")

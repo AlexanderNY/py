@@ -27,6 +27,7 @@ services:
       - "8001:8001"
     environment:
       - API_GATEWAY_URL=http://api_gateway:8000
+      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
       - LOG_SETTINGS_JOURNALD_LEVEL=DEBUG  # Для приложений, которые поддерживают эту переменную
       # Или, например, для Java-приложений
       - LOG_LEVEL=DEBUG
@@ -41,6 +42,21 @@ services:
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.250
+
+  scheduler:
+    build: ./scheduler
+    ports:
+      - "8003:8003"
+    environment:
+      - API_GATEWAY_URL=http://gateway:8000
+      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      - POLL_INTERVAL_SECONDS=60
+      - NOTIFY_ON_CHANGE_ONLY=true
+      - SCHEDULER_LOGIN=
+      - SCHEDULER_PASSWORD=
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.3
 
   ui:
     build: ./ui-app

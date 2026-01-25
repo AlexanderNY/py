@@ -55,13 +55,24 @@ async def save_vk_profile(
     
     Args:
         data: Данные профиля
-        
+    
     Returns:
         Сохраненный профиль
     """
     user_id = get_user_id_from_header(x_user_id)
     profile = await profile_service.save_vk_profile(user_id, data.model_dump())
     return profile
+
+
+@router.get("/profiles")
+async def get_all_vk_profiles():
+    """Получает все профили VKontakte.
+    
+    Returns:
+        Список всех профилей VKontakte
+    """
+    profiles = await profile_service.get_all_vk_profiles()
+    return {"profiles": profiles}
 
 
 @router.post("/post")

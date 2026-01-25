@@ -59,3 +59,15 @@ async def get_current_user(
             detail="Invalid token"
         )
 
+
+async def get_admin_user(
+    current_user: Dict = Depends(get_current_user)
+) -> Dict:
+    """Получение текущего пользователя с проверкой роли admin."""
+    if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Admin role required."
+        )
+    return current_user
+

@@ -1,27 +1,4 @@
-Изучаю контекст проекта, затем расскажу, как публиковать посты в WordPress через REST API.
 
-
-[2 tools called]
-
-Ищу реализацию публикации постов в WordPress через REST API:
-
-
-[2 tools called]
-
-Изучаю реализацию в core-сервисе:
-
-
-[2 tools called]
-
-Изучаю реализацию сервиса публикации постов:
-
-
-[1 tool called]
-
-Ищу код, который выполняет HTTP-запросы к WordPress REST API:
-
-
-[2 tools called]
 
 ## Публикация поста в WordPress через REST API
 
@@ -60,8 +37,8 @@ async def create_wp_post(
         username: Имя пользователя WordPress
         app_password: Application Password (не обычный пароль!)
         title: Заголовок поста
-        content: Содержимое поста (HTML)
-        status: Статус поста (draft, publish, pending, private)
+        content: Содержимое поста (добавь к полю простой html редактор с возможностью менять форматирование текста)
+        status: Статус поста (select: draft, publish, pending, private)
         categories: Список ID категорий
         tags: Список ID тегов
         excerpt: Краткое описание

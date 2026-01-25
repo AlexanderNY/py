@@ -5,12 +5,13 @@ from config import settings
 from utils.exceptions import TokenExpiredError, TokenInvalidError
 
 
-def create_access_token(user_id: int) -> str:
+def create_access_token(user_id: int, role: str = "guest") -> str:
     """Создание access токена для пользователя."""
     now = datetime.utcnow()
     expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
         "user_id": user_id,
+        "role": role,
         "type": "access",
         "iat": now,
         "exp": expire
@@ -18,12 +19,13 @@ def create_access_token(user_id: int) -> str:
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def create_refresh_token(user_id: int) -> str:
+def create_refresh_token(user_id: int, role: str = "guest") -> str:
     """Создание refresh токена для пользователя."""
     now = datetime.utcnow()
     expire = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     payload = {
         "user_id": user_id,
+        "role": role,
         "type": "refresh",
         "iat": now,
         "exp": expire

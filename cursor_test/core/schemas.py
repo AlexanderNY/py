@@ -48,6 +48,44 @@ class StatisticsResponse(BaseModel):
     services: List[StatisticsItem]
 
 
+class UserStatisticsItem(BaseModel):
+    """Статистика использования для одного пользователя."""
+    user_id: int
+    username: str
+    email: str
+    role: str
+    total_posts: int
+    collected_posts: int
+    processed_posts: int
+    published_posts: int
+
+
+class UserStatisticsResponse(BaseModel):
+    """Ответ со статистикой использования по пользователям."""
+    users: List[UserStatisticsItem]
+
+
+# ==================== Schedule Snapshots ====================
+
+class ScheduleSnapshot(BaseModel):
+    """Снимок расписания из таблицы schedule_snapshots."""
+    user_id: int
+    platform: str
+    publish_enabled: bool
+    collect_enabled: bool
+    schedule_type: str
+    time_intervals: List[Dict[str, Any]]
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ScheduleResponse(BaseModel):
+    """Ответ со списком расписаний."""
+    schedules: List[ScheduleSnapshot]
+
+
 # ==================== Telegram ====================
 
 class TelegramProfileBase(BaseModel):
@@ -140,6 +178,9 @@ class WordPressProfileBase(BaseModel):
     collect_enabled: bool = False
     schedule_type: ScheduleType = ScheduleType.IMMEDIATE
     time_intervals: List[TimeInterval] = []
+    site_url: Optional[str] = None
+    username: Optional[str] = None
+    app_password: Optional[str] = None
 
 
 class WordPressProfileCreate(WordPressProfileBase):
@@ -158,14 +199,25 @@ class WordPressProfile(WordPressProfileBase):
         from_attributes = True
 
 
+class WordPressPostContent(BaseModel):
+    """Вложенный объект post для реального WordPress."""
+    title: str
+    content: str = Field(..., max_length=150000)
+    status: Optional[str] = None  # draft, publish, pending, private
+    categories: Optional[List[str]] = None
+    tags: Optional[List[str]] = None
+    excerpt: Optional[str] = None
+    slug: Optional[str] = None
+    featured_media: Optional[int] = None
+    meta: Optional[Dict[str, Any]] = None
+
+
 class WordPressPost(BaseModel):
-    """Модель поста для WordPress (max 150000 символов)."""
-    text: str = Field(..., max_length=150000)
-    title: Optional[str] = None
-    to_tg: bool = False
-    to_tw: bool = False
-    to_wp: bool = True
-    to_vk: bool = False
+    """Тело запроса POST /wp/post из ui-app."""
+    pageID: Optional[str] = None
+    tagIdList: Optional[List[int]] = None
+    categoriesIdList: Optional[List[int]] = None
+    post: WordPressPostContent
 
 
 # ==================== VKontakte ====================

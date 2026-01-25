@@ -187,13 +187,16 @@ class ProfileService:
                     """
                     INSERT INTO wp_profiles (
                         user_id, publish_enabled, collect_enabled, schedule_type,
-                        time_intervals
-                    ) VALUES (%s, %s, %s, %s, %s)
+                        time_intervals, site_url, username, app_password
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
                         schedule_type = EXCLUDED.schedule_type,
                         time_intervals = EXCLUDED.time_intervals,
+                        site_url = EXCLUDED.site_url,
+                        username = EXCLUDED.username,
+                        app_password = EXCLUDED.app_password,
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING *
                     """,
@@ -203,6 +206,9 @@ class ProfileService:
                         data.get("collect_enabled", False),
                         data.get("schedule_type", "immediate"),
                         json.dumps(data.get("time_intervals", [])),
+                        data.get("site_url"),
+                        data.get("username"),
+                        data.get("app_password"),
                     )
                 )
                 row = await cur.fetchone()
@@ -410,6 +416,52 @@ class ProfileService:
         if isinstance(profile.get("default_platforms"), str):
             profile["default_platforms"] = json.loads(profile["default_platforms"])
         return profile
+    
+    # ==================== Методы получения всех профилей ====================
+    
+    async def get_all_tg_profiles(self) -> list[Dict]:
+        """Получает все профили Telegram."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT * FROM tg_profiles")
+                rows = await cur.fetchall()
+                return [self._row_to_tg_profile(row, cur.description) for row in rows]
+        finally:
+            conn.close()
+    
+    async def get_all_tw_profiles(self) -> list[Dict]:
+        """Получает все профили Twitter."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT * FROM tw_profiles")
+                rows = await cur.fetchall()
+                return [self._row_to_tw_profile(row, cur.description) for row in rows]
+        finally:
+            conn.close()
+    
+    async def get_all_wp_profiles(self) -> list[Dict]:
+        """Получает все профили WordPress."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT * FROM wp_profiles")
+                rows = await cur.fetchall()
+                return [self._row_to_wp_profile(row, cur.description) for row in rows]
+        finally:
+            conn.close()
+    
+    async def get_all_vk_profiles(self) -> list[Dict]:
+        """Получает все профили VKontakte."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT * FROM vk_profiles")
+                rows = await cur.fetchall()
+                return [self._row_to_vk_profile(row, cur.description) for row in rows]
+        finally:
+            conn.close()
 
 
 profile_service = ProfileService()

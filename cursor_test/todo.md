@@ -1,17 +1,48 @@
-Каждый сервис должен иметь конфигурационный файл config.py
-# Service URL
-    API_GATEWAY_SERVICE_URL: str = "http://localhost:8000"
-    AUTH_SERVICE_URL: str = "http://localhost:8001"
-    CORE_SERVICE_URL: str = "http://localhost:8002"
-    SCHEDULER_SERVICE_URL: str = "http://localhost:8003"
-    TG_BOT_SERVICE_URL: str = "http://localhost:8004"
-    VK_BOT_SERVICE_URL: str = "http://localhost:8005"
-    WP_BOT_SERVICE_URL: str = "http://localhost:8006"
-    URL_BOT_SERVICE_URL: str = "http://localhost:8007"
-# CORS    
-    CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://localhost:8001", "http://localhost:8002"]
-# JWT Settings
-    JWT_SECRET_KEY: str ="$2b$12$xyiAcpacCfrFN3wl3ayJT."
-    ALGORITHM: str = "HS256"
-# Database
-    DATABASE_URL: str = 'dbname=db_bot user=postgres password=1qaz!QAZ host=127.0.0.1' #postgresql://localhost:5432/postgres'
+
+
+# todo здесь собираем список долгосрочных задач
+
+# todo собрать посты со SmartLab
+# DONE in JNB
+# todo придумать как обогащать таблицу domains, может загрузка csv?
+# todo собирать статистику "успешно gathered" и "успешно posted" в отдельную таблицу
+# todo twitter does't work via proxy
+# todo variables to ENV ()
+# todo proxy for download img to ENV
+# todo VK
+# todo instagram
+# todo triggers to switch functions
+# todo gather used CPU, Memory and Network
+
+
+# todo определить условия для асинхронного запуска функций бота
+# todo определить условия для запуска нескольких экземпляров бота единовременно
+# todo переработка бота в callable объект @bot.on
+
+
+# todo тут требуется тест с парсером selenium не будет ли конфликта при частых циклах (если уже запущен сбрщик)
+# todo тут требуется тест с teegraph, выцепит ли он сообщения если сборщик на паузе (например стоит цикл проверки раз в час)
+# Повторяется цикл раз в n секунд, например 300, но кажется излише часто (3600 секунд = 1 час, 14400 секунд = 4 часа)
+
+
+# todo Изменить UI в сторону единообразия
+1  для каждого раздела соцсетей
+    1.1 редактор профиля отдельный tab
+    1.2 Поля редактора профиля требуется предзаполнить данными из базы данных
+    1.2 редактор сообщения в отдельный tab
+3 все вариации полей в одной таблице posts для возможности вычитать и разместить в каждой соцсети
+wp
+tg
+tw
+vk
+tr
+Уточнить правильно ли так поступать или записывать парсинг в разные таблицы?
+
+5 добавить возможность передачи изображения в каждом посте
+6 возможность вести несколько сайтов/тг каналов
+7 разобраться с падением сервиса авторизации
+8 организовать отдельно вычитку и постинг
+
+# todo вынести в конфигуационные файлы переменные, пути к сервисам, JWT ключ шифра
+# todo выписать все запросы сервисов
+# todo перерисовать архитектуру сервиса

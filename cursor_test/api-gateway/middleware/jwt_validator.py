@@ -108,6 +108,15 @@ jwt_validator = JwtValidator(
 security_scheme = HTTPBearer(auto_error=False)
 
 
+# Пути оповещения ботов о расписании — требуют JWT (scheduler)
+BOT_SCHEDULE_PROTECTED = [
+    "/tg-bot/schedule",
+    "/wp-bot/schedule",
+    "/vk-bot/schedule",
+    "/url-bot/schedule",
+]
+
+
 def check_public_endpoint(endpoint_path: str) -> bool:
     """Проверяет, является ли endpoint публичным (не требует JWT).
     
@@ -120,6 +129,10 @@ def check_public_endpoint(endpoint_path: str) -> bool:
     # Точное совпадение
     if endpoint_path in PUBLIC_ENDPOINTS:
         return True
+    
+    # Schedule-прокси к ботам требуют JWT
+    if endpoint_path in BOT_SCHEDULE_PROTECTED:
+        return False
     
     # Проверка префиксов для заглушек
     stub_prefixes = ["/scheduler", "/tg-bot", "/vk-bot", "/wp-bot", "/url-bot"]

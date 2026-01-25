@@ -7,6 +7,7 @@ from models import ALL_TABLES
 from routers import (
     healthcheck,
     statistics,
+    schedules,
     telegram,
     twitter,
     wordpress,
@@ -45,6 +46,7 @@ app.add_middleware(
 # Подключение роутеров
 app.include_router(healthcheck.router)
 app.include_router(statistics.router)
+app.include_router(schedules.router)
 app.include_router(telegram.router)
 app.include_router(twitter.router)
 app.include_router(wordpress.router)

@@ -15,3 +15,4 @@
     ALGORITHM: str = "HS256"
 # Database
     DATABASE_URL: str = 'dbname=db_bot user=postgres password=1qaz!QAZ host=127.0.0.1' #postgresql://localhost:5432/postgres'
+

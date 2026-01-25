@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, status, Depends, Request
 from schemas import UserRegister, UserLogin, TokenResponse, RefreshTokenRequest
-from services.auth_service import register_user, authenticate_user
+from services.auth_service import register_user, authenticate_user, get_user_by_id
 from services.token_service import (
     is_refresh_token_valid,
     revoke_refresh_token,
@@ -85,12 +85,22 @@ async def refresh_token(request: RefreshTokenRequest) -> TokenResponse:
                 detail="Invalid token payload"
             )
         
+        # Получение пользователя для актуальной роли
+        user = await get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found"
+            )
+        
+        user_role = user.get("role", "guest")
+        
         # Отзыв старого refresh токена
         await revoke_refresh_token(refresh_token)
         
-        # Создание новой пары токенов
-        new_access_token = create_access_token(user_id)
-        new_refresh_token = create_refresh_token(user_id)
+        # Создание новой пары токенов с актуальной ролью
+        new_access_token = create_access_token(user_id, user_role)
+        new_refresh_token = create_refresh_token(user_id, user_role)
         
         # Сохранение нового refresh токена
         await save_refresh_token(user_id, new_refresh_token)

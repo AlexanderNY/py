@@ -97,6 +97,15 @@ export const authService = {
       throw new Error(getErrorMessage(error))
     }
   },
+
+  async getUsers(): Promise<User[]> {
+    try {
+      const response = await apiClient.get<User[]>('/auth/users')
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
 }
 
 

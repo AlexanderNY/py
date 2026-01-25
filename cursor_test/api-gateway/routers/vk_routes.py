@@ -55,6 +55,19 @@ async def save_vk_profile(
     return await forward_to_core("/vk/profile", request)
 
 
+@router.get("/profiles")
+async def get_all_vk_profiles(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает все профили VKontakte из core сервиса.
+    
+    GET /vk/profiles -> GET /vk/profiles на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core("/vk/profiles", request)
+
+
 @router.post("/post")
 async def create_vk_post(
     request: Request,

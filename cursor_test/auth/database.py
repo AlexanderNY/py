@@ -1,5 +1,6 @@
 import aiopg
-from typing import Optional
+from typing import Optional, AsyncIterator
+from contextlib import asynccontextmanager
 from config import settings
 from models import ALL_TABLES
 
@@ -16,7 +17,8 @@ async def init_db() -> None:
         _pool = await aiopg.create_pool(
             settings.DATABASE_URL,
             minsize=1,
-            maxsize=10
+            maxsize=10,
+            timeout=30  # Таймаут ожидания соединения из пула (секунды)
         )
         
         # Создание таблиц
@@ -26,15 +28,17 @@ async def init_db() -> None:
                     await cur.execute(table_sql)
 
 
-async def get_db_connection() -> aiopg.Connection:
-    """Получение соединения с базой данных из пула."""
+@asynccontextmanager
+async def get_db_connection() -> AsyncIterator[aiopg.Connection]:
+    """Получение соединения с базой данных из пула (контекстный менеджер)."""
     if _pool is None:
         await init_db()
     
     if _pool is None:
         raise RuntimeError("Database pool is not initialized")
     
-    return await _pool.acquire()
+    async with _pool.acquire() as conn:
+        yield conn
 
 
 async def close_db() -> None:

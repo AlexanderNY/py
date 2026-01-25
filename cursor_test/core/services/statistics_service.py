@@ -98,6 +98,42 @@ class StatisticsService:
             "processed_posts": processed,
             "published_posts": published
         }
+    
+    async def get_users_statistics(self) -> List[Dict]:
+        """Собирает статистику использования по пользователям.
+        
+        Returns:
+            Список статистики по пользователям
+        """
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                # Получаем статистику по каждому пользователю
+                await cur.execute("""
+                    SELECT 
+                        user_id,
+                        COUNT(*) as total_posts,
+                        COUNT(*) FILTER (WHERE status = 'collected') as collected_posts,
+                        COUNT(*) FILTER (WHERE status = 'processed') as processed_posts,
+                        COUNT(*) FILTER (WHERE status = 'published') as published_posts
+                    FROM posts
+                    GROUP BY user_id
+                    ORDER BY total_posts DESC
+                """)
+                rows = await cur.fetchall()
+                
+                return [
+                    {
+                        "user_id": row[0],
+                        "total_posts": row[1],
+                        "collected_posts": row[2],
+                        "processed_posts": row[3],
+                        "published_posts": row[4]
+                    }
+                    for row in rows
+                ]
+        finally:
+            conn.close()
 
 
 statistics_service = StatisticsService()

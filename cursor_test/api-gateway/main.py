@@ -17,6 +17,7 @@ from routers import (
     vk_router,
     curl_router,
     cpost_router,
+    bot_proxy_router,
     stubs_router,
     test_router
 )
@@ -85,6 +86,7 @@ def register_routers(application: FastAPI) -> None:
     application.include_router(vk_router)
     application.include_router(curl_router)
     application.include_router(cpost_router)
+    application.include_router(bot_proxy_router)
     application.include_router(stubs_router)
     application.include_router(test_router)
 

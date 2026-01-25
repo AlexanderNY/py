@@ -10,8 +10,7 @@ async def save_refresh_token(user_id: int, token: str) -> None:
     payload = decode_token(token)
     expires_at = datetime.fromtimestamp(payload["exp"])
     
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
@@ -23,34 +22,26 @@ async def save_refresh_token(user_id: int, token: str) -> None:
                 """,
                 (user_id, token, expires_at)
             )
-    finally:
-        conn.close()
 
 
 async def revoke_refresh_token(token: str) -> None:
     """Отзыв refresh токена (удаление из базы данных)."""
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 "DELETE FROM refresh_tokens WHERE token = %s",
                 (token,)
             )
-    finally:
-        conn.close()
 
 
 async def revoke_all_refresh_tokens(user_id: int) -> None:
     """Отзыв всех refresh токенов пользователя."""
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 "DELETE FROM refresh_tokens WHERE user_id = %s",
                 (user_id,)
             )
-    finally:
-        conn.close()
 
 
 async def is_refresh_token_valid(token: str) -> bool:
@@ -61,8 +52,7 @@ async def is_refresh_token_valid(token: str) -> bool:
         if payload.get("type") != "refresh":
             return False
         
-        conn = await get_db_connection()
-        try:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -73,8 +63,6 @@ async def is_refresh_token_valid(token: str) -> bool:
                 )
                 row = await cur.fetchone()
                 return row is not None
-        finally:
-            conn.close()
     except (TokenExpiredError, TokenInvalidError):
         return False
 
@@ -88,8 +76,7 @@ async def blacklist_token(token: str) -> None:
         # Если токен уже истек или невалиден, все равно добавляем в blacklist
         expires_at = datetime.utcnow() + timedelta(days=1)
     
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
@@ -99,14 +86,11 @@ async def blacklist_token(token: str) -> None:
                 """,
                 (token, expires_at)
             )
-    finally:
-        conn.close()
 
 
 async def is_token_blacklisted(token: str) -> bool:
     """Проверка наличия токена в черном списке."""
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
@@ -117,8 +101,6 @@ async def is_token_blacklisted(token: str) -> bool:
             )
             row = await cur.fetchone()
             return row is not None
-    finally:
-        conn.close()
 
 
 async def save_email_verification_token(user_id: int, token: str) -> None:
@@ -126,8 +108,7 @@ async def save_email_verification_token(user_id: int, token: str) -> None:
     payload = decode_token(token)
     expires_at = datetime.fromtimestamp(payload["exp"])
     
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
@@ -136,8 +117,6 @@ async def save_email_verification_token(user_id: int, token: str) -> None:
                 """,
                 (user_id, token, expires_at)
             )
-    finally:
-        conn.close()
 
 
 async def get_email_verification_token(token: str) -> Optional[int]:
@@ -148,8 +127,7 @@ async def get_email_verification_token(token: str) -> Optional[int]:
         if payload.get("type") != "email_verification":
             return None
         
-        conn = await get_db_connection()
-        try:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -162,23 +140,18 @@ async def get_email_verification_token(token: str) -> Optional[int]:
                 if row:
                     return row[0]
                 return None
-        finally:
-            conn.close()
     except (TokenExpiredError, TokenInvalidError):
         return None
 
 
 async def delete_email_verification_token(token: str) -> None:
     """Удаление токена верификации email после использования."""
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 "DELETE FROM email_verification_tokens WHERE token = %s",
                 (token,)
             )
-    finally:
-        conn.close()
 
 
 async def save_password_reset_token(user_id: int, token: str) -> None:
@@ -186,8 +159,7 @@ async def save_password_reset_token(user_id: int, token: str) -> None:
     payload = decode_token(token)
     expires_at = datetime.fromtimestamp(payload["exp"])
     
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             # Удаляем старые токены для этого пользователя
             await cur.execute(
@@ -202,8 +174,6 @@ async def save_password_reset_token(user_id: int, token: str) -> None:
                 """,
                 (user_id, token, expires_at)
             )
-    finally:
-        conn.close()
 
 
 async def get_password_reset_token(token: str) -> Optional[int]:
@@ -214,8 +184,7 @@ async def get_password_reset_token(token: str) -> Optional[int]:
         if payload.get("type") != "password_reset":
             return None
         
-        conn = await get_db_connection()
-        try:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -228,21 +197,16 @@ async def get_password_reset_token(token: str) -> Optional[int]:
                 if row:
                     return row[0]
                 return None
-        finally:
-            conn.close()
     except (TokenExpiredError, TokenInvalidError):
         return None
 
 
 async def delete_password_reset_token(token: str) -> None:
     """Удаление токена сброса пароля после использования."""
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 "DELETE FROM password_reset_tokens WHERE token = %s",
                 (token,)
             )
-    finally:
-        conn.close()
 

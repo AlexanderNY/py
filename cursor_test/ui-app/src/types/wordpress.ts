@@ -5,7 +5,12 @@ export interface TimeInterval {
 
 export type PublishScheduleType = 'on_new_messages' | 'by_intervals'
 
+export type PostStatus = 'draft' | 'publish' | 'pending' | 'private'
+
 export interface WordPressProfile {
+  site_url?: string
+  username?: string
+  app_password?: string
   publish_enabled: boolean
   collect_enabled: boolean
   publish_schedule_type: PublishScheduleType
@@ -19,10 +24,19 @@ export interface WordPressPost {
   post: {
     title: string
     content: string
-    description?: string
-    tags?: string[]
+    status?: PostStatus
     categories?: string[]
-    meta?: Record<string, any>
+    tags?: string[]
+    excerpt?: string
     slug?: string
+    featured_media?: number
+    meta?: Record<string, any>
   }
+}
+
+export interface WordPressPostListItem {
+  id?: number
+  title: string
+  status: PostStatus
+  excerpt?: string
 }
