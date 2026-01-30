@@ -3,7 +3,7 @@
 import logging
 from typing import Dict, Any, Optional
 
-from database import get_db_connection
+from database import get_db_connection, release_db_connection
 from services.wordpress_client import WordPressClient
 
 logger = logging.getLogger(__name__)
@@ -190,7 +190,7 @@ class PublishService:
                     "errors": errors
                 }
         finally:
-            conn.close()
+            await release_db_connection(conn)
     
     async def _update_post_status(
         self,

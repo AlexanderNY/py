@@ -7,6 +7,7 @@ from . import wordpress
 from . import vkontakte
 from . import curl
 from . import cpost
+from . import notifications
 
 __all__ = [
     "healthcheck",
@@ -18,4 +19,5 @@ __all__ = [
     "vkontakte",
     "curl",
     "cpost",
+    "notifications",
 ]

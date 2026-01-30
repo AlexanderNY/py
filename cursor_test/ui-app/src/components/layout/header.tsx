@@ -1,17 +1,85 @@
+import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { useTheme } from '@/contexts/theme-context'
 import { Button } from '@/components/ui'
+import { notificationsService } from '@/services/notifications-service'
+import type { Notification } from '@/types/core'
 
 export function Header() {
   const { user, logout } = useAuth()
   const { isDarkMode, toggleTheme } = useTheme()
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [currentNotificationIndex, setCurrentNotificationIndex] = useState(0)
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false)
+
+  useEffect(() => {
+    loadNotifications()
+  }, [])
+
+  async function loadNotifications() {
+    setIsLoadingNotifications(true)
+    try {
+      const response = await notificationsService.getNotifications()
+      setNotifications(response.notifications || [])
+      setCurrentNotificationIndex(0)
+    } catch (error) {
+      console.error('Failed to load notifications:', error)
+      setNotifications([])
+    } finally {
+      setIsLoadingNotifications(false)
+    }
+  }
+
+  function handleNextNotification() {
+    if (notifications.length === 0) return
+    setCurrentNotificationIndex((prev) => (prev + 1) % notifications.length)
+  }
+
+  function handlePrevNotification() {
+    if (notifications.length === 0) return
+    setCurrentNotificationIndex((prev) => (prev - 1 + notifications.length) % notifications.length)
+  }
+
+  const currentNotification = notifications[currentNotificationIndex]
 
   return (
     <header className="h-16 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] flex items-center justify-between px-6">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 flex-1">
         <h2 className="text-lg font-medium text-[var(--text-primary)]">
           Welcome back, <span className="text-primary-400">{user?.username}</span>
         </h2>
+        
+        {/* Notifications Block */}
+        {notifications.length > 0 && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-tertiary)] rounded-xl border border-[var(--border-color)] max-w-md">
+            <button
+              onClick={handlePrevNotification}
+              disabled={notifications.length <= 1}
+              className="p-1 rounded hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Previous notification"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            
+            <div 
+              className="flex-1 text-sm text-[var(--text-primary)] text-center px-2 notification-content"
+              dangerouslySetInnerHTML={{ __html: currentNotification?.message || '' }}
+            />
+            
+            <button
+              onClick={handleNextNotification}
+              disabled={notifications.length <= 1}
+              className="p-1 rounded hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Next notification"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
       
       <div className="flex items-center gap-3">

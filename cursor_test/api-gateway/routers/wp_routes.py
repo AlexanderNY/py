@@ -55,6 +55,42 @@ async def save_wp_profile(
     return await forward_to_core("/wp/profile", request)
 
 
+@router.get("/publish-profile")
+async def get_wp_publish_profile(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает профиль публикации WordPress из core сервиса."""
+    return await forward_to_core("/wp/publish-profile", request)
+
+
+@router.post("/publish-profile")
+async def save_wp_publish_profile(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Сохраняет профиль публикации WordPress в core сервисе."""
+    return await forward_to_core("/wp/publish-profile", request)
+
+
+@router.get("/collect-profile")
+async def get_wp_collect_profile(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает профиль сбора (parser) WordPress из core сервиса."""
+    return await forward_to_core("/wp/collect-profile", request)
+
+
+@router.post("/collect-profile")
+async def save_wp_collect_profile(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Сохраняет профиль сбора WordPress в core сервисе."""
+    return await forward_to_core("/wp/collect-profile", request)
+
+
 @router.get("/profiles")
 async def get_all_wp_profiles(
     request: Request,

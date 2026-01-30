@@ -124,13 +124,16 @@ def _transform_profiles_to_schedules(profiles_data: dict[str, list[dict[str, Any
     
     for platform, profiles in profiles_data.items():
         for profile in profiles:
-            # Парсим time_intervals если это строка
+            # Парсим time_intervals: строка "HH:MM" или JSON-массив
             time_intervals = profile.get("time_intervals", [])
             if isinstance(time_intervals, str):
-                try:
-                    time_intervals = json.loads(time_intervals) if time_intervals else []
-                except json.JSONDecodeError:
-                    time_intervals = []
+                if time_intervals and ":" in time_intervals and len(time_intervals) <= 5:
+                    time_intervals = [{"start": time_intervals, "end": time_intervals}]
+                else:
+                    try:
+                        time_intervals = json.loads(time_intervals) if time_intervals else []
+                    except json.JSONDecodeError:
+                        time_intervals = []
             
             schedule = {
                 "user_id": profile.get("user_id"),
@@ -146,8 +149,7 @@ def _transform_profiles_to_schedules(profiles_data: dict[str, list[dict[str, Any
 
 
 async def _load_previous_snapshot() -> list[dict[str, Any]]:
-    conn = await get_db_connection()
-    try:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 "SELECT user_id, platform, publish_enabled, collect_enabled, schedule_type, time_intervals FROM schedule_snapshots"
@@ -166,14 +168,14 @@ async def _load_previous_snapshot() -> list[dict[str, Any]]:
             rec["time_intervals"] = ti
             out.append(rec)
         return out
-    finally:
-        conn.close()
 
 
 async def _store_snapshot(schedules: list[dict[str, Any]]) -> None:
-    conn = await get_db_connection()
-    try:
-        async with conn.cursor() as cur:
+    async with get_db_connection() as conn:
+        cur = await conn.cursor()
+        try:
+            # Начинаем транзакцию через SQL
+            await cur.execute("BEGIN")
             await cur.execute("DELETE FROM schedule_snapshots")
             for s in schedules:
                 ti = json.dumps(s.get("time_intervals") or [])
@@ -193,9 +195,14 @@ async def _store_snapshot(schedules: list[dict[str, Any]]) -> None:
                         ti,
                     ),
                 )
-            await conn.commit()
-    finally:
-        conn.close()
+            # Коммитим транзакцию через SQL
+            await cur.execute("COMMIT")
+        except Exception:
+            # Откатываем транзакцию через SQL
+            await cur.execute("ROLLBACK")
+            raise
+        finally:
+            cur.close()
 
 
 async def _notify_bot(platform: str, schedules: list[dict[str, Any]], token: str) -> None:

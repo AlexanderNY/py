@@ -15,6 +15,30 @@ export interface WordPressProfile {
   collect_enabled: boolean
   publish_schedule_type: PublishScheduleType
   time_intervals?: TimeInterval[]
+  collect_sites?: WordPressCollectSiteItem[]
+}
+
+/** Профиль публикации WordPress (Post Profile Settings). time_intervals — одно значение "HH:MM". */
+export interface WordPressPublishProfile {
+  publish_enabled: boolean
+  schedule_type?: PublishScheduleType
+  time_intervals?: string // "HH:MM"
+  site_url?: string
+  username?: string
+  app_password?: string
+}
+
+/** Один сайт сбора: site_url, schedule_type, time_intervals (HH:MM) */
+export interface WordPressCollectSiteItem {
+  site_url?: string
+  schedule_type?: PublishScheduleType
+  time_intervals?: string // "HH:MM"
+}
+
+/** Профиль сбора WordPress (Parser Profile Settings) */
+export interface WordPressCollectProfile {
+  collect_enabled: boolean
+  collect_sites?: WordPressCollectSiteItem[]
 }
 
 export interface WordPressPost {

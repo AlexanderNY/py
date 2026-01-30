@@ -41,15 +41,18 @@ class ProxyService:
         actual_method = override_method or method
         request_headers = self.prepare_headers(dict(request.headers))
 
-        # Добавляем X-User-Id из JWT (если есть валидный токен)
+        # Добавляем X-User-Id и X-User-Role из JWT (если есть валидный токен)
         authorization_header = request_headers.get("authorization") or request_headers.get("Authorization")
         if authorization_header:
             try:
                 token = jwt_validator.extract_token_from_header(authorization_header)
                 user_payload = jwt_validator.get_user_from_token(token)
                 user_id = user_payload.get("user_id")
+                user_role = user_payload.get("role")
                 if user_id is not None:
                     request_headers["X-User-Id"] = str(user_id)
+                if user_role is not None:
+                    request_headers["X-User-Role"] = str(user_role)
             except Exception:
                 # Если токен невалидный или отсутствует user_id, просто не добавляем заголовок.
                 # Валидацию и ошибки обрабатывает слой аутентификации.

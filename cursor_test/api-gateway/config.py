@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     # URL сервисов для маршрутизации
     AUTH_SERVICE_URL: str = "http://172.20.10.1:8001" #"http://localhost:8001"
     CORE_SERVICE_URL: str = "http://172.20.10.2:8002" #"http://localhost:8002"
-    SCHEDULER_SERVICE_URL: str = "http://localhost:8003"
+    SCHEDULER_SERVICE_URL: str = "http://172.20.10.3:8003" #"http://localhost:8003"
     TG_BOT_SERVICE_URL: str = "http://localhost:8004"
     VK_BOT_SERVICE_URL: str = "http://localhost:8005"
     WP_BOT_SERVICE_URL: str = "http://localhost:8006"
@@ -59,6 +59,8 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/auth/users": {"requests": 30, "window_seconds": 60},
     "/wp/posts": {"requests": 30, "window_seconds": 60},
     "/wp/profile": {"requests": 30, "window_seconds": 60},
+    "/wp/publish-profile": {"requests": 30, "window_seconds": 60},
+    "/wp/collect-profile": {"requests": 30, "window_seconds": 60},
     "/wp/profiles": {"requests": 30, "window_seconds": 60},
     "/wp/post": {"requests": 20, "window_seconds": 60},
     "/tg/profiles": {"requests": 30, "window_seconds": 60},

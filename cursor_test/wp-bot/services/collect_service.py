@@ -5,7 +5,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from database import get_db_connection
+from database import get_db_connection, release_db_connection
 from services.wordpress_client import WordPressClient
 
 logger = logging.getLogger(__name__)
@@ -218,7 +218,7 @@ class CollectService:
                     "errors": errors
                 }
         finally:
-            conn.close()
+            await release_db_connection(conn)
 
 
 collect_service = CollectService()

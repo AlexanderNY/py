@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS tw_profiles (
 );
 """
 
-# Таблица wp_profiles - настройки WordPress
+# Таблица wp_profiles - настройки WordPress (legacy, оставлена для совместимости)
 WP_PROFILES_TABLE = """
 CREATE TABLE IF NOT EXISTS wp_profiles (
     id SERIAL PRIMARY KEY,
@@ -95,6 +95,48 @@ CREATE TABLE IF NOT EXISTS wp_profiles (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+"""
+
+# Таблица wp_publish_profile - настройки публикации WordPress
+WP_PUBLISH_PROFILE_TABLE = """
+CREATE TABLE IF NOT EXISTS wp_publish_profile (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER UNIQUE NOT NULL,
+    publish_enabled BOOLEAN DEFAULT FALSE,
+    schedule_type VARCHAR(50) DEFAULT 'on_new_messages',
+    time_intervals JSONB DEFAULT '[]',
+    site_url TEXT,
+    username VARCHAR(255),
+    app_password VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+# Таблица wp_collect_profile - настройки сбора (parser) WordPress
+WP_COLLECT_PROFILE_TABLE = """
+CREATE TABLE IF NOT EXISTS wp_collect_profile (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER UNIQUE NOT NULL,
+    collect_enabled BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+# Таблица wp_collect_sites - сайты сбора по пользователю (столбцы site_url, schedule_type, time_intervals)
+WP_COLLECT_SITES_TABLE = """
+CREATE TABLE IF NOT EXISTS wp_collect_sites (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES wp_collect_profile(user_id) ON DELETE CASCADE,
+    site_url TEXT,
+    schedule_type VARCHAR(50) DEFAULT 'on_new_messages',
+    time_intervals VARCHAR(5),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+WP_COLLECT_SITES_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_wp_collect_sites_user_id ON wp_collect_sites(user_id);
 """
 
 # Таблица wp_posts - посты WordPress (структура аналогична posts)
@@ -187,6 +229,20 @@ CREATE TABLE IF NOT EXISTS cpost_profiles (
 );
 """
 
+# Таблица notifications - уведомления для всех пользователей
+NOTIFICATIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+# Индексы для notifications
+NOTIFICATIONS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
+"""
+
 # Список всех таблиц для инициализации
 ALL_TABLES = [
     POSTS_TABLE,
@@ -194,9 +250,15 @@ ALL_TABLES = [
     TG_PROFILES_TABLE,
     TW_PROFILES_TABLE,
     WP_PROFILES_TABLE,
+    WP_PUBLISH_PROFILE_TABLE,
+    WP_COLLECT_PROFILE_TABLE,
+    WP_COLLECT_SITES_TABLE,
+    WP_COLLECT_SITES_INDEX,
     WP_POSTS_TABLE,
     WP_POSTS_INDEXES,
     VK_PROFILES_TABLE,
     CURL_SETTINGS_TABLE,
     CPOST_PROFILES_TABLE,
+    NOTIFICATIONS_TABLE,
+    NOTIFICATIONS_INDEXES,
 ]

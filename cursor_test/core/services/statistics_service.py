@@ -1,7 +1,7 @@
 """Сервис для сбора статистики постов."""
 
 from typing import List, Dict
-from database import get_db_connection
+from database import get_db_connection, release_db_connection
 
 
 class StatisticsService:
@@ -33,7 +33,7 @@ class StatisticsService:
                 
                 return [tg_stats, tw_stats, wp_stats, vk_stats, total_stats]
         finally:
-            conn.close()
+            await release_db_connection(conn)
     
     async def _get_platform_stats(self, cur, platform_field: str, platform_name: str) -> Dict:
         """Получает статистику для конкретной платформы.
@@ -133,7 +133,7 @@ class StatisticsService:
                     for row in rows
                 ]
         finally:
-            conn.close()
+            await release_db_connection(conn)
 
 
 statistics_service = StatisticsService()

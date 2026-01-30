@@ -2,7 +2,7 @@
 
 import json
 from typing import List, Dict, Any
-from database import get_db_connection
+from database import get_db_connection, release_db_connection
 
 
 class ScheduleService:
@@ -50,7 +50,7 @@ class ScheduleService:
                 
                 return result
         finally:
-            conn.close()
+            await release_db_connection(conn)
 
 
 schedule_service = ScheduleService()

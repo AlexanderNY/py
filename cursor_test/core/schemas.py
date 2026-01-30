@@ -173,7 +173,7 @@ class TwitterPost(BaseModel):
 # ==================== WordPress ====================
 
 class WordPressProfileBase(BaseModel):
-    """Базовая модель профиля WordPress."""
+    """Базовая модель профиля WordPress (legacy)."""
     publish_enabled: bool = False
     collect_enabled: bool = False
     schedule_type: ScheduleType = ScheduleType.IMMEDIATE
@@ -184,12 +184,12 @@ class WordPressProfileBase(BaseModel):
 
 
 class WordPressProfileCreate(WordPressProfileBase):
-    """Модель для создания/обновления профиля WordPress."""
+    """Модель для создания/обновления профиля WordPress (legacy)."""
     pass
 
 
 class WordPressProfile(WordPressProfileBase):
-    """Модель профиля WordPress с ID."""
+    """Модель профиля WordPress с ID (legacy)."""
     id: int
     user_id: int
     created_at: datetime
@@ -197,6 +197,33 @@ class WordPressProfile(WordPressProfileBase):
 
     class Config:
         from_attributes = True
+
+
+class WordPressPublishProfileCreate(BaseModel):
+    """Модель для создания/обновления профиля публикации WordPress.
+    time_intervals — одно значение времени в формате "HH:MM".
+    """
+    publish_enabled: bool = False
+    schedule_type: Optional[str] = "on_new_messages"
+    time_intervals: Optional[str] = None  # "HH:MM"
+    site_url: Optional[str] = None
+    username: Optional[str] = None
+    app_password: Optional[str] = None
+
+
+class CollectSiteItem(BaseModel):
+    """Один сайт сбора: site_url, schedule_type, time_intervals (HH:MM)."""
+    site_url: Optional[str] = None
+    schedule_type: Optional[str] = "on_new_messages"
+    time_intervals: Optional[str] = None  # "HH:MM"
+
+
+class WordPressCollectProfileCreate(BaseModel):
+    """Модель для создания/обновления профиля сбора (parser) WordPress.
+    collect_sites — список объектов с полями site_url, schedule_type, time_intervals (HH:MM).
+    """
+    collect_enabled: bool = False
+    collect_sites: Optional[List[Dict[str, Any]]] = []  # [{site_url, schedule_type, time_intervals}]
 
 
 class WordPressPostContent(BaseModel):
@@ -376,3 +403,25 @@ class Post(PostBase):
 
     class Config:
         from_attributes = True
+
+
+# ==================== Notifications ====================
+
+class NotificationCreate(BaseModel):
+    """Модель для создания уведомления."""
+    message: str = Field(..., min_length=1)
+
+
+class Notification(BaseModel):
+    """Модель уведомления."""
+    id: int
+    message: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class NotificationResponse(BaseModel):
+    """Ответ со списком уведомлений."""
+    notifications: List[Notification]

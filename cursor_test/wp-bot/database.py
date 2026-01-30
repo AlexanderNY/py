@@ -17,7 +17,8 @@ async def init_db() -> None:
         _pool = await aiopg.create_pool(
             settings.DATABASE_URL,
             minsize=1,
-            maxsize=10
+            maxsize=10,
+            timeout=30  # Таймаут ожидания соединения из пула (секунды)
         )
 
 
@@ -27,6 +28,18 @@ async def get_db_connection() -> aiopg.Connection:
         raise RuntimeError("Database pool is not initialized")
     
     return await _pool.acquire()
+
+
+async def release_db_connection(conn: aiopg.Connection) -> None:
+    """Возврат соединения в пул.
+    
+    Args:
+        conn: Соединение для возврата в пул
+    """
+    if _pool is None:
+        return
+    
+    _pool.release(conn)
 
 
 async def close_db() -> None:

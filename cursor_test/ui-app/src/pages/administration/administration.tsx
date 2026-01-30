@@ -1,14 +1,17 @@
-import { useState } from 'react'
+import { useState, FormEvent } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { TipTapEditor } from '@/components/ui/tiptap-editor'
 import { authService } from '@/services/auth-service'
 import { coreService } from '@/services/core-service'
+import { notificationsService } from '@/services/notifications-service'
+import { Input } from '@/components/ui/input'
 import type { User } from '@/types/auth'
-import type { UserStatisticsItem, ScheduleSnapshot } from '@/types/core'
+import type { UserStatisticsItem, ScheduleSnapshot, Notification } from '@/types/core'
 
 export function AdministrationPage() {
-  const [activeTab, setActiveTab] = useState<'users' | 'statistics' | 'schedule'>('users')
+  const [activeTab, setActiveTab] = useState<'users' | 'statistics' | 'schedule' | 'notifications'>('users')
   const [users, setUsers] = useState<User[]>([])
   const [statistics, setStatistics] = useState<UserStatisticsItem[]>([])
   const [schedules, setSchedules] = useState<ScheduleSnapshot[]>([])
@@ -28,6 +31,15 @@ export function AdministrationPage() {
     tw: false,
     vk: false
   })
+
+  // Notifications state
+  const [notificationMessage, setNotificationMessage] = useState('')
+  const [isCreatingNotification, setIsCreatingNotification] = useState(false)
+  const [notificationError, setNotificationError] = useState('')
+  const [notificationSuccess, setNotificationSuccess] = useState('')
+  const [notificationsList, setNotificationsList] = useState<Notification[]>([])
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false)
+  const [isDeletingNotification, setIsDeletingNotification] = useState<number | null>(null)
 
   async function handleLoadUsers() {
     setUsersError('')
@@ -122,6 +134,57 @@ export function AdministrationPage() {
     }))
   }
 
+  async function handleCreateNotification(e: FormEvent) {
+    e.preventDefault()
+    setNotificationError('')
+    setNotificationSuccess('')
+    setIsCreatingNotification(true)
+
+    // TipTap returns <p></p> for empty content
+    const strippedMessage = notificationMessage.replace(/<[^>]*>/g, '').trim()
+    if (!strippedMessage) {
+      setNotificationError('Message cannot be empty')
+      setIsCreatingNotification(false)
+      return
+    }
+
+    try {
+      await notificationsService.createNotification({ message: notificationMessage })
+      setNotificationSuccess('Notification created successfully')
+      setNotificationMessage('')
+    } catch (error) {
+      setNotificationError(error instanceof Error ? error.message : 'Failed to create notification')
+    } finally {
+      setIsCreatingNotification(false)
+    }
+  }
+
+  async function loadNotifications() {
+    setIsLoadingNotifications(true)
+    try {
+      const response = await notificationsService.getNotifications()
+      setNotificationsList(response.notifications || [])
+    } catch (error) {
+      console.error('Failed to load notifications:', error)
+      setNotificationsList([])
+    } finally {
+      setIsLoadingNotifications(false)
+    }
+  }
+
+  async function handleDeleteNotification(notificationId: number) {
+    setIsDeletingNotification(notificationId)
+    try {
+      await notificationsService.deleteNotification(notificationId)
+      setNotificationsList(prev => prev.filter(n => n.id !== notificationId))
+      setNotificationSuccess('Notification deleted successfully')
+    } catch (error) {
+      setNotificationError(error instanceof Error ? error.message : 'Failed to delete notification')
+    } finally {
+      setIsDeletingNotification(null)
+    }
+  }
+
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
       <div>
@@ -160,6 +223,16 @@ export function AdministrationPage() {
           }`}
         >
           Schedule
+        </button>
+        <button
+          onClick={() => setActiveTab('notifications')}
+          className={`px-4 py-2 font-medium text-sm transition-colors ${
+            activeTab === 'notifications'
+              ? 'text-primary-400 border-b-2 border-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          Notifications
         </button>
       </div>
 
@@ -534,6 +607,128 @@ export function AdministrationPage() {
                 Click "Получить расписание" to fetch schedule snapshots
               </p>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Notifications Tab */}
+      {activeTab === 'notifications' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+              Notifications Management
+            </CardTitle>
+            <CardDescription>Create notifications visible to all users</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Create Notification Form */}
+            <form onSubmit={handleCreateNotification} className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">
+                  Notification Message
+                </label>
+                <TipTapEditor
+                  content={notificationMessage}
+                  onChange={setNotificationMessage}
+                  placeholder="Enter notification message..."
+                  toolbarButtons={['bold', 'italic', 'underline', 'strike', 'bulletList', 'orderedList', 'undo', 'redo']}
+                />
+              </div>
+
+              {notificationError && (
+                <Alert variant="error" className="animate-slide-down">
+                  {notificationError}
+                </Alert>
+              )}
+
+              {notificationSuccess && (
+                <Alert variant="success" className="animate-slide-down">
+                  {notificationSuccess}
+                </Alert>
+              )}
+
+              <Button type="submit" isLoading={isCreatingNotification} className="w-full sm:w-auto">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+                Send Notification
+              </Button>
+            </form>
+
+            {/* Notifications List */}
+            <div className="border-t border-[var(--border-color)] pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-[var(--text-primary)]">Recent Notifications</h3>
+                <Button 
+                  variant="secondary" 
+                  size="sm" 
+                  onClick={loadNotifications}
+                  isLoading={isLoadingNotifications}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Refresh
+                </Button>
+              </div>
+
+              {notificationsList.length > 0 ? (
+                <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
+                  <table className="w-full">
+                    <thead className="bg-[var(--bg-tertiary)]">
+                      <tr>
+                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">ID</th>
+                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Created At</th>
+                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Message</th>
+                        <th className="py-3 px-4 text-center text-sm font-medium text-[var(--text-secondary)]">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border-color)]">
+                      {notificationsList.map((notification) => (
+                        <tr key={notification.id} className="hover:bg-[var(--bg-tertiary)] transition-colors">
+                          <td className="py-3 px-4 text-[var(--text-primary)] font-mono text-sm">{notification.id}</td>
+                          <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">
+                            {new Date(notification.created_at).toLocaleString()}
+                          </td>
+                          <td className="py-3 px-4 text-[var(--text-primary)]">
+                            <div 
+                              className="notification-content max-w-md truncate"
+                              dangerouslySetInnerHTML={{ __html: notification.message }}
+                            />
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <button
+                              onClick={() => handleDeleteNotification(notification.id)}
+                              disabled={isDeletingNotification === notification.id}
+                              className="p-2 rounded-lg hover:bg-red-500/20 text-red-400 hover:text-red-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Delete notification"
+                            >
+                              {isDeletingNotification === notification.id ? (
+                                <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                              ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              )}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-[var(--text-muted)] text-center py-8">
+                  {isLoadingNotifications ? 'Loading notifications...' : 'Click "Refresh" to load notifications'}
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}

@@ -47,3 +47,17 @@ export interface ScheduleSnapshot {
 export interface ScheduleResponse {
   schedules: ScheduleSnapshot[]
 }
+
+export interface Notification {
+  id: number
+  message: string
+  created_at: string
+}
+
+export interface NotificationResponse {
+  notifications: Notification[]
+}
+
+export interface NotificationCreate {
+  message: string
+}

@@ -2,7 +2,7 @@
 
 import json
 from typing import Dict, List, Optional
-from database import get_db_connection
+from database import get_db_connection, release_db_connection
 
 
 class PostService:
@@ -99,7 +99,7 @@ class PostService:
                 row = await cur.fetchone()
                 return self._row_to_post(row, cur.description)
         finally:
-            conn.close()
+            await release_db_connection(conn)
 
     async def create_wp_post_record(
         self,
@@ -149,7 +149,7 @@ class PostService:
                 row = await cur.fetchone()
                 return self._row_to_post(row, cur.description)
         finally:
-            conn.close()
+            await release_db_connection(conn)
     
     async def get_posts(
         self,
@@ -199,7 +199,7 @@ class PostService:
                 
                 return [self._row_to_post(row, cur.description) for row in rows]
         finally:
-            conn.close()
+            await release_db_connection(conn)
 
     async def get_wp_posts(
         self,
@@ -233,7 +233,7 @@ class PostService:
                 rows = await cur.fetchall()
                 return [self._row_to_post(row, cur.description) for row in rows]
         finally:
-            conn.close()
+            await release_db_connection(conn)
     
     async def update_post_status(self, post_id: int, status: str) -> Optional[Dict]:
         """Обновляет статус поста.
@@ -261,7 +261,7 @@ class PostService:
                     return self._row_to_post(row, cur.description)
                 return None
         finally:
-            conn.close()
+            await release_db_connection(conn)
     
     def _row_to_post(self, row, description) -> Dict:
         """Преобразует строку БД в словарь поста."""

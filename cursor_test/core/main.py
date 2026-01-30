@@ -13,7 +13,8 @@ from routers import (
     wordpress,
     vkontakte,
     curl,
-    cpost
+    cpost,
+    notifications
 )
 
 
@@ -53,6 +54,7 @@ app.include_router(wordpress.router)
 app.include_router(vkontakte.router)
 app.include_router(curl.router)
 app.include_router(cpost.router)
+app.include_router(notifications.router)
 
 
 @app.get("/")

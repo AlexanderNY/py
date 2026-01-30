@@ -1,18 +1,30 @@
-import { useState, useEffect, FormEvent, useRef } from 'react'
+import { useState, useEffect, FormEvent } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { TipTapEditor } from '@/components/ui/tiptap-editor'
 import { wordpressService } from '@/services/wordpress-service'
-import type { WordPressProfile, WordPressPost, WordPressPostListItem, PostStatus } from '@/types/wordpress'
+import type { WordPressPost, WordPressPostListItem, PostStatus, PublishScheduleType } from '@/types/wordpress'
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
 }
 
+const SCHEDULE_MINUTES = [0, 15, 30, 45] as const
+type ScheduleMinute = (typeof SCHEDULE_MINUTES)[number]
+
+type CollectSiteItem = {
+  id: string
+  siteUrl: string
+  scheduleType: PublishScheduleType
+  scheduleHour: number
+  scheduleMinute: ScheduleMinute
+}
+
 export function WordPressPage() {
   // Tab state
-  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile'>('create')
+  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'postProfile' | 'parserProfile'>('create')
 
   // Profile state
   const [siteUrl, setSiteUrl] = useState('')
@@ -21,8 +33,10 @@ export function WordPressPage() {
   const [publishEnabled, setPublishEnabled] = useState(false)
   const [collectEnabled, setCollectEnabled] = useState(false)
   const [publishScheduleType, setPublishScheduleType] = useState<'on_new_messages' | 'by_intervals'>('on_new_messages')
-  const [timeIntervals, setTimeIntervals] = useState<Array<{ id: string; start: string; end: string }>>([
-    { id: generateId(), start: '', end: '' }
+  const [publishScheduleHour, setPublishScheduleHour] = useState(9)
+  const [publishScheduleMinute, setPublishScheduleMinute] = useState<ScheduleMinute>(0)
+  const [collectSites, setCollectSites] = useState<CollectSiteItem[]>([
+    { id: generateId(), siteUrl: '', scheduleType: 'on_new_messages', scheduleHour: 9, scheduleMinute: 0 }
   ])
   
   // Post state
@@ -48,8 +62,6 @@ export function WordPressPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  // Refs
-  const contentRef = useRef<HTMLTextAreaElement | null>(null)
 
   // Load profile on mount
   useEffect(() => {
@@ -67,23 +79,60 @@ export function WordPressPage() {
     setIsLoadingProfile(true)
     setError('')
     try {
-      const profile = await wordpressService.getProfile()
-      setSiteUrl(profile.site_url || '')
-      setUsername(profile.username || '')
-      setAppPassword(profile.app_password || '')
-      setPublishEnabled(profile.publish_enabled)
-      setCollectEnabled(profile.collect_enabled)
-      setPublishScheduleType(profile.publish_schedule_type || 'on_new_messages')
-      if (profile.time_intervals && profile.time_intervals.length > 0) {
-        setTimeIntervals(profile.time_intervals.map(interval => ({
-          id: generateId(),
-          start: interval.start,
-          end: interval.end
-        })))
+      const [publishProfile, collectProfile] = await Promise.all([
+        wordpressService.getPublishProfile(),
+        wordpressService.getCollectProfile(),
+      ])
+      setSiteUrl(publishProfile.site_url || '')
+      setUsername(publishProfile.username || '')
+      setAppPassword(publishProfile.app_password || '')
+      setPublishEnabled(publishProfile.publish_enabled ?? false)
+      setCollectEnabled(collectProfile.collect_enabled ?? false)
+      setPublishScheduleType((publishProfile.schedule_type as PublishScheduleType) || 'on_new_messages')
+      const ti = publishProfile.time_intervals
+      if (typeof ti === 'string' && ti && ti.includes(':')) {
+        const [h, m] = ti.split(':').map(Number)
+        const hour = Number.isFinite(h) ? Math.max(0, Math.min(23, h)) : 9
+        const rawMin = Number.isFinite(m) ? m : 0
+        const minute = SCHEDULE_MINUTES.reduce((prev, curr) =>
+          Math.abs(curr - rawMin) < Math.abs(prev - rawMin) ? curr : prev
+        ) as ScheduleMinute
+        setPublishScheduleHour(hour)
+        setPublishScheduleMinute(minute)
+      } else if (Array.isArray(ti) && ti.length > 0 && ti[0]?.start) {
+        const [h, m] = ti[0].start.split(':').map(Number)
+        const hour = Number.isFinite(h) ? Math.max(0, Math.min(23, h)) : 9
+        const rawMin = Number.isFinite(m) ? m : 0
+        const minute = SCHEDULE_MINUTES.reduce((prev, curr) =>
+          Math.abs(curr - rawMin) < Math.abs(prev - rawMin) ? curr : prev
+        ) as ScheduleMinute
+        setPublishScheduleHour(hour)
+        setPublishScheduleMinute(minute)
+      }
+      if (collectProfile.collect_sites && collectProfile.collect_sites.length > 0) {
+        setCollectSites(collectProfile.collect_sites.map((s) => {
+          let scheduleHour = 9
+          let scheduleMinute: ScheduleMinute = 0
+          const ti = s.time_intervals
+          if (typeof ti === 'string' && ti && ti.includes(':')) {
+            const [h, m] = ti.split(':').map(Number)
+            scheduleHour = Number.isFinite(h) ? Math.max(0, Math.min(23, h)) : 9
+            const rawMin = Number.isFinite(m) ? m : 0
+            scheduleMinute = SCHEDULE_MINUTES.reduce((prev, curr) =>
+              Math.abs(curr - rawMin) < Math.abs(prev - rawMin) ? curr : prev
+            ) as ScheduleMinute
+          }
+          return {
+            id: generateId(),
+            siteUrl: s.site_url || '',
+            scheduleType: (s.schedule_type as PublishScheduleType) || 'on_new_messages',
+            scheduleHour,
+            scheduleMinute,
+          }
+        }))
       }
     } catch (err) {
-      // If profile doesn't exist, use defaults
-      console.log('Profile not found, using defaults')
+      console.log('Profile not found, using defaults', err)
     } finally {
       setIsLoadingProfile(false)
     }
@@ -103,29 +152,49 @@ export function WordPressPage() {
     }
   }
 
-  async function handleSaveProfile(e: FormEvent) {
+  async function handleSavePostProfile(e: FormEvent) {
     e.preventDefault()
     setError('')
     setSuccess('')
     setIsSavingProfile(true)
-
-    const profile: WordPressProfile = {
-      site_url: siteUrl || undefined,
-      username: username || undefined,
-      app_password: appPassword || undefined,
-      publish_enabled: publishEnabled,
-      collect_enabled: collectEnabled,
-      publish_schedule_type: publishScheduleType,
-      time_intervals: publishScheduleType === 'by_intervals' 
-        ? timeIntervals.filter(interval => interval.start && interval.end)
-        : undefined
-    }
-
+    const timeIntervals = publishScheduleType === 'by_intervals'
+      ? `${String(publishScheduleHour).padStart(2, '0')}:${String(publishScheduleMinute).padStart(2, '0')}`
+      : undefined
     try {
-      await wordpressService.saveProfile(profile)
-      setSuccess('Profile settings saved successfully')
+      await wordpressService.savePublishProfile({
+        publish_enabled: publishEnabled,
+        schedule_type: publishScheduleType,
+        time_intervals: timeIntervals,
+        site_url: siteUrl || undefined,
+        username: username || undefined,
+        app_password: appPassword || undefined,
+      })
+      setSuccess('Post profile settings saved successfully')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save profile settings')
+      setError(err instanceof Error ? err.message : 'Failed to save post profile settings')
+    } finally {
+      setIsSavingProfile(false)
+    }
+  }
+
+  async function handleSaveParserProfile(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    setSuccess('')
+    setIsSavingProfile(true)
+    const collect_sites = collectSites.map((s) => ({
+      site_url: s.siteUrl || undefined,
+      schedule_type: s.scheduleType,
+      time_intervals: `${String(s.scheduleHour).padStart(2, '0')}:${String(s.scheduleMinute).padStart(2, '0')}`,
+    }))
+    try {
+      await wordpressService.saveCollectProfile({
+        collect_enabled: collectEnabled,
+        collect_sites,
+      })
+      setSuccess('Parser profile settings saved successfully')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save parser profile settings')
     } finally {
       setIsSavingProfile(false)
     }
@@ -182,65 +251,40 @@ export function WordPressPage() {
     }
   }
 
-  function applyFormatting(tag: 'b' | 'i' | 'u') {
-    const textarea = contentRef.current
-    if (!textarea) return
 
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-
-    if (start === null || end === null || start === undefined || end === undefined) {
-      return
-    }
-
-    const selectedText = postContent.slice(start, end)
-    const openTag = `<${tag}>`
-    const closeTag = `</${tag}>`
-
-    let newContent: string
-    let cursorPosition: number
-
-    if (selectedText.length === 0) {
-      // Insert empty tag and place cursor inside
-      newContent = postContent.slice(0, start) + openTag + closeTag + postContent.slice(end)
-      cursorPosition = start + openTag.length
-    } else {
-      // Wrap selected text
-      newContent =
-        postContent.slice(0, start) +
-        openTag +
-        selectedText +
-        closeTag +
-        postContent.slice(end)
-      cursorPosition = start + openTag.length + selectedText.length + closeTag.length
-    }
-
-    setPostContent(newContent)
-
-    // Restore focus and selection
-    requestAnimationFrame(() => {
-      textarea.focus()
-      textarea.selectionStart = cursorPosition
-      textarea.selectionEnd = cursorPosition
-    })
+  function addCollectSite() {
+    if (collectSites.length >= 5) return
+    setCollectSites(prev => [...prev, {
+      id: generateId(),
+      siteUrl: '',
+      scheduleType: 'on_new_messages',
+      scheduleHour: 9,
+      scheduleMinute: 0
+    }])
   }
 
-  function addTimeInterval() {
-    if (timeIntervals.length < 4) {
-      setTimeIntervals([...timeIntervals, { id: generateId(), start: '', end: '' }])
-    }
+  function removeCollectSite(siteId: string) {
+    if (collectSites.length <= 1) return
+    setCollectSites(prev => prev.filter(s => s.id !== siteId))
   }
 
-  function removeTimeInterval(id: string) {
-    if (timeIntervals.length > 1) {
-      setTimeIntervals(timeIntervals.filter(interval => interval.id !== id))
-    }
+  function updateCollectSiteUrl(siteId: string, value: string) {
+    setCollectSites(prev => prev.map(s => s.id === siteId ? { ...s, siteUrl: value } : s))
   }
 
-  function updateTimeInterval(id: string, field: 'start' | 'end', value: string) {
-    setTimeIntervals(timeIntervals.map(interval =>
-      interval.id === id ? { ...interval, [field]: value } : interval
-    ))
+  function updateCollectSiteScheduleType(siteId: string, value: PublishScheduleType) {
+    setCollectSites(prev => prev.map(s => s.id === siteId ? { ...s, scheduleType: value } : s))
+  }
+
+  function updateCollectSiteScheduleTime(siteId: string, hour?: number, minute?: ScheduleMinute) {
+    setCollectSites(prev => prev.map(s => {
+      if (s.id !== siteId) return s
+      return {
+        ...s,
+        ...(hour !== undefined && { scheduleHour: hour }),
+        ...(minute !== undefined && { scheduleMinute: minute })
+      }
+    }))
   }
 
   function updateStringArray(setter: (arr: string[]) => void, index: number, value: string) {
@@ -308,14 +352,27 @@ export function WordPressPage() {
         </button>
         <button
           className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === 'profile'
+            activeTab === 'postProfile'
               ? 'text-primary-400'
               : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
           }`}
-          onClick={() => setActiveTab('profile')}
+          onClick={() => setActiveTab('postProfile')}
         >
-          Profile Settings
-          {activeTab === 'profile' && (
+          Post Profile Settings
+          {activeTab === 'postProfile' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
+          )}
+        </button>
+        <button
+          className={`px-6 py-3 text-sm font-medium transition-all relative ${
+            activeTab === 'parserProfile'
+              ? 'text-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+          onClick={() => setActiveTab('parserProfile')}
+        >
+          Parser Profile Settings
+          {activeTab === 'parserProfile' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
           )}
         </button>
@@ -350,44 +407,11 @@ export function WordPressPage() {
                 <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">
                   Content (HTML)
                 </label>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs text-[var(--text-muted)]">Formatting:</span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => applyFormatting('b')}
-                    className="text-xs font-semibold"
-                  >
-                    B
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => applyFormatting('i')}
-                    className="text-xs italic"
-                  >
-                    I
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => applyFormatting('u')}
-                    className="text-xs underline"
-                  >
-                    U
-                  </Button>
-                </div>
-                <textarea
-                  ref={contentRef}
-                  value={postContent}
-                  onChange={(e) => setPostContent(e.target.value)}
-                  required
-                  rows={8}
-                  className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
+                <TipTapEditor
+                  content={postContent}
+                  onChange={setPostContent}
                   placeholder="Enter post content (HTML supported)"
+                  toolbarButtons={['bold', 'italic', 'underline', 'strike', 'heading', 'bulletList', 'orderedList', 'blockquote', 'code', 'codeBlock', 'horizontalRule', 'undo', 'redo']}
                 />
               </div>
 
@@ -610,181 +634,284 @@ export function WordPressPage() {
         </Card>
       )}
 
-      {activeTab === 'profile' && (
+      {/* Post Profile Settings — publishing only */}
+      {activeTab === 'postProfile' && (
         <Card className="animate-slide-up">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
-              WordPress Profile Settings
+              Post Profile Settings
             </CardTitle>
-            <CardDescription>Configure your WordPress connection and publishing settings</CardDescription>
+            <CardDescription>Configure WordPress connection and publishing settings</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingProfile ? (
               <div className="text-center py-8 text-[var(--text-muted)]">Loading profile...</div>
             ) : (
-              <form onSubmit={handleSaveProfile} className="space-y-6">
-                {/* WordPress Connection */}
-                <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4">
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                    WordPress Connection
-                  </h3>
-                  
-                  <Input
-                    label="Site URL"
-                    type="url"
-                    value={siteUrl}
-                    onChange={(e) => setSiteUrl(e.target.value)}
-                    placeholder="https://example.com"
-                  />
-                  
-                  <Input
-                    label="Username"
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="WordPress username"
-                  />
-                  
-                  <Input
-                    label="Application Password"
-                    type="password"
-                    value={appPassword}
-                    onChange={(e) => setAppPassword(e.target.value)}
-                    placeholder="Application password (not regular password)"
-                  />
-                  <p className="text-xs text-[var(--text-muted)]">
-                    Generate an Application Password in WordPress: Users → Profile → Application Passwords
-                  </p>
-                </div>
-
-                {/* Checkboxes */}
-                <div className="space-y-4">
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        checked={publishEnabled}
-                        onChange={(e) => setPublishEnabled(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                    </div>
-                    <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
-                      Enable publishing
-                    </span>
-                  </label>
-
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        checked={collectEnabled}
-                        onChange={(e) => setCollectEnabled(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                    </div>
-                    <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
-                      Enable collection
-                    </span>
-                  </label>
-                </div>
-
-                {/* Publish Schedule */}
-                <div className="space-y-4">
-                  <label className="text-sm font-medium text-[var(--text-secondary)] block">
-                    Publish Schedule
-                  </label>
-                  <div className="space-y-3">
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="publishSchedule"
-                        value="on_new_messages"
-                        checked={publishScheduleType === 'on_new_messages'}
-                        onChange={() => setPublishScheduleType('on_new_messages')}
-                        className="w-4 h-4 text-primary-500"
-                      />
-                      <span className="text-[var(--text-primary)]">When new messages are checked</span>
-                    </label>
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="publishSchedule"
-                        value="by_intervals"
-                        checked={publishScheduleType === 'by_intervals'}
-                        onChange={() => setPublishScheduleType('by_intervals')}
-                        className="w-4 h-4 text-primary-500"
-                      />
-                      <span className="text-[var(--text-primary)]">By time intervals</span>
-                    </label>
+              <form onSubmit={handleSavePostProfile} className="space-y-6">
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={publishEnabled}
+                      onChange={(e) => setPublishEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
                   </div>
+                  <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                    Enable publishing
+                  </span>
+                </label>
 
-                  {publishScheduleType === 'by_intervals' && (
-                    <div className="space-y-3 mt-4 animate-slide-down">
-                      {timeIntervals.map((interval, index) => (
-                        <div key={interval.id} className="flex gap-3 items-end">
-                          <Input
-                            label={`Interval ${index + 1} Start`}
-                            type="time"
-                            value={interval.start}
-                            onChange={(e) => updateTimeInterval(interval.id, 'start', e.target.value)}
-                            className="flex-1"
+                {publishEnabled && (
+                  <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 animate-slide-down">
+                    <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                      </svg>
+                      WordPress Connection
+                    </h3>
+                    
+                    <Input
+                      label="Site URL"
+                      type="url"
+                      value={siteUrl}
+                      onChange={(e) => setSiteUrl(e.target.value)}
+                      placeholder="https://example.com"
+                    />
+                    
+                    <Input
+                      label="Username"
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="WordPress username"
+                    />
+                    
+                    <Input
+                      label="Application Password"
+                      type="password"
+                      value={appPassword}
+                      onChange={(e) => setAppPassword(e.target.value)}
+                      placeholder="Application password (not regular password)"
+                    />
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Generate an Application Password in WordPress: Users → Profile → Application Passwords
+                    </p>
+
+                    <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
+                      <label className="text-sm font-medium text-[var(--text-secondary)] block">Publish Schedule</label>
+                      <div className="space-y-3">
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="publishSchedule"
+                            value="on_new_messages"
+                            checked={publishScheduleType === 'on_new_messages'}
+                            onChange={() => setPublishScheduleType('on_new_messages')}
+                            className="w-4 h-4 text-primary-500"
                           />
-                          <Input
-                            label={`Interval ${index + 1} End`}
-                            type="time"
-                            value={interval.end}
-                            onChange={(e) => updateTimeInterval(interval.id, 'end', e.target.value)}
-                            className="flex-1"
+                          <span className="text-[var(--text-primary)]">When new messages are checked</span>
+                        </label>
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="publishSchedule"
+                            value="by_intervals"
+                            checked={publishScheduleType === 'by_intervals'}
+                            onChange={() => setPublishScheduleType('by_intervals')}
+                            className="w-4 h-4 text-primary-500"
                           />
-                          {timeIntervals.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeTimeInterval(interval.id)}
-                              className="px-3 text-red-400 hover:text-red-300"
+                          <span className="text-[var(--text-primary)]">By time intervals</span>
+                        </label>
+                      </div>
+
+                      {publishScheduleType === 'by_intervals' && (
+                        <div className="space-y-3 mt-4 animate-slide-down flex flex-wrap gap-4 items-end">
+                          <div className="space-y-2 min-w-[6rem]">
+                            <label className="text-sm font-medium text-[var(--text-secondary)] block">Hour</label>
+                            <select
+                              value={publishScheduleHour}
+                              onChange={(e) => setPublishScheduleHour(Number(e.target.value))}
+                              className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
                             >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </Button>
-                          )}
+                              {Array.from({ length: 24 }, (_, i) => (
+                                <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="space-y-2 min-w-[6rem]">
+                            <label className="text-sm font-medium text-[var(--text-secondary)] block">Minutes</label>
+                            <select
+                              value={publishScheduleMinute}
+                              onChange={(e) => setPublishScheduleMinute(Number(e.target.value) as ScheduleMinute)}
+                              className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                            >
+                              {SCHEDULE_MINUTES.map((m) => (
+                                <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
-                      ))}
-                      {timeIntervals.length < 4 && (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={addTimeInterval}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          Add Interval
-                        </Button>
                       )}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 <CardFooter className="px-0">
                   <Button type="submit" isLoading={isSavingProfile} className="w-full sm:w-auto">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    Save Profile Settings
+                    Save Post Profile Settings
+                  </Button>
+                </CardFooter>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Parser Profile Settings — collection only */}
+      {activeTab === 'parserProfile' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+              Parser Profile Settings
+            </CardTitle>
+            <CardDescription>Configure collection (parser) settings</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingProfile ? (
+              <div className="text-center py-8 text-[var(--text-muted)]">Loading profile...</div>
+            ) : (
+              <form onSubmit={handleSaveParserProfile} className="space-y-6">
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={collectEnabled}
+                      onChange={(e) => setCollectEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                  </div>
+                  <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                    Enable collection
+                  </span>
+                </label>
+
+                {collectEnabled && (
+                  <div className="space-y-6 animate-slide-down">
+                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">Collection sites</h3>
+                    {collectSites.map((site, index) => (
+                      <div key={site.id} className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-[var(--text-secondary)]">Site {index + 1}</span>
+                          {collectSites.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeCollectSite(site.id)}
+                              className="text-red-400 hover:text-red-300"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                              Remove
+                            </Button>
+                          )}
+                        </div>
+                        <Input
+                          label="Site URL"
+                          type="url"
+                          value={site.siteUrl}
+                          onChange={(e) => updateCollectSiteUrl(site.id, e.target.value)}
+                          placeholder="https://example.com"
+                        />
+                        <div className="space-y-4">
+                          <label className="text-sm font-medium text-[var(--text-secondary)] block">Publish Schedule</label>
+                          <div className="space-y-3">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`collectSchedule-${site.id}`}
+                                value="on_new_messages"
+                                checked={site.scheduleType === 'on_new_messages'}
+                                onChange={() => updateCollectSiteScheduleType(site.id, 'on_new_messages')}
+                                className="w-4 h-4 text-primary-500"
+                              />
+                              <span className="text-[var(--text-primary)]">When new messages are checked</span>
+                            </label>
+                            <label className="flex items-center gap-3 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`collectSchedule-${site.id}`}
+                                value="by_intervals"
+                                checked={site.scheduleType === 'by_intervals'}
+                                onChange={() => updateCollectSiteScheduleType(site.id, 'by_intervals')}
+                                className="w-4 h-4 text-primary-500"
+                              />
+                              <span className="text-[var(--text-primary)]">By time intervals</span>
+                            </label>
+                          </div>
+                          {site.scheduleType === 'by_intervals' && (
+                            <div className="space-y-3 mt-4 flex flex-wrap gap-4 items-end">
+                              <div className="space-y-2 min-w-[6rem]">
+                                <label className="text-sm font-medium text-[var(--text-secondary)] block">Hour</label>
+                                <select
+                                  value={site.scheduleHour}
+                                  onChange={(e) => updateCollectSiteScheduleTime(site.id, Number(e.target.value))}
+                                  className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                                >
+                                  {Array.from({ length: 24 }, (_, i) => (
+                                    <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="space-y-2 min-w-[6rem]">
+                                <label className="text-sm font-medium text-[var(--text-secondary)] block">Minutes</label>
+                                <select
+                                  value={site.scheduleMinute}
+                                  onChange={(e) => updateCollectSiteScheduleTime(site.id, undefined, Number(e.target.value) as ScheduleMinute)}
+                                  className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                                >
+                                  {SCHEDULE_MINUTES.map((m) => (
+                                    <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {collectSites.length < 5 && (
+                      <Button type="button" variant="secondary" size="sm" onClick={addCollectSite}>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add collection site
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                <CardFooter className="px-0">
+                  <Button type="submit" isLoading={isSavingProfile} className="w-full sm:w-auto">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Save Parser Profile Settings
                   </Button>
                 </CardFooter>
               </form>

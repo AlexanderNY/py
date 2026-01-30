@@ -95,6 +95,134 @@
   .animate-stagger-3 { animation-delay: 0.3s; }
   .animate-stagger-4 { animation-delay: 0.4s; }
   .animate-stagger-5 { animation-delay: 0.5s; }
+
+  /* TipTap Editor Styles */
+  .tiptap-editor .ProseMirror {
+    outline: none;
+  }
+  
+  .tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    color: var(--text-muted);
+    pointer-events: none;
+    height: 0;
+  }
+
+  .tiptap-editor .ProseMirror h1 {
+    font-size: 2em;
+    font-weight: bold;
+    margin-top: 0.67em;
+    margin-bottom: 0.67em;
+  }
+
+  .tiptap-editor .ProseMirror h2 {
+    font-size: 1.5em;
+    font-weight: bold;
+    margin-top: 0.83em;
+    margin-bottom: 0.83em;
+  }
+
+  .tiptap-editor .ProseMirror h3 {
+    font-size: 1.17em;
+    font-weight: bold;
+    margin-top: 1em;
+    margin-bottom: 1em;
+  }
+
+  .tiptap-editor .ProseMirror ul,
+  .tiptap-editor .ProseMirror ol {
+    padding-left: 1.5em;
+    margin: 1em 0;
+  }
+
+  .tiptap-editor .ProseMirror ul {
+    list-style-type: disc;
+  }
+
+  .tiptap-editor .ProseMirror ol {
+    list-style-type: decimal;
+  }
+
+  .tiptap-editor .ProseMirror blockquote {
+    border-left: 3px solid var(--border-color);
+    padding-left: 1em;
+    margin: 1em 0;
+    font-style: italic;
+    color: var(--text-secondary);
+  }
+
+  .tiptap-editor .ProseMirror code {
+    background-color: var(--bg-secondary);
+    padding: 0.2em 0.4em;
+    border-radius: 0.25em;
+    font-family: monospace;
+    font-size: 0.9em;
+  }
+
+  .tiptap-editor .ProseMirror pre {
+    background-color: var(--bg-secondary);
+    padding: 1em;
+    border-radius: 0.5em;
+    overflow-x: auto;
+    margin: 1em 0;
+  }
+
+  .tiptap-editor .ProseMirror pre code {
+    background-color: transparent;
+    padding: 0;
+  }
+
+  .tiptap-editor .ProseMirror hr {
+    border: none;
+    border-top: 2px solid var(--border-color);
+    margin: 2em 0;
+  }
+
+  .tiptap-editor .ProseMirror strong {
+    font-weight: bold;
+  }
+
+  .tiptap-editor .ProseMirror em {
+    font-style: italic;
+  }
+
+  .tiptap-editor .ProseMirror u {
+    text-decoration: underline;
+  }
+
+  .tiptap-editor .ProseMirror s {
+    text-decoration: line-through;
+  }
+
+  /* Notification content styles in header */
+  .notification-content p {
+    margin: 0;
+    display: inline;
+  }
+
+  .notification-content ul,
+  .notification-content ol {
+    margin: 0;
+    padding-left: 1.2em;
+    display: inline;
+  }
+
+  .notification-content strong {
+    font-weight: bold;
+  }
+
+  .notification-content em {
+    font-style: italic;
+  }
+
+  .notification-content u {
+    text-decoration: underline;
+  }
+
+  .notification-content s {
+    text-decoration: line-through;
+  }
 }
 
 
