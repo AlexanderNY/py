@@ -242,6 +242,21 @@ class ProfileService:
         elif ti is None or ti == "":
             profile["time_intervals"] = ""
         # иначе ti уже строка "HH:MM" — оставляем как есть
+        profile.setdefault("publish_all_ready", True)
+        profile.setdefault("process_before_publish", False)
+        ps = profile.get("process_services")
+        if ps is not None and isinstance(ps, str):
+            try:
+                profile["process_services"] = json.loads(ps)
+            except (json.JSONDecodeError, TypeError):
+                profile["process_services"] = []
+        elif not isinstance(profile.get("process_services"), list):
+            profile["process_services"] = []
+        profile.setdefault("remove_emojis", False)
+        profile.setdefault("remove_images", False)
+        profile.setdefault("clean_html", False)
+        profile.setdefault("status_review_after_process", False)
+        profile.setdefault("add_static_html", False)
         return profile
 
     async def get_wp_publish_profile(self, user_id: int) -> Optional[Dict]:
@@ -265,12 +280,21 @@ class ProfileService:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
+                ps = data.get("process_services")
+                ps_val = json.dumps(ps) if isinstance(ps, list) and ps else None
+                static_html = data.get("static_html_content")
+                if static_html and len(str(static_html)) > 1000:
+                    static_html = str(static_html)[:1000]
                 await cur.execute(
                     """
                     INSERT INTO wp_publish_profile (
                         user_id, publish_enabled, schedule_type,
-                        time_intervals, site_url, username, app_password
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        time_intervals, site_url, username, app_password,
+                        publish_all_ready, publish_limit, publish_interval_minutes,
+                        process_before_publish, process_description,
+                        remove_emojis, remove_images, clean_html, process_services,
+                        status_review_after_process, add_static_html, static_html_content
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         schedule_type = EXCLUDED.schedule_type,
@@ -278,6 +302,18 @@ class ProfileService:
                         site_url = EXCLUDED.site_url,
                         username = EXCLUDED.username,
                         app_password = EXCLUDED.app_password,
+                        publish_all_ready = EXCLUDED.publish_all_ready,
+                        publish_limit = EXCLUDED.publish_limit,
+                        publish_interval_minutes = EXCLUDED.publish_interval_minutes,
+                        process_before_publish = EXCLUDED.process_before_publish,
+                        process_description = EXCLUDED.process_description,
+                        remove_emojis = EXCLUDED.remove_emojis,
+                        remove_images = EXCLUDED.remove_images,
+                        clean_html = EXCLUDED.clean_html,
+                        process_services = EXCLUDED.process_services,
+                        status_review_after_process = EXCLUDED.status_review_after_process,
+                        add_static_html = EXCLUDED.add_static_html,
+                        static_html_content = EXCLUDED.static_html_content,
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING *
                     """,
@@ -289,6 +325,18 @@ class ProfileService:
                         data.get("site_url"),
                         data.get("username"),
                         data.get("app_password"),
+                        data.get("publish_all_ready", True),
+                        data.get("publish_limit"),
+                        data.get("publish_interval_minutes"),
+                        data.get("process_before_publish", False),
+                        data.get("process_description"),
+                        data.get("remove_emojis", False),
+                        data.get("remove_images", False),
+                        data.get("clean_html", False),
+                        ps_val,
+                        data.get("status_review_after_process", False),
+                        data.get("add_static_html", False),
+                        static_html if data.get("add_static_html") else None,
                     )
                 )
                 row = await cur.fetchone()
@@ -302,13 +350,17 @@ class ProfileService:
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    "SELECT user_id, collect_enabled FROM wp_collect_profile WHERE user_id = %s",
+                    "SELECT * FROM wp_collect_profile WHERE user_id = %s",
                     (user_id,)
                 )
                 row = await cur.fetchone()
                 if row is None:
                     return None
-                profile = {"user_id": row[0], "collect_enabled": row[1], "collect_sites": []}
+                columns = [c.name for c in cur.description]
+                profile = dict(zip(columns, row))
+                profile["collect_sites"] = []
+                profile.setdefault("collect_all_available", True)
+                profile.setdefault("collect_limit", 1)
                 await cur.execute(
                     "SELECT site_url, schedule_type, time_intervals FROM wp_collect_sites WHERE user_id = %s ORDER BY id",
                     (user_id,)
@@ -331,15 +383,20 @@ class ProfileService:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
+                collect_limit_val = data.get("collect_limit")
+                if collect_limit_val is not None:
+                    collect_limit_val = max(1, min(25, int(collect_limit_val)))
                 await cur.execute(
                     """
-                    INSERT INTO wp_collect_profile (user_id, collect_enabled)
-                    VALUES (%s, %s)
+                    INSERT INTO wp_collect_profile (user_id, collect_enabled, collect_all_available, collect_limit)
+                    VALUES (%s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         collect_enabled = EXCLUDED.collect_enabled,
+                        collect_all_available = EXCLUDED.collect_all_available,
+                        collect_limit = EXCLUDED.collect_limit,
                         updated_at = CURRENT_TIMESTAMP
                     """,
-                    (user_id, data.get("collect_enabled", False))
+                    (user_id, data.get("collect_enabled", False), data.get("collect_all_available", True), collect_limit_val or 1)
                 )
                 await cur.execute("DELETE FROM wp_collect_sites WHERE user_id = %s", (user_id,))
                 for site in data.get("collect_sites", []):

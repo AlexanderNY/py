@@ -195,6 +195,27 @@ async def _store_snapshot(schedules: list[dict[str, Any]]) -> None:
                         ti,
                     ),
                 )
+            # Копируем строки с platform == 'wp' в schedule_snapshots_wp
+            wp_schedules = [s for s in schedules if s.get("platform") == "wp"]
+            await cur.execute("DELETE FROM schedule_snapshots_wp")
+            for s in wp_schedules:
+                ti = json.dumps(s.get("time_intervals") or [])
+                await cur.execute(
+                    """
+                    INSERT INTO schedule_snapshots_wp (
+                        user_id, platform, publish_enabled, collect_enabled,
+                        schedule_type, time_intervals, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    """,
+                    (
+                        s["user_id"],
+                        s["platform"],
+                        s.get("publish_enabled", False),
+                        s.get("collect_enabled", False),
+                        s.get("schedule_type") or "immediate",
+                        ti,
+                    ),
+                )
             # Коммитим транзакцию через SQL
             await cur.execute("COMMIT")
         except Exception:

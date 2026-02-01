@@ -1,5 +1,6 @@
 """Главный файл wp-bot сервиса."""
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -9,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from database import init_db, close_db
 from routers.schedule import router as schedule_router
+from services.schedule_poll_service import poll_loop
 
 logging.basicConfig(
     level=logging.INFO,
@@ -16,10 +18,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Флаг для остановки фонового опроса
+_poll_task: asyncio.Task | None = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Обработчики событий жизненного цикла приложения."""
+    global _poll_task
+
     # Startup
     try:
         await init_db()
@@ -27,10 +34,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize database: {str(e)}")
         raise
-    
+
+    # Запускаем фоновый опрос schedule_snapshot_wp
+    _poll_task = asyncio.create_task(poll_loop())
+    logger.info("Schedule poll loop started, interval=%s seconds", settings.POLL_INTERVAL_SECONDS)
+
     yield
-    
+
     # Shutdown
+    if _poll_task and not _poll_task.done():
+        _poll_task.cancel()
+        try:
+            await _poll_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Schedule poll loop stopped")
+
     try:
         await close_db()
         logger.info("Database connection closed")

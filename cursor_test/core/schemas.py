@@ -202,6 +202,11 @@ class WordPressProfile(WordPressProfileBase):
 class WordPressPublishProfileCreate(BaseModel):
     """Модель для создания/обновления профиля публикации WordPress.
     time_intervals — одно значение времени в формате "HH:MM".
+    publish_all_ready — публиковать все посты, готовые к публикации.
+    publish_limit — ограничение количества постов (если publish_all_ready=False).
+    publish_interval_minutes — интервал в минутах 15–1440 с шагом 15.
+    process_before_publish — обрабатывать перед публикацией.
+    process_description — описание обработки.
     """
     publish_enabled: bool = False
     schedule_type: Optional[str] = "on_new_messages"
@@ -209,6 +214,18 @@ class WordPressPublishProfileCreate(BaseModel):
     site_url: Optional[str] = None
     username: Optional[str] = None
     app_password: Optional[str] = None
+    publish_all_ready: bool = True
+    publish_limit: Optional[int] = None
+    publish_interval_minutes: Optional[int] = None  # 15–1440, шаг 15
+    process_before_publish: bool = False
+    process_description: Optional[str] = None
+    remove_emojis: bool = False
+    remove_images: bool = False
+    clean_html: bool = False
+    process_services: Optional[List[str]] = None  # ["wordpress", "telegram", "twitter", "vkontakte"]
+    status_review_after_process: bool = False
+    add_static_html: bool = False
+    static_html_content: Optional[str] = None  # max 1000
 
 
 class CollectSiteItem(BaseModel):
@@ -221,9 +238,12 @@ class CollectSiteItem(BaseModel):
 class WordPressCollectProfileCreate(BaseModel):
     """Модель для создания/обновления профиля сбора (parser) WordPress.
     collect_sites — список объектов с полями site_url, schedule_type, time_intervals (HH:MM).
+    collect_all_available — собрать все доступное; иначе ограничение collect_limit (1–25).
     """
     collect_enabled: bool = False
     collect_sites: Optional[List[Dict[str, Any]]] = []  # [{site_url, schedule_type, time_intervals}]
+    collect_all_available: bool = True
+    collect_limit: Optional[int] = 1  # 1–25, по умолчанию 1
 
 
 class WordPressPostContent(BaseModel):

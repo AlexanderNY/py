@@ -161,6 +161,19 @@ async def get_wp_posts(
     return posts
 
 
+@router.get("/post/{post_id}")
+async def get_wp_post(
+    post_id: int,
+    x_user_id: Optional[str] = Header(None),
+):
+    """Возвращает один пост WordPress по id."""
+    user_id = get_user_id_from_header(x_user_id)
+    post = await post_service.get_wp_post(user_id=user_id, post_id=post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return post
+
+
 @router.post("/post")
 async def create_wp_post(
     data: WordPressPost,
@@ -185,3 +198,36 @@ async def create_wp_post(
         return post
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/post/{post_id}")
+async def update_wp_post(
+    post_id: int,
+    data: WordPressPost,
+    x_user_id: Optional[str] = Header(None),
+):
+    """Обновляет пост WordPress."""
+    user_id = get_user_id_from_header(x_user_id)
+    post = await post_service.update_wp_post(
+        user_id=user_id,
+        post_id=post_id,
+        title=data.post.title,
+        post_text=data.post.content,
+        status=data.post.status,
+    )
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return post
+
+
+@router.delete("/post/{post_id}")
+async def delete_wp_post(
+    post_id: int,
+    x_user_id: Optional[str] = Header(None),
+):
+    """Помечает пост WordPress как удаленный (status = deleted)."""
+    user_id = get_user_id_from_header(x_user_id)
+    post = await post_service.delete_wp_post(user_id=user_id, post_id=post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return post

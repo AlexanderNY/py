@@ -113,6 +113,70 @@ CREATE TABLE IF NOT EXISTS wp_publish_profile (
 );
 """
 
+# Миграция: добавить колонки publish_all_ready, publish_limit, publish_interval_minutes, process_before_publish, process_description
+WP_PUBLISH_PROFILE_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE wp_publish_profile ADD COLUMN publish_all_ready BOOLEAN DEFAULT TRUE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE wp_publish_profile ADD COLUMN publish_limit INTEGER;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE wp_publish_profile ADD COLUMN publish_interval_minutes INTEGER;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE wp_publish_profile ADD COLUMN process_before_publish BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE wp_publish_profile ADD COLUMN process_description TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE wp_publish_profile ADD COLUMN remove_emojis BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE wp_publish_profile ADD COLUMN remove_images BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE wp_publish_profile ADD COLUMN clean_html BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE wp_publish_profile ADD COLUMN process_services JSONB;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE wp_publish_profile ADD COLUMN status_review_after_process BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE wp_publish_profile ADD COLUMN add_static_html BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE wp_publish_profile ADD COLUMN static_html_content TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+"""
+
 # Таблица wp_collect_profile - настройки сбора (parser) WordPress
 WP_COLLECT_PROFILE_TABLE = """
 CREATE TABLE IF NOT EXISTS wp_collect_profile (
@@ -122,6 +186,20 @@ CREATE TABLE IF NOT EXISTS wp_collect_profile (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+"""
+
+# Миграция: добавить колонки collect_all_available, collect_limit
+WP_COLLECT_PROFILE_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE wp_collect_profile ADD COLUMN collect_all_available BOOLEAN DEFAULT TRUE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE wp_collect_profile ADD COLUMN collect_limit INTEGER DEFAULT 1;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 """
 
 # Таблица wp_collect_sites - сайты сбора по пользователю (столбцы site_url, schedule_type, time_intervals)
@@ -251,7 +329,9 @@ ALL_TABLES = [
     TW_PROFILES_TABLE,
     WP_PROFILES_TABLE,
     WP_PUBLISH_PROFILE_TABLE,
+    WP_PUBLISH_PROFILE_MIGRATION,
     WP_COLLECT_PROFILE_TABLE,
+    WP_COLLECT_PROFILE_MIGRATION,
     WP_COLLECT_SITES_TABLE,
     WP_COLLECT_SITES_INDEX,
     WP_POSTS_TABLE,

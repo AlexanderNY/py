@@ -5,6 +5,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
+from config import settings
 from database import get_db_connection, release_db_connection
 from services.wordpress_client import WordPressClient
 
@@ -54,9 +55,12 @@ class CollectService:
                 collected_count = 0
                 failed_count = 0
                 errors = []
+                limit_per_pass = settings.COLLECT_POSTS_LIMIT
                 
-                # Обрабатываем каждый профиль
+                # Обрабатываем каждый профиль (общий лимит постов за проход)
                 for profile_row in profile_rows:
+                    if collected_count >= limit_per_pass:
+                        break
                     profile = dict(zip(profile_columns, profile_row))
                     uid = profile["user_id"]
                     
@@ -91,12 +95,13 @@ class CollectService:
                         last_row = await cur.fetchone()
                         last_collected = last_row[0] if last_row and last_row[0] else None
                         
-                        # Получаем посты из WordPress
+                        # Получаем посты из WordPress (лимит за проход из config)
                         page = 1
                         per_page = 20
-                        total_collected = 0
+                        total_collected_for_user = 0
+                        remaining = limit_per_pass - collected_count
                         
-                        while True:
+                        while remaining > 0:
                             try:
                                 # Получаем посты
                                 result = await wp_client.get_posts(
@@ -111,6 +116,8 @@ class CollectService:
                                 
                                 # Сохраняем посты в БД
                                 for wp_post in posts:
+                                    if collected_count >= limit_per_pass:
+                                        break
                                     # Проверяем, не был ли уже собран этот пост
                                     wp_post_id = wp_post.get("id")
                                     wp_post_link = wp_post.get("link", "")
@@ -175,7 +182,7 @@ class CollectService:
                                         )
                                     )
                                     
-                                    total_collected += 1
+                                    total_collected_for_user += 1
                                     collected_count += 1
                                 
                                 # Проверяем, есть ли еще страницы
@@ -183,6 +190,7 @@ class CollectService:
                                 if page >= total_pages:
                                     break
                                 
+                                remaining = limit_per_pass - collected_count
                                 page += 1
                                 
                             except Exception as e:
@@ -195,9 +203,9 @@ class CollectService:
                                 })
                                 break
                         
-                        if total_collected > 0:
+                        if total_collected_for_user > 0:
                             logger.info(
-                                f"Collected {total_collected} posts from WordPress "
+                                f"Collected {total_collected_for_user} posts from WordPress "
                                 f"for user_id={uid}"
                             )
                         

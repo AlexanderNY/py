@@ -12,6 +12,15 @@ class Settings(BaseSettings):
     # API Gateway URL для запросов к core
     API_GATEWAY_URL: str = "http://localhost:8000"
     
+    # Периодичность проверки schedule_snapshot_wp (секунды)
+    POLL_INTERVAL_SECONDS: int = 120
+    
+    # Максимум постов за один проход сбора
+    COLLECT_POSTS_LIMIT: int = 10
+    
+    # Максимум постов за один проход публикации
+    PUBLISH_POSTS_LIMIT: int = 10
+    
     # URL core сервиса для получения профилей и постов
     CORE_SERVICE_URL: str = "http://localhost:8002"
     

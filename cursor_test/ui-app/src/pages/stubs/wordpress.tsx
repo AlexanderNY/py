@@ -22,16 +22,35 @@ type CollectSiteItem = {
   scheduleMinute: ScheduleMinute
 }
 
+const PUBLISH_INTERVAL_MINUTES_OPTIONS = Array.from({ length: 97 }, (_, i) => 15 + i * 15) // 15 .. 1440, step 15
+
 export function WordPressPage() {
   // Tab state
-  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'postProfile' | 'parserProfile'>('create')
+  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'postProfile' | 'processing' | 'parserProfile'>('create')
 
   // Profile state
   const [siteUrl, setSiteUrl] = useState('')
   const [username, setUsername] = useState('')
   const [appPassword, setAppPassword] = useState('')
   const [publishEnabled, setPublishEnabled] = useState(false)
+  const [publishAllReady, setPublishAllReady] = useState(true)
+  const [publishLimit, setPublishLimit] = useState('')
+  const [publishIntervalMinutes, setPublishIntervalMinutes] = useState(15)
+  const [processBeforePublish, setProcessBeforePublish] = useState(false)
+  const [processDescription, setProcessDescription] = useState('')
+  const [removeEmojis, setRemoveEmojis] = useState(false)
+  const [removeImages, setRemoveImages] = useState(false)
+  const [cleanHtml, setCleanHtml] = useState(false)
+  const [processServiceWordpress, setProcessServiceWordpress] = useState(false)
+  const [processServiceTelegram, setProcessServiceTelegram] = useState(false)
+  const [processServiceTwitter, setProcessServiceTwitter] = useState(false)
+  const [processServiceVkontakte, setProcessServiceVkontakte] = useState(false)
+  const [statusReviewAfterProcess, setStatusReviewAfterProcess] = useState(false)
+  const [addStaticHtml, setAddStaticHtml] = useState(false)
+  const [staticHtmlContent, setStaticHtmlContent] = useState('')
   const [collectEnabled, setCollectEnabled] = useState(false)
+  const [collectAllAvailable, setCollectAllAvailable] = useState(true)
+  const [collectLimit, setCollectLimit] = useState('1')
   const [publishScheduleType, setPublishScheduleType] = useState<'on_new_messages' | 'by_intervals'>('on_new_messages')
   const [publishScheduleHour, setPublishScheduleHour] = useState(9)
   const [publishScheduleMinute, setPublishScheduleMinute] = useState<ScheduleMinute>(0)
@@ -54,6 +73,10 @@ export function WordPressPage() {
   const [posts, setPosts] = useState<WordPressPostListItem[]>([])
   const [isLoadingPosts, setIsLoadingPosts] = useState(false)
   const [hasLoadedPosts, setHasLoadedPosts] = useState(false)
+  
+  // Editing post (id поста при редактировании; при создании — null)
+  const [editingPostId, setEditingPostId] = useState<number | null>(null)
+  const [deletingPostId, setDeletingPostId] = useState<number | null>(null)
   
   // Loading and error states
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
@@ -87,7 +110,32 @@ export function WordPressPage() {
       setUsername(publishProfile.username || '')
       setAppPassword(publishProfile.app_password || '')
       setPublishEnabled(publishProfile.publish_enabled ?? false)
+      setPublishAllReady(publishProfile.publish_all_ready ?? true)
+      setPublishLimit(publishProfile.publish_limit != null ? String(publishProfile.publish_limit) : '')
+      setPublishIntervalMinutes(
+        publishProfile.publish_interval_minutes != null && publishProfile.publish_interval_minutes >= 15 && publishProfile.publish_interval_minutes <= 1440
+          ? publishProfile.publish_interval_minutes
+          : 15
+      )
+      setProcessBeforePublish(publishProfile.process_before_publish ?? false)
+      setProcessDescription(publishProfile.process_description ?? '')
+      setRemoveEmojis(publishProfile.remove_emojis ?? false)
+      setRemoveImages(publishProfile.remove_images ?? false)
+      setCleanHtml(publishProfile.clean_html ?? false)
+      const ps = publishProfile.process_services
+      if (Array.isArray(ps)) {
+        setProcessServiceWordpress(ps.includes('wordpress'))
+        setProcessServiceTelegram(ps.includes('telegram'))
+        setProcessServiceTwitter(ps.includes('twitter'))
+        setProcessServiceVkontakte(ps.includes('vkontakte'))
+      }
+      setStatusReviewAfterProcess(publishProfile.status_review_after_process ?? false)
+      setAddStaticHtml(publishProfile.add_static_html ?? false)
+      setStaticHtmlContent((publishProfile.static_html_content ?? '').slice(0, 1000))
       setCollectEnabled(collectProfile.collect_enabled ?? false)
+      setCollectAllAvailable(collectProfile.collect_all_available ?? true)
+      const cl = collectProfile.collect_limit
+      setCollectLimit(cl != null && cl >= 1 && cl <= 25 ? String(cl) : '1')
       setPublishScheduleType((publishProfile.schedule_type as PublishScheduleType) || 'on_new_messages')
       const ti = publishProfile.time_intervals
       if (typeof ti === 'string' && ti && ti.includes(':')) {
@@ -152,6 +200,41 @@ export function WordPressPage() {
     }
   }
 
+  async function handleDeletePost(postId: number) {
+    if (deletingPostId !== null) return
+    setDeletingPostId(postId)
+    setError('')
+    try {
+      await wordpressService.deletePost(postId)
+      setPosts((prev) => prev.filter((p) => p.id !== postId))
+      setSuccess('Post marked as deleted')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete post')
+    } finally {
+      setDeletingPostId(null)
+    }
+  }
+
+  async function handleEditPost(postId: number) {
+    setError('')
+    try {
+      const post = await wordpressService.getPost(postId)
+      setPostTitle(post.title ?? '')
+      setPostContent(post.post_text ?? '')
+      setPostStatus((post.status as PostStatus) ?? 'draft')
+      setPostCategories(post.categories && post.categories.length > 0 ? post.categories : [''])
+      setPostTags(post.tags && post.tags.length > 0 ? post.tags : [''])
+      setPostExcerpt(post.excerpt ?? '')
+      setPostSlug(post.slug ?? '')
+      setFeaturedMedia(post.featured_media != null ? String(post.featured_media) : '')
+      setPostMeta(post.meta ? JSON.stringify(post.meta, null, 2) : '')
+      setEditingPostId(postId)
+      setActiveTab('create')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load post for editing')
+    }
+  }
+
   async function handleSavePostProfile(e: FormEvent) {
     e.preventDefault()
     setError('')
@@ -160,6 +243,12 @@ export function WordPressPage() {
     const timeIntervals = publishScheduleType === 'by_intervals'
       ? `${String(publishScheduleHour).padStart(2, '0')}:${String(publishScheduleMinute).padStart(2, '0')}`
       : undefined
+    const limitNum = publishLimit.trim() ? parseInt(publishLimit, 10) : undefined
+    if (publishLimit.trim() && (Number.isNaN(limitNum) || limitNum < 0)) {
+      setError('Publish limit must be a non-negative number')
+      setIsSavingProfile(false)
+      return
+    }
     try {
       await wordpressService.savePublishProfile({
         publish_enabled: publishEnabled,
@@ -168,8 +257,25 @@ export function WordPressPage() {
         site_url: siteUrl || undefined,
         username: username || undefined,
         app_password: appPassword || undefined,
+        publish_all_ready: publishAllReady,
+        publish_limit: publishAllReady ? undefined : limitNum,
+        publish_interval_minutes: publishAllReady ? undefined : publishIntervalMinutes,
+        process_before_publish: processBeforePublish,
+        process_description: processBeforePublish ? processDescription || undefined : undefined,
+        remove_emojis: removeEmojis,
+        remove_images: removeImages,
+        clean_html: cleanHtml,
+        process_services: [
+          ...(processServiceWordpress ? ['wordpress'] : []),
+          ...(processServiceTelegram ? ['telegram'] : []),
+          ...(processServiceTwitter ? ['twitter'] : []),
+          ...(processServiceVkontakte ? ['vkontakte'] : []),
+        ],
+        status_review_after_process: statusReviewAfterProcess,
+        add_static_html: addStaticHtml,
+        static_html_content: addStaticHtml ? (staticHtmlContent || undefined)?.slice(0, 1000) : undefined,
       })
-      setSuccess('Post profile settings saved successfully')
+      setSuccess(activeTab === 'processing' ? 'Processing settings saved successfully' : 'Post profile settings saved successfully')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save post profile settings')
     } finally {
@@ -187,10 +293,19 @@ export function WordPressPage() {
       schedule_type: s.scheduleType,
       time_intervals: `${String(s.scheduleHour).padStart(2, '0')}:${String(s.scheduleMinute).padStart(2, '0')}`,
     }))
+    const limitVal = parseInt(collectLimit, 10) || 1
+    const limitNum = collectAllAvailable ? undefined : Math.max(1, Math.min(25, limitVal))
+    if (!collectAllAvailable && (limitVal < 1 || limitVal > 25)) {
+      setError('Ограничение количества постов: от 1 до 25')
+      setIsSavingProfile(false)
+      return
+    }
     try {
       await wordpressService.saveCollectProfile({
         collect_enabled: collectEnabled,
         collect_sites,
+        collect_all_available: collectAllAvailable,
+        collect_limit: limitNum,
       })
       setSuccess('Parser profile settings saved successfully')
     } catch (err) {
@@ -232,20 +347,35 @@ export function WordPressPage() {
     }
 
     try {
-      await wordpressService.createPost(post)
-      setSuccess('Post created successfully')
-      // Reset form
-      setPostTitle('')
-      setPostContent('')
-      setPostStatus('draft')
-      setPostCategories([''])
-      setPostTags([''])
-      setPostExcerpt('')
-      setPostSlug('')
-      setFeaturedMedia('')
-      setPostMeta('')
+      if (editingPostId !== null) {
+        await wordpressService.updatePost(editingPostId, post)
+        setSuccess('Post updated successfully')
+        setEditingPostId(null)
+        setPostTitle('')
+        setPostContent('')
+        setPostStatus('draft')
+        setPostCategories([''])
+        setPostTags([''])
+        setPostExcerpt('')
+        setPostSlug('')
+        setFeaturedMedia('')
+        setPostMeta('')
+        loadPosts()
+      } else {
+        await wordpressService.createPost(post)
+        setSuccess('Post created successfully')
+        setPostTitle('')
+        setPostContent('')
+        setPostStatus('draft')
+        setPostCategories([''])
+        setPostTags([''])
+        setPostExcerpt('')
+        setPostSlug('')
+        setFeaturedMedia('')
+        setPostMeta('')
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create post')
+      setError(err instanceof Error ? err.message : (editingPostId !== null ? 'Failed to update post' : 'Failed to create post'))
     } finally {
       setIsCreatingPost(false)
     }
@@ -330,7 +460,19 @@ export function WordPressPage() {
               ? 'text-primary-400'
               : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
           }`}
-          onClick={() => setActiveTab('create')}
+          onClick={() => {
+            setEditingPostId(null)
+            setPostTitle('')
+            setPostContent('')
+            setPostStatus('draft')
+            setPostCategories([''])
+            setPostTags([''])
+            setPostExcerpt('')
+            setPostSlug('')
+            setFeaturedMedia('')
+            setPostMeta('')
+            setActiveTab('create')
+          }}
         >
           Create Post
           {activeTab === 'create' && (
@@ -360,6 +502,19 @@ export function WordPressPage() {
         >
           Post Profile Settings
           {activeTab === 'postProfile' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
+          )}
+        </button>
+        <button
+          className={`px-6 py-3 text-sm font-medium transition-all relative ${
+            activeTab === 'processing'
+              ? 'text-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+          onClick={() => setActiveTab('processing')}
+        >
+          Обработка
+          {activeTab === 'processing' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
           )}
         </button>
@@ -549,12 +704,21 @@ export function WordPressPage() {
               </div>
 
               <CardFooter className="px-0">
-                <Button type="submit" isLoading={isCreatingPost} className="w-full sm:w-auto">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                  Create Post
-                </Button>
+                {editingPostId !== null ? (
+                  <Button type="submit" isLoading={isCreatingPost} className="w-full sm:w-auto">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Update Post
+                  </Button>
+                ) : (
+                  <Button type="submit" isLoading={isCreatingPost} className="w-full sm:w-auto">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                    Create Post
+                  </Button>
+                )}
               </CardFooter>
             </form>
           </CardContent>
@@ -607,6 +771,7 @@ export function WordPressPage() {
                       <th className="py-2 pr-4 font-medium">Title</th>
                       <th className="py-2 pr-4 font-medium">Status</th>
                       <th className="py-2 pr-4 font-medium">Excerpt</th>
+                      <th className="py-2 pr-4 font-medium w-24 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -623,6 +788,32 @@ export function WordPressPage() {
                         </td>
                         <td className="py-2 pr-4 text-[var(--text-secondary)]">
                           {post.excerpt || '—'}
+                        </td>
+                        <td className="py-2 pr-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => post.id != null && handleEditPost(post.id)}
+                              disabled={post.id == null}
+                              className="p-2 rounded-lg text-[var(--text-secondary)] hover:text-primary-400 hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50"
+                              title="Edit post"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => post.id != null && handleDeletePost(post.id)}
+                              disabled={post.id == null || deletingPostId === post.id}
+                              className="p-2 rounded-lg text-[var(--text-secondary)] hover:text-red-400 hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50"
+                              title="Delete post"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -666,6 +857,54 @@ export function WordPressPage() {
                     Enable publishing
                   </span>
                 </label>
+
+                {publishEnabled && (
+                  <>
+                    <label className="flex items-center gap-3 cursor-pointer group">
+                      <div className="relative">
+                        <input
+                          type="checkbox"
+                          checked={publishAllReady}
+                          onChange={(e) => setPublishAllReady(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                        <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                      </div>
+                      <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                        Публиковать все посты, готовые к публикации
+                      </span>
+                    </label>
+
+                    {!publishAllReady && (
+                      <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 animate-slide-down flex flex-wrap gap-4 items-end">
+                        <div className="space-y-2 min-w-[8rem]">
+                          <label className="text-sm font-medium text-[var(--text-secondary)] block">Ограничение (кол-во постов)</label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={publishLimit}
+                            onChange={(e) => setPublishLimit(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                            placeholder="Число"
+                            className="w-full"
+                          />
+                        </div>
+                        <div className="space-y-2 min-w-[10rem]">
+                          <label className="text-sm font-medium text-[var(--text-secondary)] block">Интервал (минуты)</label>
+                          <select
+                            value={publishIntervalMinutes}
+                            onChange={(e) => setPublishIntervalMinutes(Number(e.target.value))}
+                            className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
+                          >
+                            {PUBLISH_INTERVAL_MINUTES_OPTIONS.map((m) => (
+                              <option key={m} value={m}>{m} мин</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
 
                 {publishEnabled && (
                   <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 animate-slide-down">
@@ -776,6 +1015,207 @@ export function WordPressPage() {
         </Card>
       )}
 
+      {/* Обработка — настройки обработки перед публикацией */}
+      {activeTab === 'processing' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Обработка
+            </CardTitle>
+            <CardDescription>Настройки обработки постов перед публикацией</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingProfile ? (
+              <div className="text-center py-8 text-[var(--text-muted)]">Loading profile...</div>
+            ) : (
+              <form onSubmit={handleSavePostProfile} className="space-y-6">
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={processBeforePublish}
+                      onChange={(e) => setProcessBeforePublish(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                  </div>
+                  <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                    Обрабатывать перед публикацией
+                  </span>
+                </label>
+
+                {processBeforePublish && (
+                  <div className="space-y-2 animate-slide-down">
+                    <label className="text-sm font-medium text-[var(--text-secondary)] block">
+                      Описание обработки
+                    </label>
+                    <textarea
+                      value={processDescription}
+                      onChange={(e) => setProcessDescription(e.target.value)}
+                      rows={4}
+                      className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
+                      placeholder="Опишите, как должны обрабатываться посты перед публикацией..."
+                    />
+                  </div>
+                )}
+
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={removeEmojis}
+                      onChange={(e) => setRemoveEmojis(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                  </div>
+                  <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                    Удалить смайлики/эмодзи
+                  </span>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={removeImages}
+                      onChange={(e) => setRemoveImages(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                  </div>
+                  <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                    Удалить картинки
+                  </span>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={cleanHtml}
+                      onChange={(e) => setCleanHtml(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                  </div>
+                  <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                    Очистить HTML
+                  </span>
+                </label>
+
+                <div className="space-y-3">
+                  <span className="text-sm font-medium text-[var(--text-secondary)] block">Для каких сервисов подготовить обработку</span>
+                  <div className="flex flex-wrap gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={processServiceWordpress}
+                        onChange={(e) => setProcessServiceWordpress(e.target.checked)}
+                        className="w-4 h-4 text-primary-500 rounded"
+                      />
+                      <span className="text-[var(--text-primary)]">WordPress</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={processServiceTelegram}
+                        onChange={(e) => setProcessServiceTelegram(e.target.checked)}
+                        className="w-4 h-4 text-primary-500 rounded"
+                      />
+                      <span className="text-[var(--text-primary)]">Telegram</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={processServiceTwitter}
+                        onChange={(e) => setProcessServiceTwitter(e.target.checked)}
+                        className="w-4 h-4 text-primary-500 rounded"
+                      />
+                      <span className="text-[var(--text-primary)]">Twitter</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={processServiceVkontakte}
+                        onChange={(e) => setProcessServiceVkontakte(e.target.checked)}
+                        className="w-4 h-4 text-primary-500 rounded"
+                      />
+                      <span className="text-[var(--text-primary)]">VKontakte</span>
+                    </label>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={statusReviewAfterProcess}
+                      onChange={(e) => setStatusReviewAfterProcess(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                  </div>
+                  <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                    Перевести пост в статус review после обработки
+                  </span>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={addStaticHtml}
+                      onChange={(e) => setAddStaticHtml(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                  </div>
+                  <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                    Добавлять в посты статичный HTML
+                  </span>
+                </label>
+
+                {addStaticHtml && (
+                  <div className="space-y-2 animate-slide-down">
+                    <label className="text-sm font-medium text-[var(--text-secondary)] block">
+                      Статичный HTML (до 1000 символов)
+                    </label>
+                    <textarea
+                      value={staticHtmlContent}
+                      onChange={(e) => setStaticHtmlContent(e.target.value.slice(0, 1000))}
+                      rows={4}
+                      maxLength={1000}
+                      className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
+                      placeholder="Введите статичный HTML для добавления в посты..."
+                    />
+                    <p className="text-xs text-[var(--text-muted)]">{staticHtmlContent.length} / 1000</p>
+                  </div>
+                )}
+
+                <CardFooter className="px-0">
+                  <Button type="submit" isLoading={isSavingProfile} className="w-full sm:w-auto">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Сохранить настройки обработки
+                  </Button>
+                </CardFooter>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Parser Profile Settings — collection only */}
       {activeTab === 'parserProfile' && (
         <Card className="animate-slide-up">
@@ -808,6 +1248,45 @@ export function WordPressPage() {
                     Enable collection
                   </span>
                 </label>
+
+                {collectEnabled && (
+                  <>
+                    <label className="flex items-center gap-3 cursor-pointer group">
+                      <div className="relative">
+                        <input
+                          type="checkbox"
+                          checked={collectAllAvailable}
+                          onChange={(e) => setCollectAllAvailable(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                        <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                      </div>
+                      <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                        Собрать все доступное
+                      </span>
+                    </label>
+
+                    {!collectAllAvailable && (
+                      <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-2 animate-slide-down max-w-xs">
+                        <label className="text-sm font-medium text-[var(--text-secondary)] block">Ограничение количества постов</label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={25}
+                          value={collectLimit || '1'}
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/\D/g, '').slice(0, 3)
+                            if (v === '' || (parseInt(v, 10) >= 1 && parseInt(v, 10) <= 25)) setCollectLimit(v)
+                          }}
+                          placeholder="1"
+                          className="w-full"
+                        />
+                        <p className="text-xs text-[var(--text-muted)]">От 1 до 25, по умолчанию 1</p>
+                      </div>
+                    )}
+                  </>
+                )}
 
                 {collectEnabled && (
                   <div className="space-y-6 animate-slide-down">

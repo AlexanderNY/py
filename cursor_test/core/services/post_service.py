@@ -224,7 +224,7 @@ class PostService:
                     """
                     SELECT *
                     FROM wp_posts
-                    WHERE user_id = %s
+                    WHERE user_id = %s AND (status IS NULL OR status != 'deleted')
                     ORDER BY created_at DESC
                     LIMIT %s OFFSET %s
                     """,
@@ -234,6 +234,97 @@ class PostService:
                 return [self._row_to_post(row, cur.description) for row in rows]
         finally:
             await release_db_connection(conn)
+
+    async def get_wp_post(self, user_id: int, post_id: int) -> Optional[Dict]:
+        """Получает один пост WordPress по id.
+
+        Args:
+            user_id: ID пользователя
+            post_id: ID поста
+
+        Returns:
+            Пост или None
+        """
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT * FROM wp_posts
+                    WHERE user_id = %s AND id = %s
+                    """,
+                    (user_id, post_id)
+                )
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_post(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+
+    async def update_wp_post(
+        self,
+        user_id: int,
+        post_id: int,
+        title: Optional[str] = None,
+        post_text: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> Optional[Dict]:
+        """Обновляет пост WordPress.
+
+        Args:
+            user_id: ID пользователя
+            post_id: ID поста
+            title: Заголовок
+            post_text: Текст поста (content)
+            status: Статус (draft, publish, pending, private, collected, etc.)
+
+        Returns:
+            Обновленный пост или None
+        """
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                updates = []
+                params = []
+                if title is not None:
+                    updates.append("title = %s")
+                    params.append(title)
+                if post_text is not None:
+                    updates.append("post_text = %s")
+                    params.append(post_text)
+                if status is not None:
+                    updates.append("status = %s")
+                    params.append(status)
+                if not updates:
+                    return await self.get_wp_post(user_id, post_id)
+                params.extend([user_id, post_id])
+                await cur.execute(
+                    f"""
+                    UPDATE wp_posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s AND id = %s
+                    RETURNING *
+                    """,
+                    params
+                )
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_post(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+
+    async def delete_wp_post(self, user_id: int, post_id: int) -> Optional[Dict]:
+        """Помечает пост WordPress как удаленный (status = 'deleted').
+
+        Args:
+            user_id: ID пользователя
+            post_id: ID поста
+
+        Returns:
+            Обновленный пост или None
+        """
+        return await self.update_wp_post(user_id, post_id, status="deleted")
     
     async def update_post_status(self, post_id: int, status: str) -> Optional[Dict]:
         """Обновляет статус поста.

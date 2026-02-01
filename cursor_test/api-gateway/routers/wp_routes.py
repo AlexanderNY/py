@@ -117,6 +117,16 @@ async def list_wp_posts(
     return await forward_to_core("/wp/posts", request)
 
 
+@router.get("/post/{post_id}")
+async def get_wp_post(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Возвращает один пост WordPress из core сервиса."""
+    return await forward_to_core(f"/wp/post/{post_id}", request)
+
+
 @router.post("/post")
 async def create_wp_post(
     request: Request,
@@ -128,3 +138,23 @@ async def create_wp_post(
     Требует JWT аутентификации.
     """
     return await forward_to_core("/wp/post", request)
+
+
+@router.put("/post/{post_id}")
+async def update_wp_post(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Обновляет пост WordPress в core сервисе."""
+    return await forward_to_core(f"/wp/post/{post_id}", request)
+
+
+@router.delete("/post/{post_id}")
+async def delete_wp_post(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Помечает пост WordPress как удаленный (status = deleted) в core сервисе."""
+    return await forward_to_core(f"/wp/post/{post_id}", request)

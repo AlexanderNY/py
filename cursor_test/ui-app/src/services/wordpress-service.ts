@@ -5,6 +5,7 @@ import type {
   WordPressCollectProfile,
   WordPressPost,
   WordPressPostListItem,
+  WordPressPostFull,
 } from '@/types/wordpress'
 
 export const wordpressService = {
@@ -63,6 +64,31 @@ export const wordpressService = {
   async createPost(post: WordPressPost): Promise<void> {
     try {
       await apiClient.post('/wp/post', post)
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getPost(id: number): Promise<WordPressPostFull> {
+    try {
+      const response = await apiClient.get<WordPressPostFull>(`/wp/post/${id}`)
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async updatePost(id: number, post: WordPressPost): Promise<void> {
+    try {
+      await apiClient.put(`/wp/post/${id}`, post)
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async deletePost(id: number): Promise<void> {
+    try {
+      await apiClient.delete(`/wp/post/${id}`)
     } catch (error) {
       throw new Error(getErrorMessage(error))
     }

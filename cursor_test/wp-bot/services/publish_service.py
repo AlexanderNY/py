@@ -1,8 +1,9 @@
 """Сервис для публикации постов в WordPress."""
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
+from config import settings
 from database import get_db_connection, release_db_connection
 from services.wordpress_client import WordPressClient
 
@@ -25,28 +26,30 @@ class PublishService:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                # Получаем посты для публикации
+                # Получаем посты для публикации (статус ready)
+                limit = settings.PUBLISH_POSTS_LIMIT
                 if user_id:
                     await cur.execute(
                         """
                         SELECT * FROM wp_posts
                         WHERE user_id = %s
-                          AND status = 'collected'
+                          AND status = 'ready'
                           AND to_wp = TRUE
                         ORDER BY created_at ASC
-                        LIMIT 10
+                        LIMIT %s
                         """,
-                        (user_id,)
+                        (user_id, limit)
                     )
                 else:
                     await cur.execute(
                         """
                         SELECT * FROM wp_posts
-                        WHERE status = 'collected'
+                        WHERE status = 'ready'
                           AND to_wp = TRUE
                         ORDER BY created_at ASC
-                        LIMIT 10
-                        """
+                        LIMIT %s
+                        """,
+                        (limit,)
                     )
                 
                 rows = await cur.fetchall()
