@@ -59,6 +59,65 @@ CREATE TABLE IF NOT EXISTS tg_profiles (
 );
 """
 
+# Миграция: добавить колонки для обработки в tg_profiles
+TG_PROFILES_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN remove_emojis BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN remove_images BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN clean_html BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN process_services JSONB;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN status_review_after_process BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN add_static_html BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN static_html_content TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN telegram_username VARCHAR(255);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN auth_state VARCHAR(50) DEFAULT 'authorized';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN auth_phone_code_hash VARCHAR(255);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN auth_phone_number VARCHAR(50);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+"""
+
 # Таблица tw_profiles - настройки Twitter
 TW_PROFILES_TABLE = """
 CREATE TABLE IF NOT EXISTS tw_profiles (
@@ -255,6 +314,44 @@ CREATE INDEX IF NOT EXISTS idx_wp_posts_status ON wp_posts(status);
 CREATE INDEX IF NOT EXISTS idx_wp_posts_created_at ON wp_posts(created_at);
 """
 
+# Таблица tg_posts - посты Telegram (структура аналогична wp_posts)
+TG_POSTS_TABLE = """
+CREATE TABLE IF NOT EXISTS tg_posts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    domain VARCHAR(255),
+    url TEXT,
+    title VARCHAR(500),
+    author VARCHAR(255),
+    avatar TEXT,
+    post_date TIMESTAMP,
+    post_text TEXT,
+    screenshot TEXT,
+    images JSONB DEFAULT '[]',
+    image_over_text TEXT,
+    comments INTEGER DEFAULT 0,
+    reposts INTEGER DEFAULT 0,
+    likes INTEGER DEFAULT 0,
+    views INTEGER DEFAULT 0,
+    is_ad BOOLEAN DEFAULT FALSE,
+    status VARCHAR(50) DEFAULT 'collected',
+    post_type VARCHAR(50),
+    to_tg BOOLEAN DEFAULT FALSE,
+    to_tw BOOLEAN DEFAULT FALSE,
+    to_wp BOOLEAN DEFAULT FALSE,
+    to_vk BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+# Индексы для tg_posts
+TG_POSTS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_tg_posts_user_id ON tg_posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_tg_posts_status ON tg_posts(status);
+CREATE INDEX IF NOT EXISTS idx_tg_posts_created_at ON tg_posts(created_at);
+"""
+
 # Таблица vk_profiles - настройки VKontakte
 VK_PROFILES_TABLE = """
 CREATE TABLE IF NOT EXISTS vk_profiles (
@@ -326,6 +423,9 @@ ALL_TABLES = [
     POSTS_TABLE,
     POSTS_INDEXES,
     TG_PROFILES_TABLE,
+    TG_PROFILES_MIGRATION,
+    TG_POSTS_TABLE,
+    TG_POSTS_INDEXES,
     TW_PROFILES_TABLE,
     WP_PROFILES_TABLE,
     WP_PUBLISH_PROFILE_TABLE,

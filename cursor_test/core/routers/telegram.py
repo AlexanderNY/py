@@ -1,10 +1,12 @@
 """Роутер для Telegram профилей и постов."""
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, File, UploadFile, Form
 from typing import Optional
 from services.profile_service import profile_service
 from services.post_service import post_service
-from schemas import TelegramProfileCreate, TelegramPost
+from schemas import TelegramProfileCreate
+import uuid
+from pathlib import Path
 
 
 router = APIRouter(prefix="/tg", tags=["Telegram"])
@@ -48,11 +50,19 @@ async def get_tg_profile(x_user_id: Optional[str] = Header(None)):
         "time_intervals": [],
         "api_id": None,
         "api_hash": None,
+        "telegram_username": None,
         "chats_to_read": [],
         "save_conditions": [],
         "channel_to_post": None,
         "process_enabled": False,
-        "processing_description": None
+        "processing_description": None,
+        "remove_emojis": False,
+        "remove_images": False,
+        "clean_html": False,
+        "process_services": [],
+        "status_review_after_process": False,
+        "add_static_html": False,
+        "static_html_content": None
     }
 
 
@@ -87,13 +97,15 @@ async def get_all_tg_profiles():
 
 @router.post("/post")
 async def create_tg_post(
-    data: TelegramPost,
+    text: str = Form(..., max_length=4096),
+    image: Optional[UploadFile] = File(None),
     x_user_id: Optional[str] = Header(None)
 ):
-    """Создает пост для Telegram (max 4096 символов).
+    """Создает пост для Telegram (max 4096 символов) с поддержкой изображений.
     
     Args:
-        data: Данные поста
+        text: Текст поста
+        image: Опциональное изображение
         
     Returns:
         Созданный пост
@@ -101,15 +113,118 @@ async def create_tg_post(
     user_id = get_user_id_from_header(x_user_id)
     
     try:
-        post = await post_service.create_post(
+        images = []
+        if image:
+            # Сохраняем изображение
+            upload_dir = Path("uploads/tg")
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            
+            file_extension = Path(image.filename).suffix if image.filename else ".jpg"
+            file_name = f"{uuid.uuid4()}{file_extension}"
+            file_path = upload_dir / file_name
+            
+            with open(file_path, "wb") as f:
+                content = await image.read()
+                f.write(content)
+            
+            # Сохраняем URL изображения
+            image_url = f"/uploads/tg/{file_name}"
+            images.append(image_url)
+        
+        post = await post_service.create_tg_post_record(
             user_id=user_id,
-            text=data.text,
-            platform="tg",
-            to_tg=data.to_tg,
-            to_tw=data.to_tw,
-            to_wp=data.to_wp,
-            to_vk=data.to_vk
+            text=text,
+            images=images if images else None
         )
         return post
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/posts")
+async def get_tg_posts(
+    x_user_id: Optional[str] = Header(None),
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Возвращает список постов Telegram пользователя из таблицы tg_posts.
+    
+    Args:
+        x_user_id: ID пользователя из заголовка
+        limit: Максимальное количество записей
+        offset: Смещение для постраничной загрузки
+    
+    Returns:
+        Список постов Telegram
+    """
+    user_id = get_user_id_from_header(x_user_id)
+    posts = await post_service.get_tg_posts(user_id=user_id, limit=limit, offset=offset)
+    return posts
+
+
+@router.get("/post/{post_id}")
+async def get_tg_post(
+    post_id: int,
+    x_user_id: Optional[str] = Header(None),
+):
+    """Возвращает один пост Telegram по id."""
+    user_id = get_user_id_from_header(x_user_id)
+    post = await post_service.get_tg_post(user_id=user_id, post_id=post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return post
+
+
+@router.put("/post/{post_id}")
+async def update_tg_post(
+    post_id: int,
+    text: Optional[str] = Form(None),
+    image: Optional[UploadFile] = File(None),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Обновляет пост Telegram."""
+    user_id = get_user_id_from_header(x_user_id)
+    
+    try:
+        images = None
+        if image:
+            # Сохраняем изображение
+            upload_dir = Path("uploads/tg")
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            
+            file_extension = Path(image.filename).suffix if image.filename else ".jpg"
+            file_name = f"{uuid.uuid4()}{file_extension}"
+            file_path = upload_dir / file_name
+            
+            with open(file_path, "wb") as f:
+                content = await image.read()
+                f.write(content)
+            
+            # Сохраняем URL изображения
+            image_url = f"/uploads/tg/{file_name}"
+            images = [image_url]
+        
+        post = await post_service.update_tg_post(
+            user_id=user_id,
+            post_id=post_id,
+            text=text,
+            images=images
+        )
+        if not post:
+            raise HTTPException(status_code=404, detail="Post not found")
+        return post
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/post/{post_id}")
+async def delete_tg_post(
+    post_id: int,
+    x_user_id: Optional[str] = Header(None),
+):
+    """Помечает пост Telegram как удаленный (status = deleted)."""
+    user_id = get_user_id_from_header(x_user_id)
+    post = await post_service.delete_tg_post(user_id=user_id, post_id=post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return post

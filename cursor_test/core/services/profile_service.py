@@ -31,14 +31,22 @@ class ProfileService:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
+                process_services = data.get("process_services")
+                if process_services is not None:
+                    process_services_json = json.dumps(process_services) if isinstance(process_services, list) else None
+                else:
+                    process_services_json = None
+                
                 await cur.execute(
                     """
                     INSERT INTO tg_profiles (
                         user_id, publish_enabled, collect_enabled, schedule_type,
-                        time_intervals, api_id, api_hash, chats_to_read,
+                        time_intervals, api_id, api_hash, telegram_username, chats_to_read,
                         save_conditions, channel_to_post, process_enabled,
-                        processing_description
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        processing_description, remove_emojis, remove_images,
+                        clean_html, process_services, status_review_after_process,
+                        add_static_html, static_html_content
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -46,11 +54,19 @@ class ProfileService:
                         time_intervals = EXCLUDED.time_intervals,
                         api_id = EXCLUDED.api_id,
                         api_hash = EXCLUDED.api_hash,
+                        telegram_username = EXCLUDED.telegram_username,
                         chats_to_read = EXCLUDED.chats_to_read,
                         save_conditions = EXCLUDED.save_conditions,
                         channel_to_post = EXCLUDED.channel_to_post,
                         process_enabled = EXCLUDED.process_enabled,
                         processing_description = EXCLUDED.processing_description,
+                        remove_emojis = EXCLUDED.remove_emojis,
+                        remove_images = EXCLUDED.remove_images,
+                        clean_html = EXCLUDED.clean_html,
+                        process_services = EXCLUDED.process_services,
+                        status_review_after_process = EXCLUDED.status_review_after_process,
+                        add_static_html = EXCLUDED.add_static_html,
+                        static_html_content = EXCLUDED.static_html_content,
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING *
                     """,
@@ -62,11 +78,19 @@ class ProfileService:
                         json.dumps(data.get("time_intervals", [])),
                         data.get("api_id"),
                         data.get("api_hash"),
+                        data.get("telegram_username"),
                         json.dumps(data.get("chats_to_read", [])),
                         json.dumps(data.get("save_conditions", [])),
                         data.get("channel_to_post"),
                         data.get("process_enabled", False),
                         data.get("processing_description"),
+                        data.get("remove_emojis", False),
+                        data.get("remove_images", False),
+                        data.get("clean_html", False),
+                        process_services_json,
+                        data.get("status_review_after_process", False),
+                        data.get("add_static_html", False),
+                        data.get("static_html_content"),
                     )
                 )
                 row = await cur.fetchone()
@@ -85,6 +109,21 @@ class ProfileService:
             profile["chats_to_read"] = json.loads(profile["chats_to_read"])
         if isinstance(profile.get("save_conditions"), str):
             profile["save_conditions"] = json.loads(profile["save_conditions"])
+        # Парсим process_services
+        ps = profile.get("process_services")
+        if ps is not None and isinstance(ps, str):
+            try:
+                profile["process_services"] = json.loads(ps)
+            except (json.JSONDecodeError, TypeError):
+                profile["process_services"] = []
+        elif not isinstance(profile.get("process_services"), list):
+            profile["process_services"] = []
+        # Устанавливаем значения по умолчанию для новых полей
+        profile.setdefault("remove_emojis", False)
+        profile.setdefault("remove_images", False)
+        profile.setdefault("clean_html", False)
+        profile.setdefault("status_review_after_process", False)
+        profile.setdefault("add_static_html", False)
         return profile
     
     # ==================== Twitter ====================

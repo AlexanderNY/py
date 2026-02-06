@@ -79,3 +79,58 @@ async def create_tg_post(
     Требует JWT аутентификации.
     """
     return await forward_to_core("/tg/post", request)
+
+
+@router.get("/posts")
+async def get_tg_posts(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает список постов Telegram из core сервиса.
+    
+    GET /tg/posts -> GET /tg/posts на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core("/tg/posts", request)
+
+
+@router.get("/post/{post_id}")
+async def get_tg_post(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает один пост Telegram из core сервиса.
+    
+    GET /tg/post/{post_id} -> GET /tg/post/{post_id} на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core(f"/tg/post/{post_id}", request)
+
+
+@router.put("/post/{post_id}")
+async def update_tg_post(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Обновляет пост Telegram в core сервисе.
+    
+    PUT /tg/post/{post_id} -> PUT /tg/post/{post_id} на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core(f"/tg/post/{post_id}", request)
+
+
+@router.delete("/post/{post_id}")
+async def delete_tg_post(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Удаляет пост Telegram в core сервисе.
+    
+    DELETE /tg/post/{post_id} -> DELETE /tg/post/{post_id} на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core(f"/tg/post/{post_id}", request)

@@ -16,7 +16,7 @@ class ScheduleType(str, Enum):
 class TimeInterval(BaseModel):
     """Временной интервал в формате HH:MM."""
     start: str = Field(..., pattern=r"^\d{2}:\d{2}$")
-    end: str = Field(..., pattern=r"^\d{2}:\d{2}$")
+    end: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")
 
 
 # ==================== Healthcheck ====================
@@ -92,15 +92,23 @@ class TelegramProfileBase(BaseModel):
     """Базовая модель профиля Telegram."""
     publish_enabled: bool = False
     collect_enabled: bool = False
-    schedule_type: ScheduleType = ScheduleType.IMMEDIATE
+    schedule_type: Optional[str] = "immediate"  # "immediate", "on_new_messages", "by_intervals"
     time_intervals: List[TimeInterval] = []
     api_id: Optional[str] = None
     api_hash: Optional[str] = None
+    telegram_username: Optional[str] = None
     chats_to_read: List[str] = []
     save_conditions: List[str] = []
     channel_to_post: Optional[str] = None
     process_enabled: bool = False
     processing_description: Optional[str] = None
+    remove_emojis: bool = False
+    remove_images: bool = False
+    clean_html: bool = False
+    process_services: Optional[List[str]] = None  # ["wordpress", "telegram", "twitter", "vkontakte"]
+    status_review_after_process: bool = False
+    add_static_html: bool = False
+    static_html_content: Optional[str] = None  # max 1000
 
 
 class TelegramProfileCreate(TelegramProfileBase):
@@ -122,10 +130,50 @@ class TelegramProfile(TelegramProfileBase):
 class TelegramPost(BaseModel):
     """Модель поста для Telegram (max 4096 символов)."""
     text: str = Field(..., max_length=4096)
+    images: Optional[List[str]] = []
     to_tg: bool = True
     to_tw: bool = False
     to_wp: bool = False
     to_vk: bool = False
+
+
+class TelegramPostListItem(BaseModel):
+    """Модель элемента списка постов Telegram."""
+    id: int
+    post_text: str
+    images: Optional[List[str]] = []
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class TelegramPostFull(BaseModel):
+    """Модель полного поста Telegram."""
+    id: int
+    user_id: int
+    domain: Optional[str] = None
+    url: Optional[str] = None
+    title: Optional[str] = None
+    author: Optional[str] = None
+    avatar: Optional[str] = None
+    post_date: Optional[datetime] = None
+    post_text: str
+    screenshot: Optional[str] = None
+    images: Optional[List[str]] = []
+    image_over_text: Optional[str] = None
+    comments: int = 0
+    reposts: int = 0
+    likes: int = 0
+    views: int = 0
+    is_ad: bool = False
+    status: str
+    post_type: Optional[str] = None
+    to_tg: bool = False
+    to_tw: bool = False
+    to_wp: bool = False
+    to_vk: bool = False
+    created_at: datetime
+    updated_at: datetime
 
 
 # ==================== Twitter ====================
