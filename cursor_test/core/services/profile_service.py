@@ -545,7 +545,11 @@ class ProfileService:
             await release_db_connection(conn)
     
     async def save_curl_settings(self, user_id: int, data: Dict) -> Dict:
-        """Сохраняет или обновляет настройки cURL."""
+        """Сохраняет или обновляет настройки cURL (urls + обработка)."""
+        urls = data.get("urls") or []
+        urls_json = json.dumps(urls)
+        first = urls[0] if urls else {}
+        tsn = first.get("target_social_networks") or {}
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -553,12 +557,17 @@ class ProfileService:
                     """
                     INSERT INTO curl_settings (
                         user_id, collect_enabled, schedule_type, time_intervals,
-                        url, xpath, take_screenshot, to_tg, to_tw, to_vk, to_wp
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        url, xpath, take_screenshot, to_tg, to_tw, to_vk, to_wp,
+                        urls, process_before_publish, process_description,
+                        remove_emojis, remove_images, clean_html, process_services,
+                        status_review_after_process, add_static_html, static_html_content
+                    ) VALUES (
+                        %s, %s, 'standard', '[]',
+                        %s, %s, %s, %s, %s, %s, %s,
+                        %s::jsonb, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s
+                    )
                     ON CONFLICT (user_id) DO UPDATE SET
                         collect_enabled = EXCLUDED.collect_enabled,
-                        schedule_type = EXCLUDED.schedule_type,
-                        time_intervals = EXCLUDED.time_intervals,
                         url = EXCLUDED.url,
                         xpath = EXCLUDED.xpath,
                         take_screenshot = EXCLUDED.take_screenshot,
@@ -566,21 +575,39 @@ class ProfileService:
                         to_tw = EXCLUDED.to_tw,
                         to_vk = EXCLUDED.to_vk,
                         to_wp = EXCLUDED.to_wp,
+                        urls = EXCLUDED.urls,
+                        process_before_publish = EXCLUDED.process_before_publish,
+                        process_description = EXCLUDED.process_description,
+                        remove_emojis = EXCLUDED.remove_emojis,
+                        remove_images = EXCLUDED.remove_images,
+                        clean_html = EXCLUDED.clean_html,
+                        process_services = EXCLUDED.process_services,
+                        status_review_after_process = EXCLUDED.status_review_after_process,
+                        add_static_html = EXCLUDED.add_static_html,
+                        static_html_content = EXCLUDED.static_html_content,
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING *
                     """,
                     (
                         user_id,
                         data.get("collect_enabled", False),
-                        data.get("schedule_type", "standard"),
-                        json.dumps(data.get("time_intervals", [])),
-                        data.get("url"),
-                        data.get("xpath"),
-                        data.get("take_screenshot", False),
-                        data.get("to_tg", False),
-                        data.get("to_tw", False),
-                        data.get("to_vk", False),
-                        data.get("to_wp", False),
+                        first.get("url"),
+                        first.get("xpath"),
+                        first.get("take_screenshot", False),
+                        tsn.get("tg", False),
+                        tsn.get("tw", False),
+                        tsn.get("vk", False),
+                        tsn.get("wp", False),
+                        urls_json,
+                        data.get("process_before_publish", False),
+                        data.get("process_description"),
+                        data.get("remove_emojis", False),
+                        data.get("remove_images", False),
+                        data.get("clean_html", False),
+                        json.dumps(data.get("process_services") or []),
+                        data.get("status_review_after_process", False),
+                        data.get("add_static_html", False),
+                        (data.get("static_html_content") or "")[:1000],
                     )
                 )
                 row = await cur.fetchone()
@@ -589,11 +616,42 @@ class ProfileService:
             await release_db_connection(conn)
     
     def _row_to_curl_settings(self, row, description) -> Dict:
-        """Преобразует строку БД в словарь настроек cURL."""
+        """Преобразует строку БД в словарь настроек cURL (urls + обработка)."""
         columns = [col.name for col in description]
         settings = dict(zip(columns, row))
-        if isinstance(settings.get("time_intervals"), str):
-            settings["time_intervals"] = json.loads(settings["time_intervals"])
+        urls_raw = settings.get("urls")
+        if urls_raw is not None:
+            if isinstance(urls_raw, str):
+                urls_raw = json.loads(urls_raw) if urls_raw else []
+            settings["urls"] = urls_raw
+        else:
+            url = settings.get("url")
+            xpath = settings.get("xpath")
+            if url is not None or xpath is not None:
+                settings["urls"] = [{
+                    "url": url or "",
+                    "xpath": xpath or "",
+                    "take_screenshot": settings.get("take_screenshot", False),
+                    "target_social_networks": {
+                        "tg": settings.get("to_tg", False),
+                        "tw": settings.get("to_tw", False),
+                        "vk": settings.get("to_vk", False),
+                        "wp": settings.get("to_wp", False),
+                    },
+                    "schedule_time": "09:00",
+                }]
+            else:
+                settings["urls"] = []
+        # Normalize urls: ensure schedule_time, drop legacy time_interval
+        for item in settings.get("urls") or []:
+            if "time_interval" in item:
+                item["schedule_time"] = (item["time_interval"] or {}).get("start") or "09:00"
+                del item["time_interval"]
+            item.setdefault("schedule_time", "09:00")
+        for key in ("time_intervals", "schedule_type", "url", "xpath", "take_screenshot", "to_tg", "to_tw", "to_vk", "to_wp"):
+            settings.pop(key, None)
+        if isinstance(settings.get("process_services"), str):
+            settings["process_services"] = json.loads(settings["process_services"]) if settings["process_services"] else []
         return settings
     
     # ==================== cPost ====================

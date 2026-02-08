@@ -55,6 +55,25 @@ async def save_cpost_profile(
     return await forward_to_core("/cpost/profile", request)
 
 
+@router.get("/posts")
+async def get_cpost_posts(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Список ручных постов пользователя."""
+    return await forward_to_core("/cpost/posts", request)
+
+
+@router.get("/post/{post_id}")
+async def get_cpost_post(
+    request: Request,
+    post_id: int,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получить один ручной пост по id."""
+    return await forward_to_core(f"/cpost/post/{post_id}", request)
+
+
 @router.post("/post")
 async def create_cpost_post(
     request: Request,
@@ -66,3 +85,23 @@ async def create_cpost_post(
     Требует JWT аутентификации.
     """
     return await forward_to_core("/cpost/post", request)
+
+
+@router.put("/post/{post_id}")
+async def update_cpost_post(
+    request: Request,
+    post_id: int,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Обновить ручной пост."""
+    return await forward_to_core(f"/cpost/post/{post_id}", request)
+
+
+@router.delete("/post/{post_id}")
+async def delete_cpost_post(
+    request: Request,
+    post_id: int,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Удалить ручной пост."""
+    return await forward_to_core(f"/cpost/post/{post_id}", request)

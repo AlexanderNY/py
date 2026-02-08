@@ -32,15 +32,16 @@ async def get_curl_settings(x_user_id: Optional[str] = Header(None)):
         return settings
     return {
         "collect_enabled": False,
-        "schedule_type": "standard",
-        "time_intervals": [],
-        "url": None,
-        "xpath": None,
-        "take_screenshot": False,
-        "to_tg": False,
-        "to_tw": False,
-        "to_vk": False,
-        "to_wp": False
+        "urls": [],
+        "process_before_publish": False,
+        "process_description": None,
+        "remove_emojis": False,
+        "remove_images": False,
+        "clean_html": False,
+        "process_services": [],
+        "status_review_after_process": False,
+        "add_static_html": False,
+        "static_html_content": None,
     }
 
 

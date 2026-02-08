@@ -359,18 +359,36 @@ class VKontaktePost(BaseModel):
 
 # ==================== cURL ====================
 
-class CurlSettingsBase(BaseModel):
-    """Базовая модель настроек cURL скрапинга."""
-    collect_enabled: bool = False
-    schedule_type: str = "standard"  # "standard" или "intervals"
-    time_intervals: List[TimeInterval] = []
-    url: Optional[str] = None
-    xpath: Optional[str] = None
+class CurlTargetSocialNetworks(BaseModel):
+    """Целевые соцсети для одного URL."""
+    tg: bool = False
+    tw: bool = False
+    vk: bool = False
+    wp: bool = False
+
+
+class CurlUrlItem(BaseModel):
+    """Один URL в настройках cURL: url, xpath, время (HH:MM) и целевые сети."""
+    url: str = ""
+    xpath: str = ""
     take_screenshot: bool = False
-    to_tg: bool = False
-    to_tw: bool = False
-    to_vk: bool = False
-    to_wp: bool = False
+    target_social_networks: CurlTargetSocialNetworks = Field(default_factory=CurlTargetSocialNetworks)
+    schedule_time: Optional[str] = None  # HH:MM
+
+
+class CurlSettingsBase(BaseModel):
+    """Базовая модель настроек cURL скрапинга (urls + обработка)."""
+    collect_enabled: bool = False
+    urls: List[CurlUrlItem] = []
+    process_before_publish: bool = False
+    process_description: Optional[str] = None
+    remove_emojis: bool = False
+    remove_images: bool = False
+    clean_html: bool = False
+    process_services: Optional[List[str]] = None
+    status_review_after_process: bool = False
+    add_static_html: bool = False
+    static_html_content: Optional[str] = Field(None, max_length=1000)
 
 
 class CurlSettingsCreate(CurlSettingsBase):
@@ -421,13 +439,51 @@ class CpostProfile(CpostProfileBase):
 
 
 class CpostPost(BaseModel):
-    """Модель ручного поста (max 150000 символов)."""
+    """Модель ручного поста — все поля таблицы posts (кроме id, user_id, created_at, updated_at)."""
     text: str = Field(..., max_length=150000)
     title: Optional[str] = None
+    domain: Optional[str] = None
+    url: Optional[str] = None
+    author: Optional[str] = None
+    avatar: Optional[str] = None
+    post_date: Optional[datetime] = None
+    screenshot: Optional[str] = None
+    images: List[str] = []
+    image_over_text: Optional[str] = None
+    comments: int = 0
+    reposts: int = 0
+    likes: int = 0
+    views: int = 0
+    is_ad: bool = False
+    status: str = "collected"
     to_tg: bool = False
     to_tw: bool = False
     to_wp: bool = False
     to_vk: bool = False
+
+
+class CpostPostUpdate(BaseModel):
+    """Модель обновления ручного поста (все поля опциональны)."""
+    title: Optional[str] = None
+    text: Optional[str] = Field(None, max_length=150000)
+    domain: Optional[str] = None
+    url: Optional[str] = None
+    author: Optional[str] = None
+    avatar: Optional[str] = None
+    post_date: Optional[datetime] = None
+    screenshot: Optional[str] = None
+    images: Optional[List[str]] = None
+    image_over_text: Optional[str] = None
+    comments: Optional[int] = None
+    reposts: Optional[int] = None
+    likes: Optional[int] = None
+    views: Optional[int] = None
+    is_ad: Optional[bool] = None
+    status: Optional[str] = None
+    to_tg: Optional[bool] = None
+    to_tw: Optional[bool] = None
+    to_wp: Optional[bool] = None
+    to_vk: Optional[bool] = None
 
 
 # ==================== Post (общая модель) ====================

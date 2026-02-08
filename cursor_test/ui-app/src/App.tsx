@@ -101,7 +101,8 @@ function App() {
         <Route path="twitter" element={<TwitterPage />} />
         <Route path="vkontakte" element={<VKontaktePage />} />
         <Route path="custom-url" element={<CustomURLPage />} />
-        <Route path="create-post" element={<CreatePostPage />} />
+        <Route path="posts" element={<CreatePostPage />} />
+        <Route path="create-post" element={<Navigate to="/posts" replace />} />
         <Route path="test" element={<TestPage />} />
         <Route path="administration" element={<AdminRoute><AdministrationPage /></AdminRoute>} />
       </Route>

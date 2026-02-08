@@ -53,3 +53,9 @@ async def url_bot_schedule(
 ) -> Response:
     """POST /url-bot/schedule -> url-bot /schedule. Требует JWT."""
     return await _forward_to_bot(settings.URL_BOT_SERVICE_URL, "/schedule", request)
+
+
+@router.post("/url-bot/run")
+async def url_bot_run(request: Request) -> Response:
+    """POST /url-bot/run -> url-bot /run. Тестовый запуск скрапинга по запросу (без JWT)."""
+    return await _forward_to_bot(settings.URL_BOT_SERVICE_URL, "/run", request)

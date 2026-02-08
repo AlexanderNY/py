@@ -393,6 +393,60 @@ CREATE TABLE IF NOT EXISTS curl_settings (
 );
 """
 
+# Миграция: urls (JSONB) и колонки обработки для curl_settings
+CURL_SETTINGS_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE curl_settings ADD COLUMN urls JSONB DEFAULT '[]';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE curl_settings ADD COLUMN process_before_publish BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE curl_settings ADD COLUMN process_description TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE curl_settings ADD COLUMN remove_emojis BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE curl_settings ADD COLUMN remove_images BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE curl_settings ADD COLUMN clean_html BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE curl_settings ADD COLUMN process_services JSONB;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE curl_settings ADD COLUMN status_review_after_process BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE curl_settings ADD COLUMN add_static_html BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE curl_settings ADD COLUMN static_html_content VARCHAR(1000);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+"""
+
 # Таблица cpost_profiles - настройки ручных постов
 CPOST_PROFILES_TABLE = """
 CREATE TABLE IF NOT EXISTS cpost_profiles (
@@ -438,6 +492,7 @@ ALL_TABLES = [
     WP_POSTS_INDEXES,
     VK_PROFILES_TABLE,
     CURL_SETTINGS_TABLE,
+    CURL_SETTINGS_MIGRATION,
     CPOST_PROFILES_TABLE,
     NOTIFICATIONS_TABLE,
     NOTIFICATIONS_INDEXES,

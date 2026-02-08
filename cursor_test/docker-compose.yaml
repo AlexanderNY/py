@@ -98,6 +98,19 @@ services:
       monitoring_network:
         ipv4_address: 172.20.10.6
 
+  url-bot:
+    build: ./url-bot
+    ports:
+      - "8007:8007"
+    environment:
+      - CORE_SERVICE_URL=http://core:8002
+      - API_GATEWAY_URL=http://gateway:8000
+      - CHROME_BIN=/usr/bin/chromium
+      - CHROMEDRIVER_PATH=/usr/bin/chromedriver
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.7
+
 volumes:
   postgres_data:
 

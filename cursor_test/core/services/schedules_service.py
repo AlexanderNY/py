@@ -107,6 +107,41 @@ class SchedulesService:
                         "schedule_type": "immediate",
                         "time_intervals": [],
                     })
+                # url: из curl_settings (collect_enabled + urls)
+                await cur.execute(
+                    """
+                    SELECT user_id, collect_enabled, urls
+                    FROM curl_settings
+                    """
+                )
+                curl_rows = await cur.fetchall()
+                curl_cols = [c.name for c in cur.description] if cur.description else []
+                for row in curl_rows:
+                    rec = dict(zip(curl_cols, row))
+                    urls_raw = rec.get("urls")
+                    if isinstance(urls_raw, str):
+                        try:
+                            urls_list = json.loads(urls_raw) if urls_raw else []
+                        except json.JSONDecodeError:
+                            urls_list = []
+                    else:
+                        urls_list = urls_raw if isinstance(urls_raw, list) else []
+                    if not rec.get("collect_enabled") or not urls_list:
+                        continue
+                    time_intervals = []
+                    for u in urls_list:
+                        st = (u or {}).get("schedule_time")
+                        if isinstance(st, str) and st and ":" in st:
+                            time_intervals.append({"start": st, "end": st})
+                    result.append({
+                        "user_id": rec["user_id"],
+                        "platform": "url",
+                        "publish_enabled": False,
+                        "collect_enabled": bool(rec.get("collect_enabled", False)),
+                        "schedule_type": "immediate",
+                        "time_intervals": time_intervals if time_intervals else [],
+                        "urls": urls_list,
+                    })
         finally:
             await release_db_connection(conn)
         return result

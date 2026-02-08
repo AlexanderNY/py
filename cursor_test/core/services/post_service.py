@@ -1,6 +1,7 @@
 """Сервис для управления постами."""
 
 import json
+from datetime import datetime
 from typing import Dict, List, Optional
 from database import get_db_connection, release_db_connection
 
@@ -88,7 +89,7 @@ class PostService:
                         kwargs.get("likes", 0),
                         kwargs.get("views", 0),
                         kwargs.get("is_ad", False),
-                        "collected",
+                        kwargs.get("status", "collected"),
                         platform,
                         to_tg,
                         to_tw,
@@ -206,6 +207,7 @@ class PostService:
         user_id: int,
         status: Optional[str] = None,
         platform: Optional[str] = None,
+        post_type: Optional[str] = None,
         limit: int = 50,
         offset: int = 0
     ) -> List[Dict]:
@@ -214,7 +216,8 @@ class PostService:
         Args:
             user_id: ID пользователя
             status: Фильтр по статусу
-            platform: Фильтр по платформе
+            platform: Фильтр по платформе (to_tg, to_tw, ...)
+            post_type: Фильтр по типу поста (например 'cpost')
             limit: Лимит записей
             offset: Смещение
             
@@ -230,6 +233,10 @@ class PostService:
                 if status:
                     query += " AND status = %s"
                     params.append(status)
+                
+                if post_type is not None:
+                    query += " AND post_type = %s"
+                    params.append(post_type)
                 
                 if platform:
                     field_map = {
@@ -248,6 +255,158 @@ class PostService:
                 rows = await cur.fetchall()
                 
                 return [self._row_to_post(row, cur.description) for row in rows]
+        finally:
+            await release_db_connection(conn)
+
+    async def get_post(self, user_id: int, post_id: int) -> Optional[Dict]:
+        """Получает один пост из таблицы posts по id.
+        
+        Args:
+            user_id: ID пользователя
+            post_id: ID поста
+            
+        Returns:
+            Пост или None
+        """
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT * FROM posts WHERE user_id = %s AND id = %s",
+                    (user_id, post_id),
+                )
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_post(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+
+    async def update_post(
+        self,
+        user_id: int,
+        post_id: int,
+        title: Optional[str] = None,
+        post_text: Optional[str] = None,
+        domain: Optional[str] = None,
+        url: Optional[str] = None,
+        author: Optional[str] = None,
+        avatar: Optional[str] = None,
+        post_date: Optional[datetime] = None,
+        screenshot: Optional[str] = None,
+        images: Optional[list] = None,
+        image_over_text: Optional[str] = None,
+        comments: Optional[int] = None,
+        reposts: Optional[int] = None,
+        likes: Optional[int] = None,
+        views: Optional[int] = None,
+        is_ad: Optional[bool] = None,
+        status: Optional[str] = None,
+        to_tg: Optional[bool] = None,
+        to_tw: Optional[bool] = None,
+        to_wp: Optional[bool] = None,
+        to_vk: Optional[bool] = None,
+    ) -> Optional[Dict]:
+        """Обновляет пост в таблице posts (все переданные поля)."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                updates = []
+                params = []
+                if title is not None:
+                    updates.append("title = %s")
+                    params.append(title)
+                if post_text is not None:
+                    updates.append("post_text = %s")
+                    params.append(post_text)
+                if domain is not None:
+                    updates.append("domain = %s")
+                    params.append(domain)
+                if url is not None:
+                    updates.append("url = %s")
+                    params.append(url)
+                if author is not None:
+                    updates.append("author = %s")
+                    params.append(author)
+                if avatar is not None:
+                    updates.append("avatar = %s")
+                    params.append(avatar)
+                if post_date is not None:
+                    updates.append("post_date = %s")
+                    params.append(post_date)
+                if screenshot is not None:
+                    updates.append("screenshot = %s")
+                    params.append(screenshot)
+                if images is not None:
+                    updates.append("images = %s")
+                    params.append(json.dumps(images))
+                if image_over_text is not None:
+                    updates.append("image_over_text = %s")
+                    params.append(image_over_text)
+                if comments is not None:
+                    updates.append("comments = %s")
+                    params.append(comments)
+                if reposts is not None:
+                    updates.append("reposts = %s")
+                    params.append(reposts)
+                if likes is not None:
+                    updates.append("likes = %s")
+                    params.append(likes)
+                if views is not None:
+                    updates.append("views = %s")
+                    params.append(views)
+                if is_ad is not None:
+                    updates.append("is_ad = %s")
+                    params.append(is_ad)
+                if status is not None:
+                    updates.append("status = %s")
+                    params.append(status)
+                if to_tg is not None:
+                    updates.append("to_tg = %s")
+                    params.append(to_tg)
+                if to_tw is not None:
+                    updates.append("to_tw = %s")
+                    params.append(to_tw)
+                if to_wp is not None:
+                    updates.append("to_wp = %s")
+                    params.append(to_wp)
+                if to_vk is not None:
+                    updates.append("to_vk = %s")
+                    params.append(to_vk)
+                if not updates:
+                    return await self.get_post(user_id, post_id)
+                params.extend([user_id, post_id])
+                query = f"""
+                    UPDATE posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s AND id = %s
+                    RETURNING *
+                """
+                await cur.execute(query, params)
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_post(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+
+    async def delete_post(self, user_id: int, post_id: int) -> bool:
+        """Удаляет пост из таблицы posts.
+        
+        Args:
+            user_id: ID пользователя
+            post_id: ID поста
+            
+        Returns:
+            True если пост удален, False если не найден
+        """
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM posts WHERE user_id = %s AND id = %s",
+                    (user_id, post_id),
+                )
+                return cur.rowcount > 0
         finally:
             await release_db_connection(conn)
 

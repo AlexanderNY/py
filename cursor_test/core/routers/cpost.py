@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Header
 from typing import Optional
 from services.profile_service import profile_service
 from services.post_service import post_service
-from schemas import CpostProfileCreate, CpostPost
+from schemas import CpostProfileCreate, CpostPost, CpostPostUpdate
 
 
 router = APIRouter(prefix="/cpost", tags=["Manual Posts"])
@@ -83,8 +83,102 @@ async def create_manual_post(
             to_tg=data.to_tg,
             to_tw=data.to_tw,
             to_wp=data.to_wp,
-            to_vk=data.to_vk
+            to_vk=data.to_vk,
+            domain=data.domain,
+            url=data.url,
+            author=data.author,
+            avatar=data.avatar,
+            post_date=data.post_date,
+            screenshot=data.screenshot,
+            images=data.images,
+            image_over_text=data.image_over_text,
+            comments=data.comments,
+            reposts=data.reposts,
+            likes=data.likes,
+            views=data.views,
+            is_ad=data.is_ad,
+            status=data.status,
         )
         return post
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/posts")
+async def get_cpost_posts(
+    limit: int = 50,
+    offset: int = 0,
+    x_user_id: Optional[str] = Header(None)
+):
+    """Возвращает список ручных постов пользователя из таблицы posts (post_type=cpost)."""
+    user_id = get_user_id_from_header(x_user_id)
+    posts = await post_service.get_posts(
+        user_id=user_id,
+        post_type="cpost",
+        limit=limit,
+        offset=offset,
+    )
+    return posts
+
+
+@router.get("/post/{post_id}")
+async def get_cpost_post(
+    post_id: int,
+    x_user_id: Optional[str] = Header(None)
+):
+    """Возвращает один ручной пост по id."""
+    user_id = get_user_id_from_header(x_user_id)
+    post = await post_service.get_post(user_id=user_id, post_id=post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return post
+
+
+@router.put("/post/{post_id}")
+async def update_cpost_post(
+    post_id: int,
+    data: CpostPostUpdate,
+    x_user_id: Optional[str] = Header(None)
+):
+    """Обновляет ручной пост."""
+    user_id = get_user_id_from_header(x_user_id)
+    post = await post_service.update_post(
+        user_id=user_id,
+        post_id=post_id,
+        title=data.title,
+        post_text=data.text,
+        to_tg=data.to_tg,
+        to_tw=data.to_tw,
+        to_wp=data.to_wp,
+        to_vk=data.to_vk,
+        domain=data.domain,
+        url=data.url,
+        author=data.author,
+        avatar=data.avatar,
+        post_date=data.post_date,
+        screenshot=data.screenshot,
+        images=data.images,
+        image_over_text=data.image_over_text,
+        comments=data.comments,
+        reposts=data.reposts,
+        likes=data.likes,
+        views=data.views,
+        is_ad=data.is_ad,
+        status=data.status,
+    )
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return post
+
+
+@router.delete("/post/{post_id}")
+async def delete_cpost_post(
+    post_id: int,
+    x_user_id: Optional[str] = Header(None)
+):
+    """Удаляет ручной пост."""
+    user_id = get_user_id_from_header(x_user_id)
+    deleted = await post_service.delete_post(user_id=user_id, post_id=post_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return {"ok": True}
