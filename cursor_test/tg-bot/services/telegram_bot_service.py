@@ -1,29 +1,41 @@
 """Основной сервис Telegram бота."""
 
+import asyncio
 import logging
 from typing import Dict
 from telethon import events
 from telethon.client import TelegramClient
 
+from config import settings
 from .client_manager import TelegramClientManager
 from .message_handler import MessageHandler
 from .post_collector import PostCollector
+from .post_publisher import PostPublisher
 from .image_handler import ImageHandler
 
 
 logger = logging.getLogger(__name__)
 
 
+def _log_action(msg: str, *args, **kwargs) -> None:
+    if settings.LOG_BOT_ACTIONS:
+        logger.info(msg, *args, **kwargs)
+    else:
+        logger.debug(msg, *args, **kwargs)
+
+
 class TelegramBotService:
     """Основной сервис для управления Telegram ботом."""
-    
+
     def __init__(self):
         """Инициализация сервиса."""
         self.client_manager: TelegramClientManager = None
         self.message_handler = MessageHandler()
         self.post_collector = PostCollector()
+        self.post_publisher: PostPublisher = None
         self.image_handler = ImageHandler()
         self._running = False
+        self._publisher_task = None
     
     async def start(self) -> None:
         """Запускает бота и регистрирует обработчики событий."""
@@ -45,9 +57,9 @@ class TelegramBotService:
         
         for user_id, client in clients.items():
             profile = self.client_manager.get_profile(user_id)
-            if not profile:
+            if not profile or not profile.get('collect_enabled'):
                 continue
-            
+
             # Получаем список чатов для прослушивания
             chats_to_read = profile.get('chats_to_read', [])
             if not chats_to_read:
@@ -63,10 +75,29 @@ class TelegramBotService:
             
             # Регистрируем обработчик для этого клиента
             self._register_handler(client, user_id, profile, chats_list)
-            logger.info(f"Registered handler for user {user_id} with {len(chats_list)} chats")
-        
+            _log_action("Registered handler for user %s with %d chats", user_id, len(chats_list))
+
+        # Запускаем фоновую задачу публикации постов
+        self.post_publisher = PostPublisher(self.client_manager)
+        self._publisher_task = asyncio.create_task(self._publisher_loop())
+
         self._running = True
         logger.info("Telegram Bot Service started successfully")
+
+    async def _publisher_loop(self) -> None:
+        """Цикл проверки и публикации постов со статусом ready."""
+        interval = settings.PUBLISH_INTERVAL_SEC
+        while self._running:
+            try:
+                await asyncio.sleep(interval)
+                if not self._running:
+                    break
+                published = await self.post_publisher.publish_ready_posts()
+                _log_action("Publisher loop: published %d posts", published)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in publisher loop: {e}", exc_info=True)
     
     def _register_handler(
         self,
@@ -83,23 +114,11 @@ class TelegramBotService:
             profile: Профиль пользователя
             chats_list: Список чатов для прослушивания
         """
-        save_conditions = profile.get('save_conditions', [])
-        
         @client.on(events.NewMessage(chats=chats_list))
         async def handle_new_message(event: events.NewMessage.Event):
-            """Обработчик новых сообщений."""
+            """Обработчик новых сообщений. Сохраняет все сообщения в tg_posts."""
             try:
-                # Проверяем Save Conditions
-                should_save = self.message_handler.should_save_message(
-                    event,
-                    save_conditions
-                )
-                
-                if not should_save:
-                    logger.debug(f"Message {event.message.id} does not match save conditions")
-                    return
-                
-                logger.info(f"Processing message {event.message.id} for user {user_id}")
+                _log_action("Processing message %s for user %s", event.message.id, user_id)
                 
                 # Скачиваем изображения если есть
                 images = await self.image_handler.download_images(event, user_id)
@@ -113,7 +132,7 @@ class TelegramBotService:
                 )
                 
                 if post:
-                    logger.info(f"Successfully saved post {post.get('id')} for user {user_id}")
+                    _log_action("Successfully saved post %s for user %s", post.get('id'), user_id)
                 else:
                     logger.error(f"Failed to save post for user {user_id}")
             
@@ -124,11 +143,20 @@ class TelegramBotService:
         """Останавливает бота."""
         if not self._running:
             return
-        
+
         logger.info("Stopping Telegram Bot Service...")
+        self._running = False
+
+        if self._publisher_task:
+            self._publisher_task.cancel()
+            try:
+                await self._publisher_task
+            except asyncio.CancelledError:
+                pass
+            self._publisher_task = None
+
         if self.client_manager:
             await self.client_manager.stop_all_clients()
-        self._running = False
         logger.info("Telegram Bot Service stopped")
     
     async def reload(self) -> None:

@@ -15,12 +15,18 @@ class NotificationService:
         """Инициализация сервиса."""
         self.core_url = settings.CORE_SERVICE_URL
     
-    async def send_notification(self, user_id: int, message: str) -> bool:
+    async def send_notification(
+        self,
+        user_id: int,
+        message: str,
+        notif_type: str = "general"
+    ) -> bool:
         """Отправляет уведомление пользователю через core API.
         
         Args:
             user_id: ID пользователя
             message: Текст уведомления
+            notif_type: Тип уведомления (general, tg_auth_code, tg_auth_2fa, tg_auth_error)
             
         Returns:
             True если уведомление отправлено успешно, False иначе
@@ -29,7 +35,7 @@ class NotificationService:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
                     f"{self.core_url}/notifications",
-                    json={"message": message},
+                    json={"message": message, "user_id": user_id, "type": notif_type},
                     headers={
                         "X-User-Id": str(user_id),
                         "X-User-Role": "admin"
@@ -64,11 +70,12 @@ class NotificationService:
             True если уведомление отправлено успешно
         """
         message = (
-            f"Telegram авторизация: требуется ввести код подтверждения "
-            f"для номера {phone_number}. "
-            f"Перейдите в настройки Telegram для ввода кода."
+            f"Telegram авторизация: код подтверждения отправлен "
+            f"на номер {phone_number}. "
+            f'<a href="/telegram?auth=1" style="color:#60a5fa;text-decoration:underline">'
+            f"Введите код на странице Telegram</a>."
         )
-        return await self.send_notification(user_id, message)
+        return await self.send_notification(user_id, message, notif_type="tg_auth_code")
     
     async def send_2fa_notification(self, user_id: int) -> bool:
         """Отправляет уведомление о необходимости ввести 2FA пароль.
@@ -82,9 +89,10 @@ class NotificationService:
         message = (
             "Telegram авторизация: требуется ввести пароль "
             "двухфакторной аутентификации. "
-            "Перейдите в настройки Telegram для ввода пароля."
+            '<a href="/telegram?auth=1" style="color:#60a5fa;text-decoration:underline">'
+            "Введите пароль на странице Telegram</a>."
         )
-        return await self.send_notification(user_id, message)
+        return await self.send_notification(user_id, message, notif_type="tg_auth_2fa")
     
     async def send_error_notification(
         self,
@@ -101,7 +109,7 @@ class NotificationService:
             True если уведомление отправлено успешно
         """
         message = f"Telegram авторизация: {error_message}"
-        return await self.send_notification(user_id, message)
+        return await self.send_notification(user_id, message, notif_type="tg_auth_error")
 
 
 notification_service = NotificationService()

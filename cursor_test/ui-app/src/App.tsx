@@ -14,6 +14,7 @@ import { CustomURLPage } from '@/pages/stubs/custom-url'
 import { CreatePostPage } from '@/pages/create-post'
 import { TestPage } from '@/pages/test'
 import { AdministrationPage } from '@/pages/administration'
+import { FigmaPreviewPage } from '@/pages/figma-preview'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -106,6 +107,8 @@ function App() {
         <Route path="test" element={<TestPage />} />
         <Route path="administration" element={<AdminRoute><AdministrationPage /></AdminRoute>} />
       </Route>
+
+      <Route path="figma-preview" element={<FigmaPreviewPage />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -2,6 +2,19 @@ import { apiClient, getErrorMessage } from './api-client'
 import axios from 'axios'
 import type { TelegramConfig, TelegramPost, TelegramPostListItem, TelegramPostFull } from '@/types/telegram'
 
+export interface TgAuthStatus {
+  user_id: number
+  auth_state: string
+  message: string
+}
+
+export interface TgAuthResponse {
+  success: boolean
+  message?: string
+  error?: string
+  requires_password?: boolean
+}
+
 export const telegramService = {
   async getProfile(): Promise<TelegramConfig | null> {
     try {
@@ -85,6 +98,45 @@ export const telegramService = {
       await apiClient.delete(`/tg/post/${id}`)
     } catch (error) {
       throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getAuthStatus(userId: number): Promise<TgAuthStatus> {
+    try {
+      const response = await apiClient.get<TgAuthStatus>(`/tg-bot/auth/status/${userId}`)
+      return response.data
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        return { user_id: userId, auth_state: 'unknown', message: 'Profile not found' }
+      }
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async submitAuthCode(userId: number, code: string): Promise<TgAuthResponse> {
+    try {
+      const response = await apiClient.post<TgAuthResponse>('/tg-bot/auth/code', { user_id: userId, code })
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async submitAuthPassword(userId: number, password: string): Promise<TgAuthResponse> {
+    try {
+      const response = await apiClient.post<TgAuthResponse>('/tg-bot/auth/password', { user_id: userId, password })
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async reloadBot(): Promise<void> {
+    try {
+      await apiClient.post('/tg-bot/reload')
+    } catch (error) {
+      // Reload — best-effort; не блокируем пользователя если tg-bot недоступен
+      console.warn('tg-bot reload failed (non-critical):', getErrorMessage(error))
     }
   },
 }

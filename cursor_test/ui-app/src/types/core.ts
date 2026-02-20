@@ -51,6 +51,8 @@ export interface ScheduleResponse {
 export interface Notification {
   id: number
   message: string
+  user_id?: number | null
+  type?: string | null
   created_at: string
 }
 
@@ -60,4 +62,6 @@ export interface NotificationResponse {
 
 export interface NotificationCreate {
   message: string
+  user_id?: number | null
+  type?: string | null
 }

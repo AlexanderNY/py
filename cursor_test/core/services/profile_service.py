@@ -41,12 +41,12 @@ class ProfileService:
                     """
                     INSERT INTO tg_profiles (
                         user_id, publish_enabled, collect_enabled, schedule_type,
-                        time_intervals, api_id, api_hash, telegram_username, chats_to_read,
-                        save_conditions, channel_to_post, process_enabled,
+                        time_intervals, api_id, api_hash, telegram_username, auth_phone_number,
+                        chats_to_read, save_conditions, channel_to_post, process_enabled,
                         processing_description, remove_emojis, remove_images,
                         clean_html, process_services, status_review_after_process,
                         add_static_html, static_html_content
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -55,6 +55,7 @@ class ProfileService:
                         api_id = EXCLUDED.api_id,
                         api_hash = EXCLUDED.api_hash,
                         telegram_username = EXCLUDED.telegram_username,
+                        auth_phone_number = EXCLUDED.auth_phone_number,
                         chats_to_read = EXCLUDED.chats_to_read,
                         save_conditions = EXCLUDED.save_conditions,
                         channel_to_post = EXCLUDED.channel_to_post,
@@ -67,6 +68,8 @@ class ProfileService:
                         status_review_after_process = EXCLUDED.status_review_after_process,
                         add_static_html = EXCLUDED.add_static_html,
                         static_html_content = EXCLUDED.static_html_content,
+                        auth_state = 'authorized',
+                        auth_phone_code_hash = NULL,
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING *
                     """,
@@ -79,6 +82,7 @@ class ProfileService:
                         data.get("api_id"),
                         data.get("api_hash"),
                         data.get("telegram_username"),
+                        data.get("auth_phone_number"),
                         json.dumps(data.get("chats_to_read", [])),
                         json.dumps(data.get("save_conditions", [])),
                         data.get("channel_to_post"),

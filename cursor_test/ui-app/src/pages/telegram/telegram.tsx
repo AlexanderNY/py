@@ -1,10 +1,14 @@
-import { useState, useEffect, FormEvent } from 'react'
+import { useState, useEffect, FormEvent, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
-import { telegramService } from '@/services/telegram-service'
+import { telegramService, type TgAuthStatus } from '@/services/telegram-service'
+import { useAuth } from '@/contexts/auth-context'
 import type { TelegramConfig, TelegramPostListItem, TimeInterval, PublishScheduleType } from '@/types/telegram'
+
+const AUTH_STATUS_POLL_INTERVAL_MS = 12_000
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
@@ -19,8 +23,20 @@ interface DynamicField {
 }
 
 export function TelegramPage() {
+  const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+
   // Tab state
-  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'postProfile' | 'processing' | 'parserProfile'>('create')
+  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'postProfile' | 'processing' | 'parserProfile' | 'auth'>(() => {
+    // If navigated with ?auth=1, open auth tab immediately
+    return searchParams.get('auth') === '1' ? 'auth' : 'create'
+  })
+
+  // Telegram auth state (code/2FA)
+  const [authStatus, setAuthStatus] = useState<TgAuthStatus | null>(null)
+  const [authCode, setAuthCode] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [isSubmittingAuth, setIsSubmittingAuth] = useState(false)
 
   // Profile state
   const [publishEnabled, setPublishEnabled] = useState(false)
@@ -31,6 +47,7 @@ export function TelegramPage() {
   const [apiId, setApiId] = useState('')
   const [apiHash, setApiHash] = useState('')
   const [telegramUsername, setTelegramUsername] = useState('')
+  const [authPhoneNumber, setAuthPhoneNumber] = useState('')
   const [channelToPost, setChannelToPost] = useState('')
   const [chatsToRead, setChatsToRead] = useState<DynamicField[]>([{ id: generateId(), value: '' }])
   const [saveConditions, setSaveConditions] = useState<DynamicField[]>([{ id: generateId(), value: '' }])
@@ -73,6 +90,39 @@ export function TelegramPage() {
     loadProfile()
   }, [])
 
+  // Switch to auth tab when navigated with ?auth=1
+  useEffect(() => {
+    if (searchParams.get('auth') === '1') {
+      setActiveTab('auth')
+      // Clean up the query param so it doesn't persist on refresh
+      searchParams.delete('auth')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
+  const loadAuthStatus = useCallback(async () => {
+    if (!user?.id) {
+      console.warn('[TelegramPage] loadAuthStatus skipped: user.id is', user?.id)
+      return
+    }
+    try {
+      const status = await telegramService.getAuthStatus(user.id)
+      console.debug('[TelegramPage] auth status:', status)
+      setAuthStatus(status)
+    } catch (err) {
+      console.error('[TelegramPage] Failed to load auth status:', err)
+      // Don't reset authStatus to null — keep previous state so the form stays visible
+    }
+  }, [user?.id])
+
+  // Poll auth status when user is logged in and on postProfile/parserProfile tabs
+  useEffect(() => {
+    if (!user?.id) return
+    loadAuthStatus()
+    const interval = setInterval(loadAuthStatus, AUTH_STATUS_POLL_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [user?.id, loadAuthStatus])
+
   // Load posts when Posts tab is opened first time
   useEffect(() => {
     if (activeTab === 'posts' && !hasLoadedPosts) {
@@ -103,6 +153,7 @@ export function TelegramPage() {
         setApiId(profile.api_id || '')
         setApiHash(profile.api_hash || '')
         setTelegramUsername(profile.telegram_username || '')
+        setAuthPhoneNumber(profile.auth_phone_number || '')
         setChannelToPost(profile.channel_to_post || '')
         if (profile.chats_to_read && profile.chats_to_read.length > 0) {
           setChatsToRead(profile.chats_to_read.map(chat => ({ id: generateId(), value: chat })))
@@ -228,13 +279,18 @@ export function TelegramPage() {
         api_id: apiId || undefined,
         api_hash: apiHash || undefined,
         telegram_username: telegramUsername || undefined,
+        auth_phone_number: authPhoneNumber || undefined,
         chats_to_read: chatsToRead.map(f => f.value).filter(Boolean),
         save_conditions: saveConditions.map(f => f.value).filter(Boolean),
         channel_to_post: channelToPost || undefined,
         process_enabled: processEnabled,
         processing_description: processEnabled ? processingDescription || undefined : undefined,
       })
+      // Триггерим перезагрузку tg-bot для запроса кода авторизации
+      await telegramService.reloadBot()
       setSuccess('Post profile settings saved successfully')
+      // Через 5 секунд обновляем статус авторизации (бот запросит код)
+      setTimeout(loadAuthStatus, 5000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save post profile settings')
     } finally {
@@ -259,13 +315,18 @@ export function TelegramPage() {
         api_id: apiId || undefined,
         api_hash: apiHash || undefined,
         telegram_username: telegramUsername || undefined,
+        auth_phone_number: authPhoneNumber || undefined,
         chats_to_read: chatsToRead.map(f => f.value).filter(Boolean),
         save_conditions: saveConditions.map(f => f.value).filter(Boolean),
         channel_to_post: channelToPost || undefined,
         process_enabled: processEnabled,
         processing_description: processEnabled ? processingDescription || undefined : undefined,
       })
+      // Триггерим перезагрузку tg-bot для запроса кода авторизации
+      await telegramService.reloadBot()
       setSuccess('Parser profile settings saved successfully')
+      // Через 5 секунд обновляем статус авторизации (бот запросит код)
+      setTimeout(loadAuthStatus, 5000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save parser profile settings')
     } finally {
@@ -290,6 +351,7 @@ export function TelegramPage() {
         api_id: apiId || undefined,
         api_hash: apiHash || undefined,
         telegram_username: telegramUsername || undefined,
+        auth_phone_number: authPhoneNumber || undefined,
         chats_to_read: chatsToRead.map(f => f.value).filter(Boolean),
         save_conditions: saveConditions.map(f => f.value).filter(Boolean),
         channel_to_post: channelToPost || undefined,
@@ -308,7 +370,11 @@ export function TelegramPage() {
         add_static_html: addStaticHtml,
         static_html_content: addStaticHtml ? (staticHtmlContent || undefined)?.slice(0, 1000) : undefined,
       })
+      // Триггерим перезагрузку tg-bot
+      await telegramService.reloadBot()
       setSuccess('Processing settings saved successfully')
+      // Через 5 секунд обновляем статус авторизации
+      setTimeout(loadAuthStatus, 5000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save processing settings')
     } finally {
@@ -350,6 +416,52 @@ export function TelegramPage() {
     setImageFile(null)
     setImagePreview(null)
   }
+
+  async function handleSubmitAuthCode(e: FormEvent) {
+    e.preventDefault()
+    if (!user?.id || !authCode.trim()) return
+    setIsSubmittingAuth(true)
+    setError('')
+    try {
+      const res = await telegramService.submitAuthCode(user.id, authCode.trim())
+      if (res.success) {
+        setAuthCode('')
+        setSuccess('Code accepted. Authorization complete.')
+        await loadAuthStatus()
+      } else {
+        setError(res.error || res.message || 'Invalid code')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit code')
+    } finally {
+      setIsSubmittingAuth(false)
+    }
+  }
+
+  async function handleSubmitAuthPassword(e: FormEvent) {
+    e.preventDefault()
+    if (!user?.id || !authPassword.trim()) return
+    setIsSubmittingAuth(true)
+    setError('')
+    try {
+      const res = await telegramService.submitAuthPassword(user.id, authPassword.trim())
+      if (res.success) {
+        setAuthPassword('')
+        setSuccess('2FA accepted. Authorization complete.')
+        await loadAuthStatus()
+      } else {
+        setError(res.error || res.message || 'Invalid password')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit password')
+    } finally {
+      setIsSubmittingAuth(false)
+    }
+  }
+
+  const showAuthBlock =
+    authStatus &&
+    (authStatus.auth_state === 'pending_code' || authStatus.auth_state === 'pending_password' || authStatus.auth_state === 'failed')
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
@@ -443,7 +555,158 @@ export function TelegramPage() {
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
           )}
         </button>
+        <button
+          className={`px-6 py-3 text-sm font-medium transition-all relative flex items-center gap-1.5 ${
+            activeTab === 'auth'
+              ? 'text-amber-400'
+              : showAuthBlock
+                ? 'text-amber-400 animate-pulse'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+          onClick={() => setActiveTab('auth')}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          Авторизация
+          {showAuthBlock && (
+            <span className="inline-block w-2 h-2 bg-amber-400 rounded-full" />
+          )}
+          {activeTab === 'auth' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-500" />
+          )}
+        </button>
       </div>
+
+      {/* Auth Tab Content */}
+      {activeTab === 'auth' && (
+        <Card className="animate-slide-up border-amber-500/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-amber-400">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              Telegram авторизация
+            </CardTitle>
+            <CardDescription>
+              {authStatus?.message || 'Проверка статуса авторизации...'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Status indicator */}
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-tertiary)]">
+              <div className={`w-3 h-3 rounded-full ${
+                authStatus?.auth_state === 'authorized' ? 'bg-green-400' :
+                authStatus?.auth_state === 'pending_code' ? 'bg-amber-400 animate-pulse' :
+                authStatus?.auth_state === 'pending_password' ? 'bg-amber-400 animate-pulse' :
+                authStatus?.auth_state === 'failed' ? 'bg-red-400' :
+                'bg-gray-400'
+              }`} />
+              <span className="text-sm text-[var(--text-secondary)]">
+                Статус: {
+                  authStatus?.auth_state === 'authorized' ? 'Авторизован' :
+                  authStatus?.auth_state === 'pending_code' ? 'Ожидает ввода кода' :
+                  authStatus?.auth_state === 'pending_password' ? 'Ожидает ввода пароля 2FA' :
+                  authStatus?.auth_state === 'failed' ? 'Ошибка авторизации' :
+                  authStatus?.auth_state || 'Загрузка...'
+                }
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={loadAuthStatus}
+                className="ml-auto"
+              >
+                Обновить
+              </Button>
+            </div>
+
+            {/* Code input form */}
+            {authStatus?.auth_state === 'pending_code' && (
+              <div className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/5">
+                <h3 className="text-sm font-medium text-amber-400 mb-3">Введите код подтверждения</h3>
+                <p className="text-xs text-[var(--text-muted)] mb-4">
+                  Код отправлен в Telegram на ваш телефон. Проверьте приложение Telegram.
+                </p>
+                <form onSubmit={handleSubmitAuthCode} className="flex flex-wrap items-end gap-3">
+                  <div className="flex-1 min-w-[180px]">
+                    <label className="text-sm font-medium text-[var(--text-secondary)] block mb-1">Код подтверждения</label>
+                    <input
+                      type="text"
+                      value={authCode}
+                      onChange={(e) => setAuthCode(e.target.value)}
+                      placeholder="12345"
+                      maxLength={6}
+                      autoFocus
+                      className="w-full px-4 py-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-amber-500/50 text-lg tracking-widest"
+                      required
+                    />
+                  </div>
+                  <Button type="submit" isLoading={isSubmittingAuth} disabled={!authCode.trim()}>
+                    Отправить код
+                  </Button>
+                </form>
+              </div>
+            )}
+
+            {/* 2FA password input form */}
+            {authStatus?.auth_state === 'pending_password' && (
+              <div className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/5">
+                <h3 className="text-sm font-medium text-amber-400 mb-3">Введите пароль двухфакторной аутентификации</h3>
+                <p className="text-xs text-[var(--text-muted)] mb-4">
+                  У вашего аккаунта Telegram включена двухфакторная аутентификация. Введите пароль.
+                </p>
+                <form onSubmit={handleSubmitAuthPassword} className="flex flex-wrap items-end gap-3">
+                  <div className="flex-1 min-w-[180px]">
+                    <label className="text-sm font-medium text-[var(--text-secondary)] block mb-1">Пароль 2FA</label>
+                    <input
+                      type="password"
+                      value={authPassword}
+                      onChange={(e) => setAuthPassword(e.target.value)}
+                      placeholder="••••••••"
+                      autoFocus
+                      className="w-full px-4 py-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                      required
+                    />
+                  </div>
+                  <Button type="submit" isLoading={isSubmittingAuth} disabled={!authPassword.trim()}>
+                    Отправить пароль
+                  </Button>
+                </form>
+              </div>
+            )}
+
+            {/* Failed state */}
+            {authStatus?.auth_state === 'failed' && (
+              <div className="p-4 rounded-lg border border-red-500/30 bg-red-500/5">
+                <p className="text-sm text-red-400">
+                  Авторизация не удалась. Обновите настройки профиля Telegram (API ID, API Hash, номер телефона)
+                  и сохраните — код будет запрошен автоматически.
+                </p>
+              </div>
+            )}
+
+            {/* Authorized state */}
+            {authStatus?.auth_state === 'authorized' && (
+              <div className="p-4 rounded-lg border border-green-500/30 bg-green-500/5">
+                <p className="text-sm text-green-400">
+                  Аккаунт Telegram успешно авторизован. Бот готов к работе.
+                </p>
+              </div>
+            )}
+
+            {/* No status yet */}
+            {!authStatus && (
+              <div className="p-4 rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)]">
+                <p className="text-sm text-[var(--text-muted)]">
+                  Статус авторизации загружается... Если статус не появляется,
+                  проверьте что в настройках профиля указаны API ID, API Hash и номер телефона.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tab Content */}
       {activeTab === 'create' && (
@@ -706,9 +969,17 @@ export function TelegramPage() {
                       onChange={(e) => setTelegramUsername(e.target.value)}
                       placeholder="e.g., @username"
                     />
+
+                    <Input
+                      label="Номер телефона для авторизации"
+                      type="text"
+                      value={authPhoneNumber}
+                      onChange={(e) => setAuthPhoneNumber(e.target.value)}
+                      placeholder="e.g., +79001234567"
+                    />
                     
                     <p className="text-xs text-[var(--text-muted)]">
-                      Get your API credentials from my.telegram.org
+                      Get your API credentials from my.telegram.org. Номер телефона нужен для первой авторизации в Telegram.
                     </p>
 
                     <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
@@ -1030,6 +1301,20 @@ export function TelegramPage() {
 
                 {collectEnabled && (
                   <div className="space-y-6 animate-slide-down">
+                    <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
+                      <h3 className="text-sm font-semibold text-[var(--text-primary)]">Telegram Authorization</h3>
+                      <Input
+                        label="Номер телефона для авторизации"
+                        type="text"
+                        value={authPhoneNumber}
+                        onChange={(e) => setAuthPhoneNumber(e.target.value)}
+                        placeholder="e.g., +79001234567"
+                      />
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Номер телефона для первой авторизации при сборе сообщений (формат +79001234567).
+                      </p>
+                    </div>
+
                     <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
                       <h3 className="text-sm font-semibold text-[var(--text-primary)]">Chats to Read</h3>
                       {chatsToRead.map((field, index) => (

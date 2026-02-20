@@ -31,11 +31,27 @@ CREATE TABLE IF NOT EXISTS posts (
 );
 """
 
+# Миграция: добавить source_platform и source_id для трассировки collector
+POSTS_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE posts ADD COLUMN source_platform VARCHAR(10);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE posts ADD COLUMN source_id INTEGER;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+"""
+
 # Индексы для posts
 POSTS_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id);
 CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
 CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at);
+CREATE INDEX IF NOT EXISTS idx_posts_status_created ON posts(status, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_source ON posts(source_platform, source_id) WHERE source_platform IS NOT NULL;
 """
 
 # Таблица tg_profiles - настройки Telegram по пользователям
@@ -312,6 +328,7 @@ WP_POSTS_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_wp_posts_user_id ON wp_posts(user_id);
 CREATE INDEX IF NOT EXISTS idx_wp_posts_status ON wp_posts(status);
 CREATE INDEX IF NOT EXISTS idx_wp_posts_created_at ON wp_posts(created_at);
+CREATE INDEX IF NOT EXISTS idx_wp_posts_status_created ON wp_posts(status, created_at);
 """
 
 # Таблица tg_posts - посты Telegram (структура аналогична wp_posts)
@@ -350,6 +367,7 @@ TG_POSTS_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_tg_posts_user_id ON tg_posts(user_id);
 CREATE INDEX IF NOT EXISTS idx_tg_posts_status ON tg_posts(status);
 CREATE INDEX IF NOT EXISTS idx_tg_posts_created_at ON tg_posts(created_at);
+CREATE INDEX IF NOT EXISTS idx_tg_posts_status_created ON tg_posts(status, created_at);
 """
 
 # Таблица vk_profiles - настройки VKontakte
@@ -463,6 +481,8 @@ NOTIFICATIONS_TABLE = """
 CREATE TABLE IF NOT EXISTS notifications (
     id SERIAL PRIMARY KEY,
     message TEXT NOT NULL,
+    user_id INTEGER,
+    type VARCHAR(50) DEFAULT 'general',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 """
@@ -470,11 +490,27 @@ CREATE TABLE IF NOT EXISTS notifications (
 # Индексы для notifications
 NOTIFICATIONS_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+"""
+
+# Миграция: добавить user_id и type в notifications
+NOTIFICATIONS_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE notifications ADD COLUMN user_id INTEGER;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE notifications ADD COLUMN type VARCHAR(50) DEFAULT 'general';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 """
 
 # Список всех таблиц для инициализации
 ALL_TABLES = [
     POSTS_TABLE,
+    POSTS_MIGRATION,
     POSTS_INDEXES,
     TG_PROFILES_TABLE,
     TG_PROFILES_MIGRATION,
@@ -495,5 +531,6 @@ ALL_TABLES = [
     CURL_SETTINGS_MIGRATION,
     CPOST_PROFILES_TABLE,
     NOTIFICATIONS_TABLE,
+    NOTIFICATIONS_MIGRATION,
     NOTIFICATIONS_INDEXES,
 ]

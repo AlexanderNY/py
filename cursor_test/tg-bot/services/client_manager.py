@@ -1,5 +1,6 @@
 """Управление Telegram клиентами для разных пользователей."""
 
+import asyncio
 import json
 import logging
 import os
@@ -10,10 +11,19 @@ from telethon.errors import (
     FloodWaitError
 )
 from database import get_db_connection, release_db_connection
+from config import settings
 from .notification_service import notification_service
 
 
 logger = logging.getLogger(__name__)
+
+
+def _log_action(msg: str, *args, **kwargs) -> None:
+    """Логирует действие бота при LOG_BOT_ACTIONS."""
+    if settings.LOG_BOT_ACTIONS:
+        logger.info(msg, *args, **kwargs)
+    else:
+        logger.debug(msg, *args, **kwargs)
 
 
 class TelegramClientManager:
@@ -26,10 +36,10 @@ class TelegramClientManager:
         self._pending_clients: Dict[int, TelegramClient] = {}  # Клиенты ожидающие авторизации
     
     async def load_profiles(self) -> List[Dict]:
-        """Загружает все профили из БД где collect_enabled = TRUE.
-        
+        """Загружает профили из БД (collect_enabled или publish_enabled).
+
         Returns:
-            Список профилей с включенным сбором сообщений
+            Список профилей для сбора и/или публикации
         """
         conn = await get_db_connection()
         try:
@@ -37,7 +47,7 @@ class TelegramClientManager:
                 await cur.execute(
                     """
                     SELECT * FROM tg_profiles
-                    WHERE collect_enabled = TRUE
+                    WHERE (collect_enabled = TRUE OR publish_enabled = TRUE)
                       AND api_id IS NOT NULL
                       AND api_hash IS NOT NULL
                     """
@@ -45,7 +55,7 @@ class TelegramClientManager:
                 rows = await cur.fetchall()
                 
                 if not rows:
-                    logger.info("No profiles with collect_enabled found")
+                    _log_action("No profiles with collect_enabled or publish_enabled found")
                     return []
                 
                 # Преобразуем строки в словари
@@ -66,7 +76,7 @@ class TelegramClientManager:
                             profile['save_conditions'] = []
                     profiles.append(profile)
                 
-                logger.info(f"Loaded {len(profiles)} profiles with collect_enabled")
+                _log_action("Loaded %d profiles for collect/publish", len(profiles))
                 return profiles
         finally:
             await release_db_connection(conn)
@@ -94,11 +104,17 @@ class TelegramClientManager:
                 
                 if phone_code_hash is not None:
                     updates.append("auth_phone_code_hash = %s")
-                    params.append(phone_code_hash)
+                    h = phone_code_hash
+                    params.append(
+                        h.decode("utf-8", errors="replace") if isinstance(h, bytes) else str(h)
+                    )
                 
                 if phone_number is not None:
                     updates.append("auth_phone_number = %s")
-                    params.append(phone_number)
+                    p = phone_number
+                    params.append(
+                        p.decode("utf-8", errors="replace") if isinstance(p, bytes) else str(p)
+                    )
                 
                 params.append(user_id)
                 
@@ -120,31 +136,47 @@ class TelegramClientManager:
         user_id: int
     ) -> Optional[str]:
         """Запрашивает код авторизации у Telegram.
-        
+
         Args:
             client: TelegramClient для запроса кода
-            phone_number: Номер телефона
+            phone_number: Номер телефона в международном формате
             user_id: ID пользователя
-            
+
         Returns:
             phone_code_hash или None в случае ошибки
         """
+        if not phone_number or not isinstance(phone_number, (str, bytes)):
+            logger.error(f"Invalid phone_number for user {user_id}: {phone_number!r}")
+            await self._update_auth_state(user_id, auth_state='failed')
+            return None
+        phone_number = str(phone_number).strip()
+        if not phone_number:
+            logger.error(f"Empty phone_number for user {user_id}")
+            await self._update_auth_state(user_id, auth_state='failed')
+            return None
+
         try:
-            result = await client.send_code_request(phone_number)
+            # Telethon требует str для phone
+            phone_str = phone_number if isinstance(phone_number, str) else str(phone_number)
+            result = await client.send_code_request(phone_str)
             phone_code_hash = result.phone_code_hash
-            
+            if not isinstance(phone_code_hash, (str, bytes)):
+                phone_code_hash = str(phone_code_hash) if phone_code_hash is not None else None
+            elif isinstance(phone_code_hash, bytes):
+                phone_code_hash = phone_code_hash.decode("utf-8", errors="replace")
+
             # Сохраняем в БД
             await self._update_auth_state(
                 user_id,
                 auth_state='pending_code',
                 phone_code_hash=phone_code_hash,
-                phone_number=phone_number
+                phone_number=phone_str
             )
             
             # Отправляем уведомление пользователю
             await notification_service.send_authorization_notification(
                 user_id,
-                phone_number
+                phone_str
             )
             
             logger.info(f"Authorization code requested for user {user_id}")
@@ -168,13 +200,43 @@ class TelegramClientManager:
             return None
         
         except Exception as e:
-            logger.error(f"Error requesting authorization code for user {user_id}: {e}", exc_info=True)
-            await notification_service.send_error_notification(
-                user_id,
-                f"Ошибка при запросе кода: {str(e)}"
+            err_msg = str(e) if e else repr(e)
+            logger.error(
+                "Error requesting authorization code for user %s: %s",
+                user_id, err_msg, exc_info=True
             )
+            # Сообщение для пользователя — без технических деталей, если они нечитаемы
+            user_msg = (
+                err_msg
+                if err_msg and len(err_msg) < 200 and "bytes or str" not in err_msg
+                else "Ошибка при запросе кода. Проверьте номер телефона (формат +79001234567) и API credentials."
+            )
+            await notification_service.send_error_notification(user_id, user_msg)
             return None
-    
+
+    @staticmethod
+    def _is_valid_phone_number(phone: str) -> bool:
+        """Проверяет, что строка похожа на номер телефона (не username)."""
+        if not phone or len(phone) < 10:
+            return False
+        clean = phone.lstrip('+')
+        return clean.isdigit()
+
+    async def _create_client_with_retry(self, profile: Dict) -> Optional[TelegramClient]:
+        """Создает клиент с повторными попытками при FloodWait."""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                return await self.create_client(profile)
+            except FloodWaitError as e:
+                wait_sec = min(e.seconds, 60) * (2 ** attempt)
+                logger.warning(
+                    "FloodWait for user %s: waiting %s sec (attempt %d/%d)",
+                    profile.get("user_id"), wait_sec, attempt + 1, max_retries
+                )
+                await asyncio.sleep(wait_sec)
+        return None
+
     async def create_client(self, profile: Dict) -> Optional[TelegramClient]:
         """Создает TelegramClient для профиля.
         
@@ -188,20 +250,33 @@ class TelegramClientManager:
         api_id = profile.get('api_id')
         api_hash = profile.get('api_hash')
         auth_state = profile.get('auth_state', 'authorized')
-        
+
+        try:
+            api_id = int(api_id) if api_id is not None else None
+        except (ValueError, TypeError):
+            api_id = None
+        if api_hash is not None:
+            api_hash = (
+                api_hash.decode("utf-8", errors="replace")
+                if isinstance(api_hash, bytes)
+                else str(api_hash)
+            ).strip()
+        else:
+            api_hash = None
+
         if not api_id or not api_hash:
             logger.warning(f"Profile {user_id} missing api_id or api_hash")
             return None
-        
+
         try:
             # Создаем директорию для сессий если её нет
             os.makedirs('sessions', exist_ok=True)
-            
+
             # Создаем клиент с уникальным именем сессии для каждого пользователя
             session_name = f'sessions/tg_session_{user_id}'
             client = TelegramClient(
                 session_name,
-                int(api_id),
+                api_id,
                 api_hash,
                 system_version="4.16.30-vxASPA"
             )
@@ -209,6 +284,8 @@ class TelegramClientManager:
             # Подключаемся к Telegram
             try:
                 await client.connect()
+            except FloodWaitError:
+                raise
             except Exception as e:
                 logger.error(f"Error connecting client for user {user_id}: {e}")
                 return None
@@ -216,47 +293,66 @@ class TelegramClientManager:
             # Проверяем авторизацию
             try:
                 if not await client.is_user_authorized():
-                    # Клиент не авторизован
-                    if auth_state == 'authorized':
-                        # Первая авторизация - запросить код
-                        phone_number = (
-                            profile.get('auth_phone_number') or
-                            profile.get('telegram_username') or
-                            ''
-                        )
-                        
-                        if phone_number:
-                            # Убираем @ если есть
-                            phone_number = phone_number.lstrip('@')
-                            phone_code_hash = await self._request_authorization_code(
-                                client, phone_number, user_id
-                            )
-                            if phone_code_hash:
-                                # Сохраняем клиент для последующей авторизации
-                                self._pending_clients[user_id] = client
-                                return None
+                    # Клиент не авторизован — запрашиваем код независимо
+                    # от текущего auth_state (код мог протухнуть после
+                    # перезапуска контейнера)
+                    if auth_state == 'pending_password':
+                        # 2FA ожидает пароль — код уже был принят,
+                        # просто ждём пароль от пользователя
+                        self._pending_clients[user_id] = client
+                        return None
+
+                    raw_phone = profile.get('auth_phone_number')
+                    phone_number = None
+                    if raw_phone is not None:
+                        if isinstance(raw_phone, bytes):
+                            phone_number = raw_phone.decode("utf-8", errors="replace").strip().lstrip("@")
                         else:
-                            logger.warning(f"No phone number for user {user_id}")
-                            await self._update_auth_state(user_id, auth_state='failed')
-                            await client.disconnect()
+                            phone_number = str(raw_phone).strip().lstrip("@")
+                        if not phone_number:
+                            phone_number = None
+
+                    if phone_number and self._is_valid_phone_number(phone_number):
+                        phone_code_hash = await self._request_authorization_code(
+                            client, phone_number, user_id
+                        )
+                        if phone_code_hash:
+                            # Сохраняем клиент для последующей авторизации
+                            self._pending_clients[user_id] = client
+                            return None
+                        else:
+                            # send_code_request не удался
+                            self._pending_clients[user_id] = client
                             return None
                     else:
-                        # Ожидаем код или пароль
-                        self._pending_clients[user_id] = client
+                        logger.warning(
+                            f"No valid phone number for user {user_id}. "
+                            "Set auth_phone_number in tg_profiles (e.g. +79001234567)"
+                        )
+                        await self._update_auth_state(user_id, auth_state='failed')
+                        await client.disconnect()
                         return None
                 
                 # Клиент авторизован
-                logger.info(f"Created and connected client for user {user_id}")
+                _log_action("Created and connected client for user %s", user_id)
                 return client
             
+            except FloodWaitError:
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
+                raise
             except Exception as e:
                 logger.error(f"Error checking authorization for user {user_id}: {e}")
                 try:
                     await client.disconnect()
-                except:
+                except Exception:
                     pass
                 return None
             
+        except FloodWaitError:
+            raise
         except Exception as e:
             logger.error(f"Error creating client for user {user_id}: {e}", exc_info=True)
             return None
@@ -281,42 +377,79 @@ class TelegramClientManager:
         if user_id in self._pending_clients:
             client = self._pending_clients.pop(user_id)
             self._clients[user_id] = client
-            logger.info(f"Moved client for user {user_id} to active")
+            _log_action("Moved client for user %s to active", user_id)
     
     async def start_all_clients(self) -> None:
-        """Запускает все клиенты для профилей с collect_enabled."""
-        profiles = await self.load_profiles()
+        """Запускает все клиенты для профилей с collect_enabled/publish_enabled.
         
-        for profile in profiles:
-            user_id = profile['user_id']
-            
-            # Пропускаем если клиент уже существует
-            if user_id in self._clients:
-                logger.info(f"Client for user {user_id} already exists, skipping")
-                continue
-            
-            client = await self.create_client(profile)
-            if client:
-                self._clients[user_id] = client
-                self._profiles[user_id] = profile
-                logger.info(f"Started client for user {user_id}")
-            else:
-                logger.info(f"Client for user {user_id} pending authorization")
-                self._profiles[user_id] = profile
-    
+        Профили с collect_enabled имеют приоритет. Клиенты создаются батчами
+        с задержкой между батчами. Ограничение MAX_CONCURRENT_CLIENTS.
+        """
+        profiles = await self.load_profiles()
+        if not profiles:
+            return
+
+        # Приоритизация: collect_enabled, затем publish_enabled
+        def _priority(p: Dict) -> int:
+            c = 1 if p.get("collect_enabled") else 0
+            p_en = 1 if p.get("publish_enabled") else 0
+            return (c * 2 + p_en)  # collect=2, publish=1, both=3
+
+        profiles = sorted(profiles, key=_priority, reverse=True)
+
+        batch_size = settings.CLIENT_BATCH_SIZE
+        batch_delay = settings.CLIENT_BATCH_DELAY_SEC
+        max_clients = settings.MAX_CONCURRENT_CLIENTS
+
+        total = len(self._clients) + len(self._pending_clients)
+        for i in range(0, len(profiles), batch_size):
+            batch = profiles[i : i + batch_size]
+            for profile in batch:
+                if max_clients > 0 and total >= max_clients:
+                    _log_action(
+                        "Reached MAX_CONCURRENT_CLIENTS=%d, skipping remaining profiles",
+                        max_clients,
+                    )
+                    return
+
+                user_id = profile["user_id"]
+                if user_id in self._clients or user_id in self._pending_clients:
+                    _log_action("Client for user %s already exists, skipping", user_id)
+                    continue
+
+                client = await self._create_client_with_retry(profile)
+                if client:
+                    self._clients[user_id] = client
+                    self._profiles[user_id] = profile
+                    total += 1
+                    _log_action("Started client for user %s", user_id)
+                else:
+                    self._profiles[user_id] = profile
+                    total += 1
+                    _log_action("Client for user %s pending authorization", user_id)
+
+            if i + batch_size < len(profiles) and batch_delay > 0:
+                await asyncio.sleep(batch_delay)
+
+        _log_action(
+            "Clients: %d active, %d pending",
+            len(self._clients),
+            len(self._pending_clients),
+        )
+
     async def stop_all_clients(self) -> None:
         """Останавливает все клиенты."""
         for user_id, client in list(self._clients.items()):
             try:
                 await client.disconnect()
-                logger.info(f"Stopped client for user {user_id}")
+                _log_action("Stopped client for user %s", user_id)
             except Exception as e:
                 logger.error(f"Error stopping client for user {user_id}: {e}")
         
         for user_id, client in list(self._pending_clients.items()):
             try:
                 await client.disconnect()
-                logger.info(f"Stopped pending client for user {user_id}")
+                _log_action("Stopped pending client for user %s", user_id)
             except Exception as e:
                 logger.error(f"Error stopping pending client for user {user_id}: {e}")
         

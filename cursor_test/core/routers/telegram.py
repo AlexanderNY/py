@@ -51,6 +51,7 @@ async def get_tg_profile(x_user_id: Optional[str] = Header(None)):
         "api_id": None,
         "api_hash": None,
         "telegram_username": None,
+        "auth_phone_number": None,
         "chats_to_read": [],
         "save_conditions": [],
         "channel_to_post": None,

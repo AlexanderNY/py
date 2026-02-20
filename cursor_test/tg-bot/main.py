@@ -33,12 +33,23 @@ app.include_router(auth_router, prefix="/tg")
 # Глобальные переменные
 bot_service: TelegramBotService = None
 client_manager: TelegramClientManager = None
+_reload_task = None
 
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok", "service": "tg-bot"}
+
+
+@app.post("/tg/reload")
+async def reload_profiles():
+    """Перезагружает профили и клиенты. Запускается в фоне."""
+    global bot_service
+    if not bot_service:
+        return {"status": "error", "message": "Bot service not initialized"}
+    asyncio.create_task(bot_service.reload())
+    return {"status": "ok", "message": "Reload started"}
 
 
 async def run_api_server():
@@ -61,17 +72,31 @@ def signal_handler(signum, frame):
     sys.exit(0)
 
 
+async def _reload_loop():
+    """Фоновая задача периодической перезагрузки профилей."""
+    interval = settings.RELOAD_PROFILES_INTERVAL_SEC
+    if interval <= 0:
+        return
+    while True:
+        await asyncio.sleep(interval)
+        if bot_service and bot_service.is_running():
+            try:
+                logger.info("Scheduled profile reload...")
+                await bot_service.reload()
+            except Exception as e:
+                logger.error(f"Error in scheduled reload: {e}", exc_info=True)
+
+
 async def main():
     """Основная функция запуска бота."""
-    global bot_service, client_manager
+    global bot_service, client_manager, _reload_task
     
     try:
         logger.info("Initializing Telegram Bot...")
         
-        # Инициализация БД
+        # Инициализация БД (пул соединений; таблицы создаются в core)
         logger.info("Initializing database...")
-        # Таблицы уже созданы в core сервисе, только применяем миграции
-        # Миграции применяются автоматически при первом обращении к таблице
+        await init_db([])
         logger.info("Database initialized")
         
         # Создание менеджера клиентов
@@ -92,6 +117,10 @@ async def main():
         # Запуск бота
         await bot_service.start()
         
+        # Запуск фоновой задачи перезагрузки профилей
+        if settings.RELOAD_PROFILES_INTERVAL_SEC > 0:
+            _reload_task = asyncio.create_task(_reload_loop())
+        
         logger.info("Telegram Bot is running. Press Ctrl+C to stop.")
         
         # Ожидание завершения (бесконечный цикл)
@@ -105,6 +134,13 @@ async def main():
         raise
     
     finally:
+        # Остановка задачи перезагрузки
+        if _reload_task:
+            _reload_task.cancel()
+            try:
+                await _reload_task
+            except asyncio.CancelledError:
+                pass
         # Остановка бота и закрытие БД
         if bot_service:
             await bot_service.stop()

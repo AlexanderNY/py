@@ -13,14 +13,33 @@ class Settings(BaseSettings):
     UPLOADS_DIR: str = "uploads/tg"
     
     # Настройки логирования
-    LOG_LEVEL: str = "INFO"
+    LOG_LEVEL: str = "DEBUG"
+    LOG_BOT_ACTIONS: bool = True  # При True логировать все действия бота для диагностики
     
     # URL core-service для уведомлений
     CORE_SERVICE_URL: str = "http://localhost:8002"
     
     # Порт для FastAPI сервера
     API_PORT: int = 8004
-    
+
+    # Интервал проверки постов ready для публикации (секунды)
+    PUBLISH_INTERVAL_SEC: int = 60
+
+    # Интервал перезагрузки профилей из БД (секунды, 0 = отключено)
+    RELOAD_PROFILES_INTERVAL_SEC: int = 300
+
+    # Максимум одновременных клиентов при запуске (0 = без ограничения)
+    MAX_CONCURRENT_CLIENTS: int = 20
+
+    # Задержка между батчами клиентов при запуске (секунды)
+    CLIENT_BATCH_DELAY_SEC: float = 2.0
+
+    # Размер батча клиентов при запуске
+    CLIENT_BATCH_SIZE: int = 10
+
+    # Базовый путь для изображений (для send_message file=)
+    PATH_TO_TG_IMAGE: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True

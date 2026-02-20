@@ -1,22 +1,23 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/auth-context'
 import { useTheme } from '@/contexts/theme-context'
 import { Button } from '@/components/ui'
 import { notificationsService } from '@/services/notifications-service'
 import type { Notification } from '@/types/core'
 
+const NOTIFICATIONS_POLL_INTERVAL_MS = 12_000
+
 export function Header() {
   const { user, logout } = useAuth()
   const { isDarkMode, toggleTheme } = useTheme()
+  const navigate = useNavigate()
+  const notificationRef = useRef<HTMLDivElement>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [currentNotificationIndex, setCurrentNotificationIndex] = useState(0)
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false)
 
-  useEffect(() => {
-    loadNotifications()
-  }, [])
-
-  async function loadNotifications() {
+  const loadNotifications = useCallback(async () => {
     setIsLoadingNotifications(true)
     try {
       const response = await notificationsService.getNotifications()
@@ -28,7 +29,17 @@ export function Header() {
     } finally {
       setIsLoadingNotifications(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    loadNotifications()
+  }, [loadNotifications])
+
+  useEffect(() => {
+    if (!user) return
+    const interval = setInterval(loadNotifications, NOTIFICATIONS_POLL_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [user, loadNotifications])
 
   function handleNextNotification() {
     if (notifications.length === 0) return
@@ -41,6 +52,23 @@ export function Header() {
   }
 
   const currentNotification = notifications[currentNotificationIndex]
+  const isAuthNotification = currentNotification?.type?.startsWith('tg_auth')
+
+  // Intercept clicks on internal <a> links inside notification HTML
+  // so they use React Router (SPA navigation) instead of full page reload
+  const handleNotificationClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement
+      const anchor = target.closest('a')
+      if (!anchor) return
+      const href = anchor.getAttribute('href')
+      if (href && href.startsWith('/')) {
+        e.preventDefault()
+        navigate(href)
+      }
+    },
+    [navigate]
+  )
 
   return (
     <header className="h-16 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] flex items-center justify-between px-6">
@@ -51,7 +79,11 @@ export function Header() {
         
         {/* Notifications Block */}
         {notifications.length > 0 && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-tertiary)] rounded-xl border border-[var(--border-color)] max-w-md">
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border max-w-md ${
+            isAuthNotification
+              ? 'bg-amber-500/10 border-amber-500/50'
+              : 'bg-[var(--bg-tertiary)] border-[var(--border-color)]'
+          }`}>
             <button
               onClick={handlePrevNotification}
               disabled={notifications.length <= 1}
@@ -63,7 +95,9 @@ export function Header() {
               </svg>
             </button>
             
-            <div 
+            <div
+              ref={notificationRef}
+              onClick={handleNotificationClick}
               className="flex-1 text-sm text-[var(--text-primary)] text-center px-2 notification-content"
               dangerouslySetInnerHTML={{ __html: currentNotification?.message || '' }}
             />

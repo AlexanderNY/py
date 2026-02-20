@@ -11,10 +11,18 @@ from telethon.errors import (
     FloodWaitError
 )
 from database import get_db_connection, release_db_connection
+from config import settings
 from .notification_service import notification_service
 
 
 logger = logging.getLogger(__name__)
+
+
+def _log_action(msg: str, *args, **kwargs) -> None:
+    if settings.LOG_BOT_ACTIONS:
+        logger.info(msg, *args, **kwargs)
+    else:
+        logger.debug(msg, *args, **kwargs)
 
 
 class AuthHandler:
@@ -63,13 +71,30 @@ class AuthHandler:
                         "success": False,
                         "error": "Phone code hash not found. Please request code again."
                     }
+
+                # Telethon требует str для phone_number и phone_code_hash
+                phone_str = (
+                    phone_number.decode("utf-8", errors="replace")
+                    if isinstance(phone_number, bytes)
+                    else str(phone_number or "")
+                ).strip()
+                hash_str = (
+                    phone_code_hash.decode("utf-8", errors="replace")
+                    if isinstance(phone_code_hash, bytes)
+                    else str(phone_code_hash or "")
+                ).strip()
+                if not phone_str or not hash_str:
+                    return {
+                        "success": False,
+                        "error": "Invalid phone or code hash. Please request code again."
+                    }
                 
                 try:
                     # Пытаемся авторизоваться с кодом
                     await client.sign_in(
-                        phone_number,
-                        code,
-                        phone_code_hash=phone_code_hash
+                        phone_str,
+                        code.strip(),
+                        phone_code_hash=hash_str
                     )
                     
                     # Успешная авторизация
@@ -84,7 +109,7 @@ class AuthHandler:
                         (user_id,)
                     )
                     
-                    logger.info(f"User {user_id} successfully authorized")
+                    _log_action("User %s successfully authorized", user_id)
                     return {
                         "success": True,
                         "message": "Authorization successful"
@@ -104,7 +129,7 @@ class AuthHandler:
                     
                     await notification_service.send_2fa_notification(user_id)
                     
-                    logger.info(f"User {user_id} needs 2FA password")
+                    _log_action("User %s needs 2FA password", user_id)
                     return {
                         "success": False,
                         "requires_password": True,
@@ -184,7 +209,7 @@ class AuthHandler:
                         (user_id,)
                     )
                     
-                    logger.info(f"User {user_id} successfully authorized with 2FA")
+                    _log_action("User %s successfully authorized with 2FA", user_id)
                     return {
                         "success": True,
                         "message": "Authorization successful"

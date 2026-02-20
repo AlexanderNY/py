@@ -8,6 +8,7 @@ export interface TelegramConfig {
   api_id?: string
   api_hash?: string
   telegram_username?: string
+  auth_phone_number?: string
   chats_to_read: string[]
   save_conditions: string[]
   channel_to_post?: string

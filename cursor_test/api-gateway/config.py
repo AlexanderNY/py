@@ -8,10 +8,10 @@ class Settings(BaseSettings):
     AUTH_SERVICE_URL: str = "http://172.20.10.1:8001" #"http://localhost:8001"
     CORE_SERVICE_URL: str = "http://172.20.10.2:8002" #"http://localhost:8002"
     SCHEDULER_SERVICE_URL: str = "http://172.20.10.3:8003" #"http://localhost:8003"
-    TG_BOT_SERVICE_URL: str = "http://localhost:8004"
-    VK_BOT_SERVICE_URL: str = "http://localhost:8005"
-    WP_BOT_SERVICE_URL: str = "http://localhost:8006"
-    URL_BOT_SERVICE_URL: str = "http://localhost:8007"
+    TG_BOT_SERVICE_URL: str = "http://172.20.10.4:8004"
+    VK_BOT_SERVICE_URL: str = "http://172.20.10.5:8005"
+    WP_BOT_SERVICE_URL: str = "http://172.20.10.6:8006"
+    URL_BOT_SERVICE_URL: str = "http://172.20.10.7:8007"
     SELECTCB_SERVICE_URL: str = "http://172.20.10.8:8008" #"http://localhost:8008"
     
     # CORS настройки

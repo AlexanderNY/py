@@ -97,6 +97,7 @@ class TelegramProfileBase(BaseModel):
     api_id: Optional[str] = None
     api_hash: Optional[str] = None
     telegram_username: Optional[str] = None
+    auth_phone_number: Optional[str] = None
     chats_to_read: List[str] = []
     save_conditions: List[str] = []
     channel_to_post: Optional[str] = None
@@ -534,12 +535,16 @@ class Post(PostBase):
 class NotificationCreate(BaseModel):
     """Модель для создания уведомления."""
     message: str = Field(..., min_length=1)
+    user_id: Optional[int] = None
+    type: Optional[str] = "general"  # general, tg_auth_code, tg_auth_2fa, tg_auth_error
 
 
 class Notification(BaseModel):
     """Модель уведомления."""
     id: int
     message: str
+    user_id: Optional[int] = None
+    type: Optional[str] = "general"
     created_at: datetime
 
     class Config:

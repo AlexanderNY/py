@@ -111,8 +111,62 @@ services:
       monitoring_network:
         ipv4_address: 172.20.10.7
 
+  collector:
+    build: ./collector
+    ports:
+      - "8009:8009"
+    environment:
+      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      - COLLECT_INTERVAL_SEC=60
+      - DISTRIBUTE_INTERVAL_SEC=60
+      - COLLECT_BATCH_SIZE=100
+      - DISTRIBUTE_BATCH_SIZE=100
+      - LOG_LEVEL=INFO
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.9
+
+  processor:
+    build: ./processor
+    ports:
+      - "8010:8010"
+    environment:
+      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      - PROCESS_INTERVAL_SEC=30
+      - PROCESS_BATCH_SIZE=50
+      - WORDPRESS_MAX_LENGTH=150000
+      - TELEGRAM_MAX_LENGTH=4096
+      - TWITTER_MAX_LENGTH=280
+      - VKONTAKTE_MAX_LENGTH=15985
+      - LOG_LEVEL=INFO
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.10
+
+  tg-bot:
+    build: ./tg-bot
+    ports:
+      - "8004:8004"
+    environment:
+      - CORE_SERVICE_URL=http://core:8002
+      - API_GATEWAY_URL=http://gateway:8000
+      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      - LOG_BOT_ACTIONS=false
+      - RELOAD_PROFILES_INTERVAL_SEC=300
+      - MAX_CONCURRENT_CLIENTS=20
+      - CHROME_BIN=/usr/bin/chromium
+      - CHROMEDRIVER_PATH=/usr/bin/chromedriver
+    volumes:
+      - tg-bot-sessions:/app/sessions
+      - tg-bot-uploads:/app/uploads
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.4
+
 volumes:
   postgres_data:
+  tg-bot-sessions:
+  tg-bot-uploads:
 
 networks:
   monitoring_network:
