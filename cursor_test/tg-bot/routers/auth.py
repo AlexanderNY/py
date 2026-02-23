@@ -124,6 +124,7 @@ async def get_auth_status(user_id: int):
             row = await cur.fetchone()
             
             if not row:
+                logger.warning("Profile not found for user_id=%s (tg_profiles has no row)", user_id)
                 raise HTTPException(status_code=404, detail="Profile not found")
             
             auth_state, phone_number = row

@@ -14,7 +14,8 @@ from routers import (
     vkontakte,
     curl,
     cpost,
-    notifications
+    notifications,
+    admin,
 )
 
 
@@ -55,6 +56,7 @@ app.include_router(vkontakte.router)
 app.include_router(curl.router)
 app.include_router(cpost.router)
 app.include_router(notifications.router)
+app.include_router(admin.router)
 
 
 @app.get("/")

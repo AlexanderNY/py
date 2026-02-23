@@ -42,6 +42,18 @@ async def get_curl_settings(
     return await forward_to_core("/curl/settings", request)
 
 
+@router.get("/posts")
+async def get_curl_posts(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает список постов из url_posts (собранные по URL).
+    
+    GET /curl/posts -> GET /curl/posts на core сервисе.
+    """
+    return await forward_to_core("/curl/posts", request)
+
+
 @router.post("/settings")
 async def save_curl_settings(
     request: Request,
@@ -53,3 +65,16 @@ async def save_curl_settings(
     Требует JWT аутентификации.
     """
     return await forward_to_core("/curl/settings", request)
+
+
+@router.post("/url-posts")
+async def save_url_posts(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Сохраняет пакет постов из url-bot в url_posts (Core).
+    
+    POST /curl/url-posts -> POST /curl/url-posts на core сервисе.
+    Вызывается scheduler после ответа url-bot /schedule.
+    """
+    return await forward_to_core("/curl/url-posts", request)

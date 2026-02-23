@@ -47,7 +47,27 @@ class PostPublisher:
                 )
                 rows = await cur.fetchall()
                 columns = [col.name for col in cur.description]
-                return [dict(zip(columns, row)) for row in rows]
+                result = [dict(zip(columns, row)) for row in rows]
+                if len(result) == 0:
+                    await cur.execute(
+                        "SELECT COUNT(*) FROM tg_posts WHERE status = 'ready'"
+                    )
+                    (ready_count,) = (await cur.fetchone()) or (0,)
+                    await cur.execute(
+                        """
+                        SELECT COUNT(*) FROM tg_profiles
+                        WHERE channel_to_post IS NOT NULL AND channel_to_post != ''
+                        """
+                    )
+                    (profiles_with_channel,) = (await cur.fetchone()) or (0,)
+                    logger.info(
+                        "get_ready_posts returned 0 posts; "
+                        "tg_posts with status=ready: %s, "
+                        "tg_profiles with channel_to_post set: %s",
+                        ready_count,
+                        profiles_with_channel,
+                    )
+                return result
         finally:
             await release_db_connection(conn)
 

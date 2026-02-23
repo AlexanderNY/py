@@ -56,15 +56,30 @@ async def handle_schedule(request: ScheduleRequest) -> ScheduleResponse:
                 item.url,
                 item.xpath,
                 item.take_screenshot or False,
+                user_id,
             )
-            details.append({
+            detail = {
                 "user_id": user_id,
                 "url": item.url,
                 "xpath": item.xpath,
                 "error": result.get("error"),
                 "has_text": bool(result.get("text")),
-                "has_screenshot": bool(result.get("screenshot_base64")),
-            })
+                "has_screenshot": bool(
+                    result.get("screenshot_base64") or result.get("screenshot_path")
+                ),
+            }
+            if not result.get("error"):
+                detail["text"] = result.get("text") or ""
+                if result.get("screenshot_path"):
+                    detail["screenshot_path"] = result["screenshot_path"]
+                elif result.get("screenshot_base64"):
+                    detail["screenshot_base64"] = result["screenshot_base64"]
+                tsn = (item.target_social_networks or {}) if hasattr(item, "target_social_networks") else {}
+                detail["to_tg"] = tsn.get("tg", False)
+                detail["to_wp"] = tsn.get("wp", False)
+                detail["to_tw"] = tsn.get("tw", False)
+                detail["to_vk"] = tsn.get("vk", False)
+            details.append(detail)
             if result.get("error"):
                 errors += 1
             else:

@@ -373,6 +373,7 @@ class CurlUrlItem(BaseModel):
     url: str = ""
     xpath: str = ""
     take_screenshot: bool = False
+    screenshot_format: Optional[str] = None  # "base64" | "file" — формат скриншота при take_screenshot
     target_social_networks: CurlTargetSocialNetworks = Field(default_factory=CurlTargetSocialNetworks)
     schedule_time: Optional[str] = None  # HH:MM
 
@@ -406,6 +407,24 @@ class CurlSettings(CurlSettingsBase):
 
     class Config:
         from_attributes = True
+
+
+class UrlPostItem(BaseModel):
+    """Один пост из url-bot для сохранения в url_posts."""
+    user_id: int
+    url: str = ""
+    post_text: str = ""
+    screenshot_path: Optional[str] = None
+    screenshot_base64: Optional[str] = None
+    to_tg: bool = False
+    to_tw: bool = False
+    to_wp: bool = False
+    to_vk: bool = False
+
+
+class UrlPostsBatchRequest(BaseModel):
+    """Пакет постов из url-bot для сохранения в url_posts."""
+    posts: List[UrlPostItem] = Field(default_factory=list)
 
 
 # ==================== cPost (ручные посты) ====================
@@ -554,3 +573,67 @@ class Notification(BaseModel):
 class NotificationResponse(BaseModel):
     """Ответ со списком уведомлений."""
     notifications: List[Notification]
+
+
+# ==================== Admin (services status, posts tables) ====================
+
+class LoopStatus(BaseModel):
+    """Статус фонового цикла (collector/processor)."""
+    last_run_at: Optional[datetime] = None
+    total_processed: int = 0
+    last_cycle_count: int = 0
+
+
+class CollectorStatusDetail(BaseModel):
+    """Детали статуса collector."""
+    service: str = "collector"
+    version: str = "1.0.0"
+    collect_interval_sec: Optional[int] = None
+    distribute_interval_sec: Optional[int] = None
+    collector: Optional[LoopStatus] = None
+    distributor: Optional[LoopStatus] = None
+    error: Optional[str] = None
+
+
+class ProcessorStatusDetail(BaseModel):
+    """Детали статуса processor."""
+    service: str = "processor"
+    version: str = "1.0.0"
+    process_interval_sec: Optional[int] = None
+    processor: Optional[LoopStatus] = None
+    error: Optional[str] = None
+
+
+class SchedulerStatusDetail(BaseModel):
+    """Детали статуса scheduler."""
+    service: str = "scheduler"
+    version: str = "1.0.0"
+    poll_interval_sec: Optional[int] = None
+    last_poll_at: Optional[datetime] = None
+    error: Optional[str] = None
+
+
+class ServicesStatusResponse(BaseModel):
+    """Ответ агрегированного статуса сервисов."""
+    healthchecks: List[HealthcheckItem]
+    collector: Optional[CollectorStatusDetail] = None
+    processor: Optional[ProcessorStatusDetail] = None
+    scheduler: Optional[SchedulerStatusDetail] = None
+
+
+class PlatformMetric(BaseModel):
+    """Метрика по одной платформе (таблица постов)."""
+    platform: str
+    table: str
+    collected_count: int = 0
+    ready_count: int = 0
+    processing_count: int = 0
+
+
+class PostsTablesResponse(BaseModel):
+    """Ответ с обзором таблиц постов."""
+    platforms: List[PlatformMetric] = []
+    posts_table_collector: Optional[Dict[str, int]] = None
+    posts_table_processor: Optional[Dict[str, int]] = None
+    collector_error: Optional[str] = None
+    processor_error: Optional[str] = None

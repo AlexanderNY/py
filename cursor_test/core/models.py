@@ -391,6 +391,45 @@ CREATE TABLE IF NOT EXISTS vk_profiles (
 );
 """
 
+# Таблица url_posts - посты из url-bot (структура как tg_posts)
+URL_POSTS_TABLE = """
+CREATE TABLE IF NOT EXISTS url_posts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    domain VARCHAR(255),
+    url TEXT,
+    title VARCHAR(500),
+    author VARCHAR(255),
+    avatar TEXT,
+    post_date TIMESTAMP,
+    post_text TEXT,
+    screenshot TEXT,
+    images JSONB DEFAULT '[]',
+    image_over_text TEXT,
+    comments INTEGER DEFAULT 0,
+    reposts INTEGER DEFAULT 0,
+    likes INTEGER DEFAULT 0,
+    views INTEGER DEFAULT 0,
+    is_ad BOOLEAN DEFAULT FALSE,
+    status VARCHAR(50) DEFAULT 'collected',
+    post_type VARCHAR(50),
+    to_tg BOOLEAN DEFAULT FALSE,
+    to_tw BOOLEAN DEFAULT FALSE,
+    to_wp BOOLEAN DEFAULT FALSE,
+    to_vk BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+# Индексы для url_posts
+URL_POSTS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_url_posts_user_id ON url_posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_url_posts_status ON url_posts(status);
+CREATE INDEX IF NOT EXISTS idx_url_posts_created_at ON url_posts(created_at);
+CREATE INDEX IF NOT EXISTS idx_url_posts_status_created ON url_posts(status, created_at);
+"""
+
 # Таблица curl_settings - настройки cURL скрапинга
 CURL_SETTINGS_TABLE = """
 CREATE TABLE IF NOT EXISTS curl_settings (
@@ -527,6 +566,8 @@ ALL_TABLES = [
     WP_POSTS_TABLE,
     WP_POSTS_INDEXES,
     VK_PROFILES_TABLE,
+    URL_POSTS_TABLE,
+    URL_POSTS_INDEXES,
     CURL_SETTINGS_TABLE,
     CURL_SETTINGS_MIGRATION,
     CPOST_PROFILES_TABLE,

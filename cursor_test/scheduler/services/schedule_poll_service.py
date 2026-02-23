@@ -4,7 +4,8 @@ import asyncio
 import hashlib
 import json
 import logging
-from typing import Any
+from datetime import datetime
+from typing import Any, Optional
 
 import httpx
 
@@ -14,6 +15,13 @@ from database import get_db_connection
 logger = logging.getLogger(__name__)
 
 BOT_PLATFORMS = ["tg", "wp", "vk", "url"]
+
+# Для /status: время последнего успешного цикла опроса
+_last_poll_at: Optional[Any] = None
+
+
+def get_last_poll_at():
+    return _last_poll_at
 
 
 def _payload_hash(schedules: list[dict[str, Any]]) -> str:
@@ -226,21 +234,29 @@ async def _store_snapshot(schedules: list[dict[str, Any]]) -> None:
             cur.close()
 
 
-async def _notify_bot(platform: str, schedules: list[dict[str, Any]], token: str) -> None:
+async def _notify_bot(
+    platform: str, schedules: list[dict[str, Any]], token: str
+) -> dict[str, Any] | None:
+    """Оповещает бота. Возвращает JSON ответа при успехе (для url — details для сохранения в Core)."""
     base = settings.API_GATEWAY_URL.rstrip("/")
     url = f"{base}/{platform}-bot/schedule"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     payload = {"schedules": schedules}
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(url, json=payload, headers=headers)
     if resp.status_code >= 400:
         logger.warning("Notify %s failed: %s %s", platform, resp.status_code, resp.text)
-        return
+        return None
     logger.info("Notified %s: %d schedules", platform, len(schedules))
+    try:
+        return resp.json()
+    except Exception:
+        return None
 
 
 async def run_poll_cycle(token: str) -> bool:
     """Один цикл: запрос core, diff, сохранение, оповещение. Возвращает True если были изменения."""
+    global _last_poll_at
     schedules = await _fetch_schedules(token)
     new_h = _payload_hash(schedules)
     try:
@@ -258,9 +274,50 @@ async def run_poll_cycle(token: str) -> bool:
             if p in by_platform:
                 by_platform[p].append(s)
         for platform in BOT_PLATFORMS:
-            await _notify_bot(platform, by_platform[platform], token)
-
+            data = await _notify_bot(platform, by_platform[platform], token)
+            if platform == "url" and data and by_platform["url"]:
+                await _persist_url_posts(data, token)
+    _last_poll_at = datetime.utcnow()
     return changed
+
+
+async def _persist_url_posts(schedule_response: dict[str, Any], token: str) -> None:
+    """Сохраняет результаты url-bot в Core (url_posts)."""
+    details = schedule_response.get("details") or []
+    posts: list[dict[str, Any]] = []
+    for d in details:
+        if d.get("error"):
+            continue
+        if not d.get("has_text") and not d.get("has_screenshot"):
+            continue
+        post = {
+            "user_id": d.get("user_id"),
+            "url": d.get("url", ""),
+            "post_text": (d.get("text") or "").strip(),
+            "screenshot_path": d.get("screenshot_path"),
+            "screenshot_base64": d.get("screenshot_base64"),
+            "to_tg": d.get("to_tg", False),
+            "to_wp": d.get("to_wp", False),
+            "to_tw": d.get("to_tw", False),
+            "to_vk": d.get("to_vk", False),
+        }
+        if post["user_id"] is not None:
+            posts.append(post)
+    if not posts:
+        return
+    base = settings.API_GATEWAY_URL.rstrip("/")
+    url = f"{base}/curl/url-posts"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    payload = {"posts": posts}
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+        if resp.status_code >= 400:
+            logger.warning("Save url posts failed: %s %s", resp.status_code, resp.text)
+        else:
+            logger.info("Saved %d url posts to Core", len(posts))
+    except Exception as e:
+        logger.exception("Save url posts error: %s", e)
 
 
 def _has_login_credentials() -> bool:

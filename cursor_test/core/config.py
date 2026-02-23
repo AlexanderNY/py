@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     WP_BOT_SERVICE_URL: str = "http://localhost:8006"
     URL_BOT_SERVICE_URL: str = "http://localhost:8007"
     SCHEDULER_SERVICE_URL: str = "http://localhost:8003"
+    COLLECTOR_SERVICE_URL: str = "http://localhost:8009"
+    PROCESSOR_SERVICE_URL: str = "http://localhost:8010"
     
     class Config:
         env_file = ".env"

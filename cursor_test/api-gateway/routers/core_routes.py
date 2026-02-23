@@ -69,6 +69,32 @@ async def get_healthchecks(
     return await forward_to_core("/healthchecks", request)
 
 
+@router.get("/admin/services-status")
+async def get_admin_services_status(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает агрегированный статус сервисов из core (healthcheck + collector/processor/scheduler).
+    
+    GET /core/admin/services-status -> GET /admin/services-status на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core("/admin/services-status", request)
+
+
+@router.get("/admin/posts-tables")
+async def get_admin_posts_tables(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает обзор таблиц постов из core (метрики collector и processor).
+    
+    GET /core/admin/posts-tables -> GET /admin/posts-tables на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core("/admin/posts-tables", request)
+
+
 @router.get("/schedules")
 async def get_schedules(
     request: Request,

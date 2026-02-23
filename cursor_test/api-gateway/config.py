@@ -56,6 +56,8 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/core/schedules": {"requests": 60, "window_seconds": 60},
     "/core/healthcheck": {"requests": 60, "window_seconds": 60},
     "/core/healthchecks": {"requests": 60, "window_seconds": 60},
+    "/core/admin/services-status": {"requests": 60, "window_seconds": 60},
+    "/core/admin/posts-tables": {"requests": 60, "window_seconds": 60},
     "/auth/users": {"requests": 30, "window_seconds": 60},
     "/wp/posts": {"requests": 30, "window_seconds": 60},
     "/wp/profile": {"requests": 30, "window_seconds": 60},

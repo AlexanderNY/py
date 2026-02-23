@@ -65,3 +65,60 @@ export interface NotificationCreate {
   user_id?: number | null
   type?: string | null
 }
+
+// Admin: services status & posts tables
+
+export interface LoopStatus {
+  last_run_at?: string | null
+  total_processed: number
+  last_cycle_count: number
+}
+
+export interface CollectorStatusDetail {
+  service: string
+  version: string
+  collect_interval_sec?: number | null
+  distribute_interval_sec?: number | null
+  collector?: LoopStatus | null
+  distributor?: LoopStatus | null
+  error?: string | null
+}
+
+export interface ProcessorStatusDetail {
+  service: string
+  version: string
+  process_interval_sec?: number | null
+  processor?: LoopStatus | null
+  error?: string | null
+}
+
+export interface SchedulerStatusDetail {
+  service: string
+  version: string
+  poll_interval_sec?: number | null
+  last_poll_at?: string | null
+  error?: string | null
+}
+
+export interface ServicesStatusResponse {
+  healthchecks: HealthcheckItem[]
+  collector?: CollectorStatusDetail | null
+  processor?: ProcessorStatusDetail | null
+  scheduler?: SchedulerStatusDetail | null
+}
+
+export interface PlatformMetric {
+  platform: string
+  table: string
+  collected_count: number
+  ready_count: number
+  processing_count: number
+}
+
+export interface PostsTablesResponse {
+  platforms: PlatformMetric[]
+  posts_table_collector?: Record<string, number> | null
+  posts_table_processor?: Record<string, number> | null
+  collector_error?: string | null
+  processor_error?: string | null
+}

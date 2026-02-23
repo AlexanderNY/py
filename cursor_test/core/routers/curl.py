@@ -1,10 +1,12 @@
-"""Роутер для cURL настроек скрапинга."""
+"""Роутер для cURL настроек скрапинга и сохранения постов из url-bot."""
 
 from fastapi import APIRouter, HTTPException, Header
 from typing import Optional
-from services.profile_service import profile_service
-from schemas import CurlSettingsCreate
 
+from schemas import CurlSettingsCreate, UrlPostsBatchRequest
+from services.profile_service import profile_service
+from services.post_service import post_service
+from services.url_posts_service import save_url_posts_batch
 
 router = APIRouter(prefix="/curl", tags=["cURL"])
 
@@ -61,3 +63,34 @@ async def save_curl_settings(
     user_id = get_user_id_from_header(x_user_id)
     settings = await profile_service.save_curl_settings(user_id, data.model_dump())
     return settings
+
+
+@router.get("/posts")
+async def get_curl_posts(
+    x_user_id: Optional[str] = Header(None),
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Возвращает список постов из url_posts пользователя (собранные по URL)."""
+    user_id = get_user_id_from_header(x_user_id)
+    posts = await post_service.get_url_posts(user_id=user_id, limit=limit, offset=offset)
+    return posts
+
+
+@router.post("/url-posts")
+async def save_url_posts_batch_endpoint(
+    body: UrlPostsBatchRequest,
+    x_user_id: Optional[str] = Header(None),
+):
+    """
+    Сохраняет пакет постов из url-bot в таблицу url_posts.
+
+    Вызывается scheduler после получения ответа от url-bot /schedule.
+    Для каждого поста: при screenshot_path путь сохраняется в images;
+    при screenshot_base64 — файл сохраняется в uploads/url/..., в images — путь.
+    """
+    items = [p.model_dump() for p in body.posts]
+    if not items:
+        return {"saved": 0, "ids": []}
+    ids = await save_url_posts_batch(items)
+    return {"saved": len(ids), "ids": ids}

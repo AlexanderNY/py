@@ -2,6 +2,8 @@ export interface URLConfig {
   url: string
   xpath: string
   take_screenshot: boolean
+  /** Формат скриншота: base64 в ответе или файл (путь). Показывается при take_screenshot. */
+  screenshot_format?: 'base64' | 'file'
   target_social_networks: {
     tg?: boolean
     tw?: boolean
@@ -24,4 +26,21 @@ export interface CustomURLSettings {
   status_review_after_process?: boolean
   add_static_html?: boolean
   static_html_content?: string
+}
+
+/** Элемент списка постов из url_posts (собранные по URL) */
+export interface UrlPostListItem {
+  id: number
+  user_id: number
+  url?: string
+  post_text: string
+  images?: string[]
+  status: string
+  post_date?: string
+  created_at: string
+  updated_at: string
+  to_tg?: boolean
+  to_tw?: boolean
+  to_wp?: boolean
+  to_vk?: boolean
 }

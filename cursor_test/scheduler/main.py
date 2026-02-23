@@ -18,6 +18,7 @@ from services.schedule_poll_service import (
     _fetch_profiles_parallel,
     _transform_profiles_to_schedules,
     _store_snapshot,
+    get_last_poll_at,
     BOT_PLATFORMS
 )
 from schemas import StartBotRequest
@@ -58,6 +59,18 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy", "service": "scheduler"}
+
+
+@app.get("/status")
+async def status():
+    """Статус фонового цикла опроса (для админки)."""
+    last = get_last_poll_at()
+    return {
+        "service": "scheduler",
+        "version": "1.0.0",
+        "poll_interval_sec": settings.POLL_INTERVAL_SECONDS,
+        "last_poll_at": last.isoformat() if last and hasattr(last, "isoformat") else last,
+    }
 
 
 async def get_auth_token(

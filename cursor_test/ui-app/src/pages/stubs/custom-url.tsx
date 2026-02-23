@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { customURLService } from '@/services/custom-url-service'
-import type { URLConfig, CustomURLSettings } from '@/types/custom-url'
+import type { URLConfig, CustomURLSettings, UrlPostListItem } from '@/types/custom-url'
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
@@ -18,13 +18,14 @@ function defaultUrlConfig(): URLConfig & { id: string } {
     url: '',
     xpath: '',
     take_screenshot: false,
+    screenshot_format: 'base64',
     target_social_networks: { tg: false, tw: false, vk: false, wp: false },
     schedule_time: DEFAULT_SCHEDULE_TIME,
   }
 }
 
 export function CustomURLPage() {
-  const [activeTab, setActiveTab] = useState<'urlSettings' | 'processing'>('urlSettings')
+  const [activeTab, setActiveTab] = useState<'urlSettings' | 'processing' | 'posts'>('urlSettings')
   const [collectEnabled, setCollectEnabled] = useState(false)
   const [urlConfigs, setUrlConfigs] = useState<Array<URLConfig & { id: string }>>([defaultUrlConfig()])
 
@@ -46,6 +47,10 @@ export function CustomURLPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
+  const [posts, setPosts] = useState<UrlPostListItem[]>([])
+  const [isLoadingPosts, setIsLoadingPosts] = useState(false)
+  const [hasLoadedPosts, setHasLoadedPosts] = useState(false)
+
   useEffect(() => {
     async function loadSettings() {
       setIsLoadingSettings(true)
@@ -54,12 +59,12 @@ export function CustomURLPage() {
         if (settings) {
           setCollectEnabled(settings.collect_enabled ?? false)
           if (settings.urls && settings.urls.length > 0) {
-            setUrlConfigs(
               settings.urls.map((u) => ({
                 id: generateId(),
                 url: u.url ?? '',
                 xpath: u.xpath ?? '',
                 take_screenshot: u.take_screenshot ?? false,
+                screenshot_format: (u as { screenshot_format?: string }).screenshot_format === 'file' ? 'file' : 'base64',
                 target_social_networks: {
                   tg: u.target_social_networks?.tg ?? false,
                   tw: u.target_social_networks?.tw ?? false,
@@ -68,7 +73,6 @@ export function CustomURLPage() {
                 },
                 schedule_time: u.schedule_time ?? (u as { time_interval?: { start?: string } }).time_interval?.start ?? DEFAULT_SCHEDULE_TIME,
               }))
-            )
           }
           setProcessBeforePublish(settings.process_before_publish ?? false)
           setProcessDescription(settings.process_description ?? '')
@@ -94,6 +98,25 @@ export function CustomURLPage() {
     }
     loadSettings()
   }, [])
+
+  useEffect(() => {
+    if (activeTab === 'posts' && !hasLoadedPosts) {
+      loadPosts()
+    }
+  }, [activeTab, hasLoadedPosts])
+
+  async function loadPosts() {
+    setIsLoadingPosts(true)
+    try {
+      const data = await customURLService.getPosts()
+      setPosts(data)
+      setHasLoadedPosts(true)
+    } catch (err) {
+      console.error('Failed to load url posts:', err)
+    } finally {
+      setIsLoadingPosts(false)
+    }
+  }
 
   function addUrlConfig() {
     setUrlConfigs([...urlConfigs, defaultUrlConfig()])
@@ -129,6 +152,7 @@ export function CustomURLPage() {
           url: c.url,
           xpath: c.xpath,
           take_screenshot: c.take_screenshot,
+          screenshot_format: c.take_screenshot ? (c.screenshot_format ?? 'base64') : undefined,
           target_social_networks: c.target_social_networks,
           schedule_time: c.schedule_time || DEFAULT_SCHEDULE_TIME,
         })),
@@ -202,6 +226,16 @@ export function CustomURLPage() {
         >
           Обработка
           {activeTab === 'processing' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />}
+        </button>
+        <button
+          type="button"
+          className={`px-6 py-3 text-sm font-medium transition-all relative ${
+            activeTab === 'posts' ? 'text-primary-400' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+          onClick={() => setActiveTab('posts')}
+        >
+          Posts
+          {activeTab === 'posts' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />}
         </button>
       </div>
 
@@ -296,6 +330,33 @@ export function CustomURLPage() {
                           Take screenshot
                         </span>
                       </label>
+                      {config.take_screenshot && (
+                        <div className="space-y-2 animate-slide-down">
+                          <label className="text-sm font-medium text-[var(--text-secondary)] block">Формат картинки</label>
+                          <div className="flex gap-4">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`screenshot-format-${config.id}`}
+                                checked={(config.screenshot_format ?? 'base64') === 'base64'}
+                                onChange={() => updateUrlConfig(config.id, 'screenshot_format', 'base64')}
+                                className="w-4 h-4 text-primary-500"
+                              />
+                              <span className="text-[var(--text-primary)]">base64</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`screenshot-format-${config.id}`}
+                                checked={config.screenshot_format === 'file'}
+                                onChange={() => updateUrlConfig(config.id, 'screenshot_format', 'file')}
+                                className="w-4 h-4 text-primary-500"
+                              />
+                              <span className="text-[var(--text-primary)]">файл</span>
+                            </label>
+                          </div>
+                        </div>
+                      )}
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-[var(--text-secondary)] block">Target Social Networks</label>
                         <div className="grid grid-cols-2 gap-3">
@@ -470,6 +531,91 @@ export function CustomURLPage() {
             </CardContent>
           </Card>
         </form>
+      )}
+
+      {activeTab === 'posts' && (
+        <Card className="animate-slide-up">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 text-primary-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6h16M4 10h16M4 14h10"
+                  />
+                </svg>
+                Posts
+              </CardTitle>
+              <CardDescription>Собранные посты из настроенных URL (таблица url_posts)</CardDescription>
+            </div>
+            <Button type="button" variant="secondary" size="sm" onClick={loadPosts} disabled={isLoadingPosts}>
+              Refresh
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {isLoadingPosts && posts.length === 0 && (
+              <div className="text-center py-8 text-[var(--text-muted)]">Loading posts...</div>
+            )}
+            {!isLoadingPosts && posts.length === 0 && hasLoadedPosts && (
+              <div className="text-center py-8 text-[var(--text-muted)]">No posts collected yet.</div>
+            )}
+            {!isLoadingPosts && posts.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--border-color)] text-left text-[var(--text-secondary)]">
+                      <th className="py-2 pr-4 font-medium">URL</th>
+                      <th className="py-2 pr-4 font-medium">Text</th>
+                      <th className="py-2 pr-4 font-medium">Images</th>
+                      <th className="py-2 pr-4 font-medium">Status</th>
+                      <th className="py-2 pr-4 font-medium">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {posts.map((post, index) => (
+                      <tr
+                        key={post.id ?? index}
+                        className="border-b border-[var(--border-color)] last:border-0"
+                      >
+                        <td className="py-2 pr-4 text-[var(--text-primary)]">
+                          <div className="max-w-xs truncate" title={post.url ?? ''}>
+                            {post.url || '—'}
+                          </div>
+                        </td>
+                        <td className="py-2 pr-4 text-[var(--text-primary)]">
+                          <div className="max-w-md truncate" title={post.post_text}>
+                            {post.post_text || '—'}
+                          </div>
+                        </td>
+                        <td className="py-2 pr-4 text-[var(--text-secondary)]">
+                          {Array.isArray(post.images) && post.images.length > 0
+                            ? `${post.images.length}`
+                            : '—'}
+                        </td>
+                        <td className="py-2 pr-4">
+                          <span className="inline-flex items-center rounded-full bg-[var(--bg-secondary)] px-2 py-0.5 text-xs font-medium text-[var(--text-secondary)]">
+                            {post.status}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-4 text-[var(--text-secondary)]">
+                          {post.created_at ? new Date(post.created_at).toLocaleString() : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   )

@@ -663,6 +663,41 @@ class PostService:
             Обновленный пост или None
         """
         return await self.update_tg_post(user_id, post_id, status="deleted")
+
+    async def get_url_posts(
+        self,
+        user_id: int,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[Dict]:
+        """Получает посты из url_posts пользователя (собранные по URL).
+        
+        Args:
+            user_id: ID пользователя
+            limit: Лимит записей
+            offset: Смещение
+        
+        Returns:
+            Список постов из url_posts
+        """
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, user_id, url, post_text, images, status, post_date,
+                           to_tg, to_tw, to_wp, to_vk, created_at, updated_at
+                    FROM url_posts
+                    WHERE user_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (user_id, limit, offset)
+                )
+                rows = await cur.fetchall()
+                return [self._row_to_post(row, cur.description) for row in rows]
+        finally:
+            await release_db_connection(conn)
     
     async def update_post_status(self, post_id: int, status: str) -> Optional[Dict]:
         """Обновляет статус поста.

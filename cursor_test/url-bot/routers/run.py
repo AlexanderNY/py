@@ -27,9 +27,11 @@ async def run_scrape(request: RunRequest) -> RunResponse:
         request.url,
         request.xpath,
         request.take_screenshot,
+        None,  # user_id: для /run не сохраняем на диск
     )
     return RunResponse(
         text=result.get("text"),
         screenshot_base64=result.get("screenshot_base64"),
+        screenshot_path=result.get("screenshot_path"),
         error=result.get("error"),
     )

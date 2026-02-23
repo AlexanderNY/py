@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     # Таймаут ожидания элемента по XPath (секунды)
     ELEMENT_WAIT_TIMEOUT_SECONDS: int = 10
 
+    # Оптимизация скриншота: ресайз и JPEG
+    SCREENSHOT_MAX_PIXELS: int = 1920  # макс. сторона (длинная)
+    SCREENSHOT_JPEG_QUALITY: int = 85
+
+    # Если задан — сохранять скриншот на диск и возвращать путь вместо base64
+    UPLOAD_DIR: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True

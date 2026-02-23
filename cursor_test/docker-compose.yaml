@@ -17,6 +17,8 @@ services:
       - WP_BOT_SERVICE_URL=http://wp-bot:8006
       - URL_BOT_SERVICE_URL=http://url-bot:8007
       - SCHEDULER_SERVICE_URL=http://scheduler:8003
+      - COLLECTOR_SERVICE_URL=http://collector:8009
+      - PROCESSOR_SERVICE_URL=http://processor:8010
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.2

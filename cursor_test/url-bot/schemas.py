@@ -16,6 +16,7 @@ class RunResponse(BaseModel):
     """Ответ POST /run."""
     text: Optional[str] = None
     screenshot_base64: Optional[str] = None
+    screenshot_path: Optional[str] = None
     error: Optional[str] = None
 
 

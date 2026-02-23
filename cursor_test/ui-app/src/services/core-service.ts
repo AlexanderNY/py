@@ -1,5 +1,12 @@
 import { apiClient, getErrorMessage } from './api-client'
-import type { HealthcheckResponse, StatisticsResponse, UserStatisticsResponse, ScheduleResponse } from '@/types/core'
+import type {
+  HealthcheckResponse,
+  StatisticsResponse,
+  UserStatisticsResponse,
+  ScheduleResponse,
+  ServicesStatusResponse,
+  PostsTablesResponse,
+} from '@/types/core'
 
 export const coreService = {
   async getHealthcheck(): Promise<HealthcheckResponse> {
@@ -50,6 +57,24 @@ export const coreService = {
   async startBot(platforms: string[]): Promise<{ status: string; message: string; results: Record<string, any> }> {
     try {
       const response = await apiClient.post<{ status: string; message: string; results: Record<string, any> }>('/core/start-bot', { platforms })
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getServicesStatus(): Promise<ServicesStatusResponse> {
+    try {
+      const response = await apiClient.get<ServicesStatusResponse>('/core/admin/services-status')
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getPostsTablesOverview(): Promise<PostsTablesResponse> {
+    try {
+      const response = await apiClient.get<PostsTablesResponse>('/core/admin/posts-tables')
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))

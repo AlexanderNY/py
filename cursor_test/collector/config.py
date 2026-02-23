@@ -38,9 +38,9 @@ settings = Settings()
 SOURCE_TABLES = [
     {"platform": "tg", "table": "tg_posts"},
     {"platform": "wp", "table": "wp_posts"},
+    {"platform": "url", "table": "url_posts"},
     # {"platform": "tw", "table": "tw_posts"},
     # {"platform": "vk", "table": "vk_posts"},
-    # {"platform": "url", "table": "url_posts"},
 ]
 
 # Маппинг флагов to_* -> целевые таблицы

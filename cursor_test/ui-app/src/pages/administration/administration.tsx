@@ -8,10 +8,18 @@ import { coreService } from '@/services/core-service'
 import { notificationsService } from '@/services/notifications-service'
 import { Input } from '@/components/ui/input'
 import type { User } from '@/types/auth'
-import type { UserStatisticsItem, ScheduleSnapshot, Notification } from '@/types/core'
+import type {
+  UserStatisticsItem,
+  ScheduleSnapshot,
+  Notification,
+  ServicesStatusResponse,
+  PostsTablesResponse,
+} from '@/types/core'
+
+type AdminTab = 'users' | 'statistics' | 'schedule' | 'notifications' | 'services-status' | 'posts-tables'
 
 export function AdministrationPage() {
-  const [activeTab, setActiveTab] = useState<'users' | 'statistics' | 'schedule' | 'notifications'>('users')
+  const [activeTab, setActiveTab] = useState<AdminTab>('users')
   const [users, setUsers] = useState<User[]>([])
   const [statistics, setStatistics] = useState<UserStatisticsItem[]>([])
   const [schedules, setSchedules] = useState<ScheduleSnapshot[]>([])
@@ -40,6 +48,14 @@ export function AdministrationPage() {
   const [notificationsList, setNotificationsList] = useState<Notification[]>([])
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false)
   const [isDeletingNotification, setIsDeletingNotification] = useState<number | null>(null)
+
+  // Services status & Posts tables (admin)
+  const [servicesStatus, setServicesStatus] = useState<ServicesStatusResponse | null>(null)
+  const [postsTables, setPostsTables] = useState<PostsTablesResponse | null>(null)
+  const [isLoadingServicesStatus, setIsLoadingServicesStatus] = useState(false)
+  const [isLoadingPostsTables, setIsLoadingPostsTables] = useState(false)
+  const [servicesStatusError, setServicesStatusError] = useState('')
+  const [postsTablesError, setPostsTablesError] = useState('')
 
   async function handleLoadUsers() {
     setUsersError('')
@@ -185,6 +201,34 @@ export function AdministrationPage() {
     }
   }
 
+  async function handleLoadServicesStatus() {
+    setServicesStatusError('')
+    setIsLoadingServicesStatus(true)
+    try {
+      const data = await coreService.getServicesStatus()
+      setServicesStatus(data)
+    } catch (error) {
+      setServicesStatusError(error instanceof Error ? error.message : 'Failed to fetch services status')
+      setServicesStatus(null)
+    } finally {
+      setIsLoadingServicesStatus(false)
+    }
+  }
+
+  async function handleLoadPostsTables() {
+    setPostsTablesError('')
+    setIsLoadingPostsTables(true)
+    try {
+      const data = await coreService.getPostsTablesOverview()
+      setPostsTables(data)
+    } catch (error) {
+      setPostsTablesError(error instanceof Error ? error.message : 'Failed to fetch posts tables')
+      setPostsTables(null)
+    } finally {
+      setIsLoadingPostsTables(false)
+    }
+  }
+
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
       <div>
@@ -233,6 +277,26 @@ export function AdministrationPage() {
           }`}
         >
           Notifications
+        </button>
+        <button
+          onClick={() => setActiveTab('services-status')}
+          className={`px-4 py-2 font-medium text-sm transition-colors ${
+            activeTab === 'services-status'
+              ? 'text-primary-400 border-b-2 border-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          Services Status
+        </button>
+        <button
+          onClick={() => setActiveTab('posts-tables')}
+          className={`px-4 py-2 font-medium text-sm transition-colors ${
+            activeTab === 'posts-tables'
+              ? 'text-primary-400 border-b-2 border-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          Posts Tables
         </button>
       </div>
 
@@ -729,6 +793,224 @@ export function AdministrationPage() {
                 </p>
               )}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Services Status Tab */}
+      {activeTab === 'services-status' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Services Status
+            </CardTitle>
+            <CardDescription>CORE, PROCESSOR, SCHEDULER, COLLECTOR health and status</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <Button
+              onClick={handleLoadServicesStatus}
+              isLoading={isLoadingServicesStatus}
+              className="w-full sm:w-auto"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Load Services Status
+            </Button>
+
+            {servicesStatusError && (
+              <Alert variant="error" className="animate-slide-down">{servicesStatusError}</Alert>
+            )}
+
+            {servicesStatus && (
+              <div className="space-y-6 animate-slide-down">
+                <div>
+                  <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Healthchecks</h3>
+                  <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
+                    <table className="w-full">
+                      <thead className="bg-[var(--bg-tertiary)]">
+                        <tr>
+                          <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Service</th>
+                          <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Status</th>
+                          <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Error</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--border-color)]">
+                        {(servicesStatus.healthchecks || []).map((h) => (
+                          <tr key={h.service_name} className="hover:bg-[var(--bg-tertiary)]">
+                            <td className="py-3 px-4 text-[var(--text-primary)] font-medium">{h.service_name}</td>
+                            <td className="py-3 px-4">
+                              <span className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${h.status === 'ok' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                                {h.status}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">{h.error ?? '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {servicesStatus.collector && (
+                    <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+                      <h4 className="font-semibold text-[var(--text-primary)] mb-2">COLLECTOR</h4>
+                      {servicesStatus.collector.error ? (
+                        <p className="text-red-400 text-sm">{servicesStatus.collector.error}</p>
+                      ) : (
+                        <ul className="text-sm text-[var(--text-secondary)] space-y-1">
+                          <li>Interval: collect {servicesStatus.collector.collect_interval_sec}s / distribute {servicesStatus.collector.distribute_interval_sec}s</li>
+                          {servicesStatus.collector.collector && (
+                            <li>Collector: last run {servicesStatus.collector.collector.last_run_at ? new Date(servicesStatus.collector.collector.last_run_at).toLocaleString() : '—'}, total {servicesStatus.collector.collector.total_processed}</li>
+                          )}
+                          {servicesStatus.collector.distributor && (
+                            <li>Distributor: last run {servicesStatus.collector.distributor.last_run_at ? new Date(servicesStatus.collector.distributor.last_run_at).toLocaleString() : '—'}, total {servicesStatus.collector.distributor.total_processed}</li>
+                          )}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                  {servicesStatus.processor && (
+                    <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+                      <h4 className="font-semibold text-[var(--text-primary)] mb-2">PROCESSOR</h4>
+                      {servicesStatus.processor.error ? (
+                        <p className="text-red-400 text-sm">{servicesStatus.processor.error}</p>
+                      ) : (
+                        <ul className="text-sm text-[var(--text-secondary)] space-y-1">
+                          <li>Interval: {servicesStatus.processor.process_interval_sec}s</li>
+                          {servicesStatus.processor.processor && (
+                            <li>Last run: {servicesStatus.processor.processor.last_run_at ? new Date(servicesStatus.processor.processor.last_run_at).toLocaleString() : '—'}, total {servicesStatus.processor.processor.total_processed}</li>
+                          )}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                  {servicesStatus.scheduler && (
+                    <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+                      <h4 className="font-semibold text-[var(--text-primary)] mb-2">SCHEDULER</h4>
+                      {servicesStatus.scheduler.error ? (
+                        <p className="text-red-400 text-sm">{servicesStatus.scheduler.error}</p>
+                      ) : (
+                        <ul className="text-sm text-[var(--text-secondary)] space-y-1">
+                          <li>Poll interval: {servicesStatus.scheduler.poll_interval_sec}s</li>
+                          <li>Last poll: {servicesStatus.scheduler.last_poll_at ? new Date(servicesStatus.scheduler.last_poll_at).toLocaleString() : '—'}</li>
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!servicesStatus && !isLoadingServicesStatus && !servicesStatusError && (
+              <p className="text-[var(--text-muted)] text-center py-8">Click &quot;Load Services Status&quot; to fetch</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Posts Tables Tab */}
+      {activeTab === 'posts-tables' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+              </svg>
+              Posts Tables
+            </CardTitle>
+            <CardDescription>Overview of post tables and status counts (collector & processor metrics)</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <Button
+              onClick={handleLoadPostsTables}
+              isLoading={isLoadingPostsTables}
+              className="w-full sm:w-auto"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Load Posts Tables
+            </Button>
+
+            {postsTablesError && (
+              <Alert variant="error" className="animate-slide-down">{postsTablesError}</Alert>
+            )}
+
+            {postsTables && (
+              <div className="space-y-6 animate-slide-down">
+                {(postsTables.collector_error || postsTables.processor_error) && (
+                  <Alert variant="error">
+                    {postsTables.collector_error && <span>Collector: {postsTables.collector_error}. </span>}
+                    {postsTables.processor_error && <span>Processor: {postsTables.processor_error}</span>}
+                  </Alert>
+                )}
+
+                {postsTables.platforms && postsTables.platforms.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Platform tables</h3>
+                    <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
+                      <table className="w-full">
+                        <thead className="bg-[var(--bg-tertiary)]">
+                          <tr>
+                            <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Platform</th>
+                            <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Table</th>
+                            <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Collected</th>
+                            <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Ready</th>
+                            <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Processing</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[var(--border-color)]">
+                          {postsTables.platforms.map((p) => (
+                            <tr key={p.table} className="hover:bg-[var(--bg-tertiary)]">
+                              <td className="py-3 px-4 text-[var(--text-primary)] font-medium">{p.platform}</td>
+                              <td className="py-3 px-4 text-[var(--text-secondary)] font-mono text-sm">{p.table}</td>
+                              <td className="py-3 px-4 text-right text-[var(--text-secondary)]">{p.collected_count.toLocaleString()}</td>
+                              <td className="py-3 px-4 text-right text-[var(--text-secondary)]">{p.ready_count.toLocaleString()}</td>
+                              <td className="py-3 px-4 text-right text-[var(--text-secondary)]">{p.processing_count.toLocaleString()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {postsTables.posts_table_collector && Object.keys(postsTables.posts_table_collector).length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Central table <code className="text-sm">posts</code> (collector view)</h3>
+                    <div className="flex flex-wrap gap-4">
+                      {Object.entries(postsTables.posts_table_collector).map(([status, count]) => (
+                        <span key={status} className="px-3 py-1 rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-secondary)] text-sm">
+                          {status}: <strong className="text-[var(--text-primary)]">{Number(count).toLocaleString()}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {postsTables.posts_table_processor && Object.keys(postsTables.posts_table_processor).length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Central table <code className="text-sm">posts</code> (processor view)</h3>
+                    <div className="flex flex-wrap gap-4">
+                      {Object.entries(postsTables.posts_table_processor).map(([status, count]) => (
+                        <span key={status} className="px-3 py-1 rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-secondary)] text-sm">
+                          {status}: <strong className="text-[var(--text-primary)]">{Number(count).toLocaleString()}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!postsTables && !isLoadingPostsTables && !postsTablesError && (
+              <p className="text-[var(--text-muted)] text-center py-8">Click &quot;Load Posts Tables&quot; to fetch</p>
+            )}
           </CardContent>
         </Card>
       )}
