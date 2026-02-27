@@ -6,7 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     chromium-driver \
-    && rm -rf /var/lib/apt/lists/*
+    #&& rm -rf /var/lib/apt/lists/*
 
 # Переменные для Selenium (указать путь к chromium)
 ENV CHROME_BIN=/usr/bin/chromium
