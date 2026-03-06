@@ -1,10 +1,11 @@
 from contextlib import asynccontextmanager
+from datetime import datetime
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from config import settings
+from config import settings, get_cors_origins_list
 from services.proxy_service import initialize_proxy_service
 from middleware.rate_limiter import RateLimitMiddleware
 from middleware.jwt_validator import validate_jwt_middleware
@@ -18,8 +19,9 @@ from routers import (
     curl_router,
     cpost_router,
     bot_proxy_router,
+    threads_router,
     stubs_router,
-    test_router
+    test_router,
 )
 from utils.exceptions import (
     GatewayException,
@@ -65,7 +67,7 @@ def configure_cors(application: FastAPI) -> None:
     """
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
+        allow_origins=get_cors_origins_list(),
         allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
         allow_methods=settings.CORS_ALLOWED_METHODS,
         allow_headers=settings.CORS_ALLOW_HEADERS,
@@ -87,6 +89,7 @@ def register_routers(application: FastAPI) -> None:
     application.include_router(curl_router)
     application.include_router(cpost_router)
     application.include_router(bot_proxy_router)
+    application.include_router(threads_router)
     application.include_router(stubs_router)
     application.include_router(test_router)
 
@@ -138,7 +141,8 @@ async def check_health():
     """
     return {
         "status": "healthy",
-        "service": "api-gateway"
+        "service": "api-gateway",
+        "server_time": datetime.utcnow().isoformat() + "Z",
     }
 
 

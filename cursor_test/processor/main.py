@@ -4,10 +4,11 @@ import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, status
 
-from config import settings
+from config import settings, PROCESSING_OPTIONS_FOR_ADMIN
 from database import init_db, close_db, get_db_connection
 from services.processing_service import processing_service
 from schemas import (
@@ -16,6 +17,7 @@ from schemas import (
     ServiceStatus,
     LoopStatus,
     MetricsResponse,
+    ProcessingOption,
 )
 
 # Настройка логирования
@@ -27,6 +29,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 _process_task: asyncio.Task | None = None
+_started_at: datetime | None = None
 
 
 # ── Фоновый цикл ──────────────────────────────────────────────────
@@ -45,9 +48,10 @@ async def _processor_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _process_task
+    global _process_task, _started_at
 
     await init_db()
+    _started_at = datetime.utcnow()
     logger.info(
         "Processor started; processing every %ds, batch size %d",
         settings.PROCESS_INTERVAL_SEC,
@@ -83,21 +87,25 @@ async def root():
 @app.get("/health", response_model=HealthResponse)
 async def health():
     """Healthcheck."""
-    return HealthResponse(status="healthy", service="processor")
+    return HealthResponse(status="healthy", service="processor", server_time=datetime.utcnow().isoformat() + "Z")
 
 
 @app.get("/status", response_model=ServiceStatus)
 async def get_status():
-    """Текущий статус фонового цикла обработки."""
+    """Текущий статус фонового цикла обработки и конфигурация."""
     return ServiceStatus(
         service="processor",
         version="1.0.0",
         process_interval_sec=settings.PROCESS_INTERVAL_SEC,
+        process_batch_size=settings.PROCESS_BATCH_SIZE,
         processor=LoopStatus(
             last_run_at=processing_service.last_run_at,
             total_processed=processing_service.total_processed,
             last_cycle_count=processing_service.last_cycle_processed,
         ),
+        current_time=datetime.utcnow().isoformat() + "Z",
+        started_at=_started_at.isoformat() + "Z" if _started_at else None,
+        processing_options=[ProcessingOption(**opt) for opt in PROCESSING_OPTIONS_FOR_ADMIN],
     )
 
 

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -50,9 +52,10 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Проверка здоровья сервиса."""
-    return { 
-        "status": "healthy", 
-        "service": "auth" 
+    return {
+        "status": "healthy",
+        "service": "auth",
+        "server_time": datetime.utcnow().isoformat() + "Z",
     }
 
 

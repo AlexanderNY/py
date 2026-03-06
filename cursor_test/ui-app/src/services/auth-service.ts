@@ -4,7 +4,8 @@ import type {
   User, 
   LoginCredentials, 
   RegisterCredentials, 
-  ProfileUpdate 
+  ProfileUpdate,
+  RoleTariffHistoryEntry,
 } from '@/types'
 
 export const authService = {
@@ -101,6 +102,29 @@ export const authService = {
   async getUsers(): Promise<User[]> {
     try {
       const response = await apiClient.get<User[]>('/auth/users')
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async updateUser(
+    userId: number,
+    data: { role?: 'guest' | 'user' | 'admin'; tariff?: string }
+  ): Promise<User> {
+    try {
+      const response = await apiClient.patch<User>(`/auth/users/${userId}`, data)
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getRoleTariffHistory(userId: number): Promise<RoleTariffHistoryEntry[]> {
+    try {
+      const response = await apiClient.get<RoleTariffHistoryEntry[]>(
+        `/auth/users/${userId}/role-tariff-history`
+      )
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))

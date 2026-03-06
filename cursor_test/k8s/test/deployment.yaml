@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test
+  namespace: app
+  labels:
+    app: test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test
+  template:
+    metadata:
+      labels:
+        app: test
+    spec:
+      containers:
+        - name: test
+          image: selectcb:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8008
+          env:
+            - name: API_GATEWAY_URL
+              value: "http://gateway:8000"
+            - name: AUTH_SERVICE_URL
+              value: "http://auth:8001"
+            - name: CORE_SERVICE_URL
+              value: "http://core:8002"
+          envFrom:
+            - secretRef:
+                name: app-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8008
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8008
+            initialDelaySeconds: 15
+            periodSeconds: 15

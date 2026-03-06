@@ -107,7 +107,7 @@ class SchedulesService:
                         "schedule_type": "immediate",
                         "time_intervals": [],
                     })
-                # url: из curl_settings (collect_enabled + urls)
+                # url: из curl_settings (collect_enabled + urls); run_once уже выполненные исключаем
                 await cur.execute(
                     """
                     SELECT user_id, collect_enabled, urls
@@ -118,6 +118,7 @@ class SchedulesService:
                 curl_cols = [c.name for c in cur.description] if cur.description else []
                 for row in curl_rows:
                     rec = dict(zip(curl_cols, row))
+                    user_id = rec["user_id"]
                     urls_raw = rec.get("urls")
                     if isinstance(urls_raw, str):
                         try:
@@ -128,19 +129,36 @@ class SchedulesService:
                         urls_list = urls_raw if isinstance(urls_raw, list) else []
                     if not rec.get("collect_enabled") or not urls_list:
                         continue
-                    time_intervals = []
+                    # Исключаем run_once URL, уже выполненные
+                    await cur.execute(
+                        "SELECT url, xpath FROM curl_one_time_done WHERE user_id = %s",
+                        (user_id,),
+                    )
+                    done_rows = await cur.fetchall()
+                    done_set = {(r[0] or "", r[1] or "") for r in done_rows}
+                    filtered_urls = []
                     for u in urls_list:
+                        if (u or {}).get("run_once"):
+                            url_val = (u or {}).get("url") or ""
+                            xpath_val = (u or {}).get("xpath") or ""
+                            if (url_val, xpath_val) in done_set:
+                                continue
+                        filtered_urls.append(u)
+                    if not filtered_urls:
+                        continue
+                    time_intervals = []
+                    for u in filtered_urls:
                         st = (u or {}).get("schedule_time")
                         if isinstance(st, str) and st and ":" in st:
                             time_intervals.append({"start": st, "end": st})
                     result.append({
-                        "user_id": rec["user_id"],
+                        "user_id": user_id,
                         "platform": "url",
                         "publish_enabled": False,
                         "collect_enabled": bool(rec.get("collect_enabled", False)),
                         "schedule_type": "immediate",
                         "time_intervals": time_intervals if time_intervals else [],
-                        "urls": urls_list,
+                        "urls": filtered_urls,
                     })
         finally:
             await release_db_connection(conn)

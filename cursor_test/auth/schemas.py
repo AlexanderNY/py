@@ -34,9 +34,10 @@ class UserProfile(BaseModel):
     username: str
     email: EmailStr
     role: Literal["guest", "user", "admin"]
+    tariff: str = "free"
     is_email_verified: bool
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -45,6 +46,12 @@ class UserProfileUpdate(BaseModel):
     """Схема для обновления профиля пользователя."""
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     email: Optional[EmailStr] = None
+
+
+class AdminUserUpdate(BaseModel):
+    """Схема для обновления роли и тарифа пользователя (только для администраторов)."""
+    role: Optional[Literal["guest", "user", "admin"]] = None
+    tariff: Optional[str] = Field(None, max_length=50)
 
 
 class PasswordResetRequest(BaseModel):
@@ -67,4 +74,19 @@ class TokenVerifyResponse(BaseModel):
     """Схема ответа на валидацию токена."""
     valid: bool
     user_id: Optional[int] = None
+
+
+class RoleTariffHistoryEntry(BaseModel):
+    """Запись истории изменения роли и тарифа пользователя."""
+    id: int
+    user_id: int
+    changed_at: datetime
+    changed_by_user_id: Optional[int] = None
+    role_old: Optional[str] = None
+    role_new: Optional[str] = None
+    tariff_old: Optional[str] = None
+    tariff_new: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 

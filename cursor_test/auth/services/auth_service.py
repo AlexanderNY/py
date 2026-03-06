@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from database import get_db_connection
 from services.password_service import hash_password, verify_password
 from services.token_service import (
@@ -41,20 +41,20 @@ async def register_user(username: str, email: str, password: str) -> Dict:
             # Хеширование пароля
             password_hash = hash_password(password)
             
-            # Создание пользователя (роль по умолчанию 'guest')
+            # Создание пользователя (роль по умолчанию 'guest', тариф по умолчанию 'free')
             await cur.execute(
                 """
-                INSERT INTO users (username, email, password_hash, role)
-                VALUES (%s, %s, %s, 'guest')
-                RETURNING id, username, email, role, is_email_verified, created_at
+                INSERT INTO users (username, email, password_hash, role, tariff)
+                VALUES (%s, %s, %s, 'guest', 'free')
+                RETURNING id, username, email, role, tariff, is_email_verified, created_at
                 """,
                 (username, email, password_hash)
             )
             user_row = await cur.fetchone()
-            
+
             if not user_row:
                 raise RuntimeError("Failed to create user")
-            
+
             user_id = user_row[0]
             user_role = user_row[3]
             
@@ -188,23 +188,24 @@ async def get_user_by_id(user_id: int) -> Optional[Dict]:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, username, email, role, is_email_verified, created_at
+                SELECT id, username, email, role, tariff, is_email_verified, created_at
                 FROM users WHERE id = %s
                 """,
                 (user_id,)
             )
             user_row = await cur.fetchone()
-            
+
             if not user_row:
                 return None
-            
+
             return {
                 "id": user_row[0],
                 "username": user_row[1],
                 "email": user_row[2],
                 "role": user_row[3],
-                "is_email_verified": user_row[4],
-                "created_at": user_row[5]
+                "tariff": user_row[4],
+                "is_email_verified": user_row[5],
+                "created_at": user_row[6]
             }
 
 
@@ -250,23 +251,124 @@ async def update_user_profile(user_id: int, username: Optional[str] = None, emai
             if updates:
                 updates.append("updated_at = CURRENT_TIMESTAMP")
                 params.append(user_id)
-                
-                query = f"UPDATE users SET {', '.join(updates)} WHERE id = %s RETURNING id, username, email, role, is_email_verified, created_at"
+
+                query = f"UPDATE users SET {', '.join(updates)} WHERE id = %s RETURNING id, username, email, role, tariff, is_email_verified, created_at"
                 await cur.execute(query, params)
                 user_row = await cur.fetchone()
-                
+
                 if user_row:
                     return {
                         "id": user_row[0],
                         "username": user_row[1],
                         "email": user_row[2],
                         "role": user_row[3],
-                        "is_email_verified": user_row[4],
-                        "created_at": user_row[5]
+                        "tariff": user_row[4],
+                        "is_email_verified": user_row[5],
+                        "created_at": user_row[6]
                     }
             
             # Если ничего не обновлялось, возвращаем текущего пользователя
             return await get_user_by_id(user_id)
+
+
+async def update_user_role_tariff(
+    user_id: int,
+    role: Optional[str] = None,
+    tariff: Optional[str] = None,
+    changed_by_user_id: Optional[int] = None
+) -> Dict:
+    """Обновление роли и/или тарифа пользователя (только для администраторов)."""
+    if role is None and tariff is None:
+        return await get_user_by_id(user_id)
+
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT id, role, tariff FROM users WHERE id = %s",
+                (user_id,)
+            )
+            row = await cur.fetchone()
+            if not row:
+                raise UserNotFoundError("User not found")
+
+            role_old = row[1]
+            tariff_old = row[2] or "free"
+
+            updates = []
+            params = []
+
+            if role is not None:
+                updates.append("role = %s")
+                params.append(role)
+            if tariff is not None:
+                updates.append("tariff = %s")
+                params.append(tariff)
+
+            if updates:
+                updates.append("updated_at = CURRENT_TIMESTAMP")
+                params.append(user_id)
+                query = f"UPDATE users SET {', '.join(updates)} WHERE id = %s RETURNING id, username, email, role, tariff, is_email_verified, created_at"
+                await cur.execute(query, params)
+                user_row = await cur.fetchone()
+                if user_row:
+                    role_new = user_row[3]
+                    tariff_new = user_row[4] or "free"
+                    await cur.execute(
+                        """
+                        INSERT INTO user_role_tariff_history
+                        (user_id, changed_by_user_id, role_old, role_new, tariff_old, tariff_new)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            user_id,
+                            changed_by_user_id,
+                            role_old,
+                            role_new,
+                            tariff_old,
+                            tariff_new,
+                        ),
+                    )
+                    return {
+                        "id": user_row[0],
+                        "username": user_row[1],
+                        "email": user_row[2],
+                        "role": user_row[3],
+                        "tariff": user_row[4],
+                        "is_email_verified": user_row[5],
+                        "created_at": user_row[6]
+                    }
+
+    return await get_user_by_id(user_id)
+
+
+async def get_user_role_tariff_history(user_id: int) -> List[Dict]:
+    """Получение истории изменений роли и тарифа пользователя."""
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id, user_id, changed_at, changed_by_user_id,
+                       role_old, role_new, tariff_old, tariff_new
+                FROM user_role_tariff_history
+                WHERE user_id = %s
+                ORDER BY changed_at DESC
+                """,
+                (user_id,),
+            )
+            rows = await cur.fetchall()
+    return [
+        {
+            "id": r[0],
+            "user_id": r[1],
+            "changed_at": r[2],
+            "changed_by_user_id": r[3],
+            "role_old": r[4],
+            "role_new": r[5],
+            "tariff_old": r[6],
+            "tariff_new": r[7],
+        }
+        for r in rows
+    ]
 
 
 async def initiate_password_reset(email: str) -> str:
@@ -296,21 +398,22 @@ async def get_all_users() -> list[Dict]:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, username, email, role, is_email_verified, created_at
+                SELECT id, username, email, role, tariff, is_email_verified, created_at
                 FROM users
                 ORDER BY created_at DESC
                 """
             )
             rows = await cur.fetchall()
-            
+
             return [
                 {
                     "id": row[0],
                     "username": row[1],
                     "email": row[2],
                     "role": row[3],
-                    "is_email_verified": row[4],
-                    "created_at": row[5]
+                    "tariff": row[4],
+                    "is_email_verified": row[5],
+                    "created_at": row[6]
                 }
                 for row in rows
             ]

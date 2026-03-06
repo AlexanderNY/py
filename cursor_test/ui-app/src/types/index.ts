@@ -6,6 +6,7 @@ export * from './twitter'
 export * from './vkontakte'
 export * from './custom-url'
 export * from './create-post'
+export * from './threads'
 export * from './test'
 
 

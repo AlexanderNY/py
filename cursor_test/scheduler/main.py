@@ -3,12 +3,13 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 
-from config import settings
+from config import settings, SCHEDULER_FUNCTIONS_FOR_ADMIN
 from database import init_db, close_db
 from services.schedule_poll_service import (
     poll_loop, 
@@ -29,12 +30,14 @@ logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
 _task: asyncio.Task | None = None
+_started_at: datetime | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _task
+    global _task, _started_at
     await init_db()
+    _started_at = datetime.utcnow()
     _task = asyncio.create_task(poll_loop())
     logger.info("Scheduler started; poll every %s s", settings.POLL_INTERVAL_SECONDS)
     yield
@@ -58,18 +61,22 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "service": "scheduler"}
+    return {"status": "healthy", "service": "scheduler", "server_time": datetime.utcnow().isoformat() + "Z"}
 
 
 @app.get("/status")
 async def status():
-    """Статус фонового цикла опроса (для админки)."""
+    """Статус фонового цикла опроса и конфигурация (для админки)."""
     last = get_last_poll_at()
     return {
         "service": "scheduler",
         "version": "1.0.0",
         "poll_interval_sec": settings.POLL_INTERVAL_SECONDS,
+        "notify_on_change_only": settings.NOTIFY_ON_CHANGE_ONLY,
         "last_poll_at": last.isoformat() if last and hasattr(last, "isoformat") else last,
+        "current_time": datetime.utcnow().isoformat() + "Z",
+        "started_at": _started_at.isoformat() + "Z" if _started_at else None,
+        "schedule_functions": SCHEDULER_FUNCTIONS_FOR_ADMIN,
     }
 
 

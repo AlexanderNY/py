@@ -4,10 +4,11 @@ import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, status
 
-from config import settings, SOURCE_TABLES, TARGET_TABLES
+from config import settings, SOURCE_TABLES, TARGET_TABLES, COLLECTOR_FUNCTIONS_FOR_ADMIN
 from database import init_db, close_db, get_db_connection
 from services.collect_service import collect_service
 from services.distribute_service import distribute_service
@@ -18,6 +19,7 @@ from schemas import (
     LoopStatus,
     MetricsResponse,
     PlatformMetric,
+    CollectorFunction,
 )
 
 # Настройка логирования
@@ -30,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 _collect_task: asyncio.Task | None = None
 _distribute_task: asyncio.Task | None = None
+_started_at: datetime | None = None
 
 
 # ── Фоновые циклы ──────────────────────────────────────────────
@@ -58,9 +61,10 @@ async def _distributor_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _collect_task, _distribute_task
+    global _collect_task, _distribute_task, _started_at
 
     await init_db()
+    _started_at = datetime.utcnow()
     logger.info(
         "Collector started; collect every %ds, distribute every %ds",
         settings.COLLECT_INTERVAL_SEC,
@@ -98,17 +102,19 @@ async def root():
 @app.get("/health", response_model=HealthResponse)
 async def health():
     """Healthcheck."""
-    return HealthResponse(status="healthy", service="collector")
+    return HealthResponse(status="healthy", service="collector", server_time=datetime.utcnow().isoformat() + "Z")
 
 
 @app.get("/status", response_model=ServiceStatus)
 async def get_status():
-    """Текущий статус фоновых циклов."""
+    """Текущий статус фоновых циклов и конфигурация."""
     return ServiceStatus(
         service="collector",
         version="1.0.0",
         collect_interval_sec=settings.COLLECT_INTERVAL_SEC,
         distribute_interval_sec=settings.DISTRIBUTE_INTERVAL_SEC,
+        collect_batch_size=settings.COLLECT_BATCH_SIZE,
+        distribute_batch_size=settings.DISTRIBUTE_BATCH_SIZE,
         collector=LoopStatus(
             last_run_at=collect_service.last_run_at,
             total_processed=collect_service.total_collected,
@@ -119,6 +125,9 @@ async def get_status():
             total_processed=distribute_service.total_distributed,
             last_cycle_count=distribute_service.last_cycle_distributed,
         ),
+        current_time=datetime.utcnow().isoformat() + "Z",
+        started_at=_started_at.isoformat() + "Z" if _started_at else None,
+        collect_functions=[CollectorFunction(**opt) for opt in COLLECTOR_FUNCTIONS_FOR_ADMIN],
     )
 
 

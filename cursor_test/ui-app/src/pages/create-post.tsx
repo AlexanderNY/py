@@ -1,11 +1,13 @@
-import { useState, FormEvent, useEffect } from 'react'
+import { useState, FormEvent, useEffect, type ReactNode } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { TipTapEditor } from '@/components/ui/tiptap-editor'
 import { createPostService } from '@/services/create-post-service'
+import { coreService } from '@/services/core-service'
 import type { CpostPostListItem } from '@/types/create-post'
+import type { PostRow } from '@/types/core'
 
 const TEXT_MAX_LENGTH = 150000
 const POST_PREVIEW_LENGTH = 80
@@ -65,7 +67,7 @@ function fromDatetimeLocal(value: string): string {
   }
 }
 
-type TabId = 'create' | 'posts' | 'profile'
+type TabId = 'create' | 'posts' | 'posts-review' | 'profile'
 
 export function CreatePostPage() {
   const [activeTab, setActiveTab] = useState<TabId>('create')
@@ -75,6 +77,7 @@ export function CreatePostPage() {
     tw: false,
     vk: false,
     wp: false,
+    threads: false,
   })
   const [postTitle, setPostTitle] = useState('')
   const [postContent, setPostContent] = useState('')
@@ -98,6 +101,10 @@ export function CreatePostPage() {
   const [isLoadingPosts, setIsLoadingPosts] = useState(false)
   const [hasLoadedPosts, setHasLoadedPosts] = useState(false)
   const [deletingPostId, setDeletingPostId] = useState<number | null>(null)
+
+  const [postsReviewList, setPostsReviewList] = useState<PostRow[]>([])
+  const [isLoadingPostsReview, setIsLoadingPostsReview] = useState(false)
+  const [postsReviewError, setPostsReviewError] = useState('')
 
   const [isCreating, setIsCreating] = useState(false)
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
@@ -174,6 +181,7 @@ export function CreatePostPage() {
         tw: post.to_tw ?? false,
         vk: post.to_vk ?? false,
         wp: post.to_wp ?? false,
+        threads: post.to_threads ?? false,
       })
       setEditingPostId(postId)
       setActiveTab('create')
@@ -195,6 +203,72 @@ export function CreatePostPage() {
     } finally {
       setDeletingPostId(null)
     }
+  }
+
+  async function handleLoadPostsReview() {
+    setPostsReviewError('')
+    setIsLoadingPostsReview(true)
+    try {
+      const data = await coreService.getPostsList(500, 0, 'review')
+      setPostsReviewList(data.posts)
+    } catch (err) {
+      setPostsReviewError(err instanceof Error ? err.message : 'Failed to fetch posts in review')
+      setPostsReviewList([])
+    } finally {
+      setIsLoadingPostsReview(false)
+    }
+  }
+
+  const POSTS_TABLE_COLUMNS: { key: keyof PostRow; label: string }[] = [
+    { key: 'id', label: 'ID' },
+    { key: 'user_id', label: 'User ID' },
+    { key: 'domain', label: 'Domain' },
+    { key: 'url', label: 'URL' },
+    { key: 'title', label: 'Title' },
+    { key: 'author', label: 'Author' },
+    { key: 'avatar', label: 'Avatar' },
+    { key: 'post_date', label: 'Post Date' },
+    { key: 'post_text', label: 'Post Text' },
+    { key: 'screenshot', label: 'Screenshot' },
+    { key: 'images', label: 'Images' },
+    { key: 'image_over_text', label: 'Image Over Text' },
+    { key: 'comments', label: 'Comments' },
+    { key: 'reposts', label: 'Reposts' },
+    { key: 'likes', label: 'Likes' },
+    { key: 'views', label: 'Views' },
+    { key: 'is_ad', label: 'Is Ad' },
+    { key: 'status', label: 'Status' },
+    { key: 'post_type', label: 'Post Type' },
+    { key: 'to_tg', label: 'To TG' },
+    { key: 'to_tw', label: 'To TW' },
+    { key: 'to_wp', label: 'To WP' },
+    { key: 'to_vk', label: 'To VK' },
+    { key: 'to_threads', label: 'To Threads' },
+    { key: 'created_at', label: 'Created At' },
+    { key: 'updated_at', label: 'Updated At' },
+    { key: 'source_platform', label: 'Source Platform' },
+    { key: 'source_id', label: 'Source ID' },
+  ]
+
+  function formatPostCell(post: PostRow, key: keyof PostRow): ReactNode {
+    const v = post[key]
+    if (v === null || v === undefined) return <span className="text-[var(--text-muted)]">—</span>
+    if (key === 'post_date' || key === 'created_at' || key === 'updated_at') {
+      return <span className="text-[var(--text-secondary)] whitespace-nowrap">{new Date(String(v)).toLocaleString()}</span>
+    }
+    if (key === 'images') {
+      const arr = Array.isArray(v) ? v : []
+      return <span className="text-[var(--text-secondary)]">{arr.length} items</span>
+    }
+    if (key === 'post_text' || key === 'screenshot' || key === 'url' || key === 'image_over_text' || key === 'avatar') {
+      const s = String(v)
+      const truncated = s.length > 80 ? s.slice(0, 80) + '…' : s
+      return <span className="text-[var(--text-secondary)] max-w-[200px] truncate block" title={s}>{truncated}</span>
+    }
+    if (typeof v === 'boolean') {
+      return v ? <span className="text-emerald-400">true</span> : <span className="text-[var(--text-muted)]">false</span>
+    }
+    return <span className="text-[var(--text-secondary)]">{String(v)}</span>
   }
 
   function toggleSocialNetwork(network: keyof typeof socialNetworks) {
@@ -270,6 +344,7 @@ export function CreatePostPage() {
       to_tw: socialNetworks.tw,
       to_wp: socialNetworks.wp,
       to_vk: socialNetworks.vk,
+      to_threads: socialNetworks.threads,
     }
 
     try {
@@ -319,12 +394,13 @@ export function CreatePostPage() {
                   to_tw: socialNetworks.tw,
                   to_wp: socialNetworks.wp,
                   to_vk: socialNetworks.vk,
+                  to_threads: socialNetworks.threads,
                 }
               : p
           )
         )
       } else {
-        const { to_tg: _tg, to_tw: _tw, to_wp: _wp, to_vk: _vk, ...createFields } = basePayload
+        const { to_tg: _tg, to_tw: _tw, to_wp: _wp, to_vk: _vk, to_threads: _threads, ...createFields } = basePayload
         await createPostService.createPost({
           social_networks: socialNetworks,
           ...createFields,
@@ -424,6 +500,20 @@ export function CreatePostPage() {
         >
           Posts
           {activeTab === 'posts' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
+          )}
+        </button>
+        <button
+          type="button"
+          className={`px-6 py-3 text-sm font-medium transition-all relative ${
+            activeTab === 'posts-review'
+              ? 'text-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+          onClick={() => setActiveTab('posts-review')}
+        >
+          Posts Review
+          {activeTab === 'posts-review' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
           )}
         </button>
@@ -660,7 +750,7 @@ export function CreatePostPage() {
                   Target social networks
                 </label>
                 <div className="grid grid-cols-2 gap-4">
-                  {(['tg', 'tw', 'vk', 'wp'] as const).map((network) => (
+                  {(['tg', 'tw', 'vk', 'wp', 'threads'] as const).map((network) => (
                     <label
                       key={network}
                       className="flex items-center gap-3 cursor-pointer group p-4 rounded-xl border border-[var(--border-color)] hover:border-primary-500/50 transition-colors"
@@ -682,7 +772,9 @@ export function CreatePostPage() {
                             ? 'Twitter'
                             : network === 'vk'
                               ? 'VKontakte'
-                              : 'WordPress'}
+                              : network === 'wp'
+                                ? 'WordPress'
+                                : 'Threads'}
                       </span>
                     </label>
                   ))}
@@ -804,6 +896,7 @@ export function CreatePostPage() {
                       <th className="py-2 pr-2 font-medium">to_tw</th>
                       <th className="py-2 pr-2 font-medium">to_wp</th>
                       <th className="py-2 pr-2 font-medium">to_vk</th>
+                      <th className="py-2 pr-2 font-medium">to_threads</th>
                       <th className="py-2 pr-2 font-medium">created_at</th>
                       <th className="py-2 pr-2 font-medium">updated_at</th>
                       <th className="py-2 pr-2 font-medium w-32 text-right">Actions</th>
@@ -856,6 +949,7 @@ export function CreatePostPage() {
                         <td className="py-2 pr-2">{cellValue(post.to_tw)}</td>
                         <td className="py-2 pr-2">{cellValue(post.to_wp)}</td>
                         <td className="py-2 pr-2">{cellValue(post.to_vk)}</td>
+                        <td className="py-2 pr-2">{cellValue(post.to_threads)}</td>
                         <td className="py-2 pr-2 text-[var(--text-muted)]">
                           {formatDate(post.created_at)}
                         </td>
@@ -894,6 +988,60 @@ export function CreatePostPage() {
         </Card>
       )}
 
+      {/* Tab: Posts Review */}
+      {activeTab === 'posts-review' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle>Posts Review</CardTitle>
+            <CardDescription>Ваши посты в статусе review (до 500)</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button
+              onClick={handleLoadPostsReview}
+              isLoading={isLoadingPostsReview}
+              className="w-full sm:w-auto"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Загрузить посты в статусе review
+            </Button>
+            {postsReviewError && (
+              <Alert variant="error" className="animate-slide-down">{postsReviewError}</Alert>
+            )}
+            {postsReviewList.length > 0 && (
+              <div className="overflow-x-auto mt-4 rounded-xl border border-[var(--border-color)]">
+                <table className="w-full border-collapse min-w-max">
+                  <thead className="bg-[var(--bg-tertiary)]">
+                    <tr>
+                      {POSTS_TABLE_COLUMNS.map(({ key, label }) => (
+                        <th key={key} className="py-2 px-3 text-left text-sm font-medium text-[var(--text-secondary)] whitespace-nowrap">
+                          {label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border-color)]">
+                    {postsReviewList.map((post) => (
+                      <tr key={post.id} className="hover:bg-[var(--bg-tertiary)] transition-colors">
+                        {POSTS_TABLE_COLUMNS.map(({ key }) => (
+                          <td key={key} className="py-2 px-3 text-sm whitespace-nowrap">
+                            {formatPostCell(post, key)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {postsReviewList.length === 0 && !isLoadingPostsReview && !postsReviewError && (
+              <p className="text-[var(--text-muted)] mt-2">Нажмите «Загрузить посты в статусе review».</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Tab: Profile Settings */}
       {activeTab === 'profile' && (
         <Card className="animate-slide-up">
@@ -908,7 +1056,7 @@ export function CreatePostPage() {
                   Target social networks
                 </label>
                 <div className="grid grid-cols-2 gap-4">
-                  {(['tg', 'tw', 'vk', 'wp'] as const).map((network) => (
+                  {(['tg', 'tw', 'vk', 'wp', 'threads'] as const).map((network) => (
                     <label
                       key={network}
                       className="flex items-center gap-3 cursor-pointer group p-4 rounded-xl border border-[var(--border-color)] hover:border-primary-500/50 transition-colors"
@@ -931,7 +1079,9 @@ export function CreatePostPage() {
                             ? 'Twitter'
                             : network === 'vk'
                               ? 'VKontakte'
-                              : 'WordPress'}
+                              : network === 'wp'
+                                ? 'WordPress'
+                                : 'Threads'}
                       </span>
                     </label>
                   ))}

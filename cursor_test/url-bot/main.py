@@ -45,7 +45,8 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Проверка здоровья сервиса."""
-    return {"status": "healthy", "service": "url-bot"}
+    from datetime import datetime
+    return {"status": "healthy", "service": "url-bot", "server_time": datetime.utcnow().isoformat() + "Z"}
 
 
 if __name__ == "__main__":

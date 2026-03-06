@@ -13,6 +13,7 @@ export interface CreatePostProfile {
     tw?: boolean
     vk?: boolean
     wp?: boolean
+    threads?: boolean
   }
 }
 
@@ -48,6 +49,7 @@ interface CpostPostPayload {
   to_tw: boolean
   to_wp: boolean
   to_vk: boolean
+  to_threads: boolean
 }
 
 export const createPostService = {
@@ -57,13 +59,14 @@ export const createPostService = {
       const data = response.data
       if (!data) return null
       const platforms = 'default_platforms' in data ? data.default_platforms : (data as CreatePostProfile).social_networks
-      const sn = platforms ?? { tg: false, tw: false, vk: false, wp: false }
+      const sn = platforms ?? { tg: false, tw: false, vk: false, wp: false, threads: false }
       return {
         social_networks: {
           tg: sn.tg ?? false,
           tw: sn.tw ?? false,
           vk: sn.vk ?? false,
           wp: sn.wp ?? false,
+          threads: sn.threads ?? false,
         },
       }
     } catch (error) {
@@ -82,6 +85,7 @@ export const createPostService = {
           tw: profile.social_networks.tw ?? false,
           wp: profile.social_networks.wp ?? false,
           vk: profile.social_networks.vk ?? false,
+          threads: profile.social_networks.threads ?? false,
         },
       })
     } catch (error) {
@@ -111,6 +115,7 @@ export const createPostService = {
       to_tw: post.social_networks.tw ?? false,
       to_wp: post.social_networks.wp ?? false,
       to_vk: post.social_networks.vk ?? false,
+      to_threads: post.social_networks.threads ?? false,
     }
     try {
       await apiClient.post('/cpost/post', payload)
@@ -151,6 +156,7 @@ export const createPostService = {
       to_tw: data.to_tw,
       to_wp: data.to_wp,
       to_vk: data.to_vk,
+      to_threads: data.to_threads,
     })
   },
 

@@ -73,10 +73,6 @@ export function Header() {
   return (
     <header className="h-16 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] flex items-center justify-between px-6">
       <div className="flex items-center gap-4 flex-1">
-        <h2 className="text-lg font-medium text-[var(--text-primary)]">
-          Welcome back, <span className="text-primary-400">{user?.username}</span>
-        </h2>
-        
         {/* Notifications Block */}
         {notifications.length > 0 && (
           <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border max-w-md ${

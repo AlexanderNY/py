@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, Header
 from typing import Optional
 
-from schemas import CurlSettingsCreate, UrlPostsBatchRequest
+from schemas import CurlOneTimeDoneRequest, CurlSettingsCreate, UrlPostsBatchRequest
 from services.profile_service import profile_service
 from services.post_service import post_service
 from services.url_posts_service import save_url_posts_batch
@@ -94,3 +94,13 @@ async def save_url_posts_batch_endpoint(
         return {"saved": 0, "ids": []}
     ids = await save_url_posts_batch(items)
     return {"saved": len(ids), "ids": ids}
+
+
+@router.post("/one-time-done")
+async def curl_one_time_done(body: CurlOneTimeDoneRequest):
+    """
+    Отмечает одноразовые URL как выполненные (вызывается scheduler после успешного run_once).
+    """
+    items = [p.model_dump() for p in body.items]
+    await profile_service.record_curl_one_time_done_batch(items)
+    return {"recorded": len(items)}

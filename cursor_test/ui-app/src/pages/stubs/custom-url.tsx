@@ -21,6 +21,7 @@ function defaultUrlConfig(): URLConfig & { id: string } {
     screenshot_format: 'base64',
     target_social_networks: { tg: false, tw: false, vk: false, wp: false },
     schedule_time: DEFAULT_SCHEDULE_TIME,
+    run_once: false,
   }
 }
 
@@ -59,6 +60,7 @@ export function CustomURLPage() {
         if (settings) {
           setCollectEnabled(settings.collect_enabled ?? false)
           if (settings.urls && settings.urls.length > 0) {
+            setUrlConfigs(
               settings.urls.map((u) => ({
                 id: generateId(),
                 url: u.url ?? '',
@@ -72,7 +74,9 @@ export function CustomURLPage() {
                   wp: u.target_social_networks?.wp ?? false,
                 },
                 schedule_time: u.schedule_time ?? (u as { time_interval?: { start?: string } }).time_interval?.start ?? DEFAULT_SCHEDULE_TIME,
+                run_once: (u as { run_once?: boolean }).run_once ?? false,
               }))
+            )
           }
           setProcessBeforePublish(settings.process_before_publish ?? false)
           setProcessDescription(settings.process_description ?? '')
@@ -138,6 +142,9 @@ export function CustomURLPage() {
         if (field === 'schedule_time') {
           return { ...config, schedule_time: value as string }
         }
+        if (field === 'run_once') {
+          return { ...config, run_once: value as boolean }
+        }
         return { ...config, [field]: value }
       })
     )
@@ -155,6 +162,7 @@ export function CustomURLPage() {
           screenshot_format: c.take_screenshot ? (c.screenshot_format ?? 'base64') : undefined,
           target_social_networks: c.target_social_networks,
           schedule_time: c.schedule_time || DEFAULT_SCHEDULE_TIME,
+          run_once: c.run_once ?? false,
         })),
       process_before_publish: processBeforePublish,
       process_description: processDescription || undefined,
@@ -315,6 +323,21 @@ export function CustomURLPage() {
                           onChange={(e) => updateUrlConfig(config.id, 'schedule_time', e.target.value)}
                         />
                       </div>
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <div className="relative">
+                          <input
+                            type="checkbox"
+                            checked={config.run_once ?? false}
+                            onChange={(e) => updateUrlConfig(config.id, 'run_once', e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
+                          <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
+                        </div>
+                        <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                          Выполнить единоразово
+                        </span>
+                      </label>
                       <label className="flex items-center gap-3 cursor-pointer group">
                         <div className="relative">
                           <input

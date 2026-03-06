@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     TELEGRAM_MAX_LENGTH: int = 4096
     TWITTER_MAX_LENGTH: int = 280
     VKONTAKTE_MAX_LENGTH: int = 15985
+    THREADS_MAX_LENGTH: int = 500
 
     class Config:
         env_file = ".env"
@@ -57,6 +58,11 @@ PROFILE_TABLE_MAP = {
         "process_flag": "process_before_publish",
         "process_description_field": "process_description",
     },
+    "vk": {
+        "table": "vk_profiles",
+        "process_flag": "process_enabled",
+        "process_description_field": "processing_description",
+    },
 }
 
 # Общие поля настроек обработки, которые читаем из профиля
@@ -78,10 +84,40 @@ PLATFORM_LIMITS = {
     "vkontakte": "VKONTAKTE_MAX_LENGTH",
 }
 
+# Описания функций обработки для админки (id, name_ru, description)
+PROCESSING_OPTIONS_FOR_ADMIN = [
+    {
+        "id": "process_before_publish",
+        "name_ru": "Обрабатывать перед публикацией",
+        "description": "Включить обработку поста перед публикацией (настраивается в профиле платформы пользователя).",
+    },
+    {
+        "id": "remove_emojis",
+        "name_ru": "Удалить смайлики/эмодзи",
+        "description": "Удаление эмодзи и смайликов из текста поста.",
+    },
+    {
+        "id": "remove_images",
+        "name_ru": "Удалить картинки",
+        "description": "Удаление изображений из поста (теги, markdown, список URL).",
+    },
+    {
+        "id": "clean_html",
+        "name_ru": "Очистить HTML",
+        "description": "Очистка текста от HTML-тегов, остаётся только текст.",
+    },
+    {
+        "id": "add_static_html",
+        "name_ru": "Добавить статичный HTML",
+        "description": "Добавление статичного HTML-блока в конец текста (если есть место по лимиту).",
+    },
+]
+
 # Маппинг флагов to_* -> имя платформы
 PLATFORM_FLAGS = {
     "to_wp": "wordpress",
     "to_tg": "telegram",
     "to_tw": "twitter",
     "to_vk": "vkontakte",
+    "to_threads": "threads",
 }

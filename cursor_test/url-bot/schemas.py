@@ -27,6 +27,7 @@ class ScheduleUrlItem(BaseModel):
     take_screenshot: bool = False
     schedule_time: Optional[str] = None
     target_social_networks: Optional[dict[str, bool]] = None
+    run_once: bool = False  # выполнить один раз (после выполнения core исключает из расписания)
 
 
 class ScheduleItem(BaseModel):

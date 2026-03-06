@@ -36,10 +36,13 @@ class HealthcheckService:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(f"{url}/health")
                 if response.status_code == 200:
+                    data = response.json() if response.content else {}
+                    server_time = data.get("server_time") if isinstance(data, dict) else None
                     return {
                         "service_name": name,
                         "status": "ok",
-                        "error": None
+                        "error": None,
+                        "server_time": server_time,
                     }
                 else:
                     return {

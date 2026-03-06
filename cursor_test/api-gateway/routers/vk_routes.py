@@ -68,6 +68,48 @@ async def get_all_vk_profiles(
     return await forward_to_core("/vk/profiles", request)
 
 
+@router.get("/posts")
+async def get_vk_posts(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает посты VKontakte пользователя из core (vk_posts).
+    
+    GET /vk/posts -> GET /vk/posts на core сервисе
+    """
+    return await forward_to_core("/vk/posts", request)
+
+
+@router.get("/post/{post_id}")
+async def get_vk_post(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает один пост VKontakte по id."""
+    return await forward_to_core(f"/vk/post/{post_id}", request)
+
+
+@router.put("/post/{post_id}")
+async def update_vk_post(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Обновляет пост VKontakte."""
+    return await forward_to_core(f"/vk/post/{post_id}", request)
+
+
+@router.delete("/post/{post_id}")
+async def delete_vk_post(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Удаляет (помечает deleted) пост VKontakte."""
+    return await forward_to_core(f"/vk/post/{post_id}", request)
+
+
 @router.post("/post")
 async def create_vk_post(
     request: Request,

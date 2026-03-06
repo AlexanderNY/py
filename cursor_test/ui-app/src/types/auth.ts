@@ -3,6 +3,7 @@ export interface User {
   username: string
   email: string
   role: 'guest' | 'user' | 'admin'
+  tariff?: string
   is_email_verified: boolean
   created_at: string
   access_token?: string
@@ -43,6 +44,17 @@ export interface PasswordResetRequest {
 export interface PasswordResetConfirm {
   token: string
   new_password: string
+}
+
+export interface RoleTariffHistoryEntry {
+  id: number
+  user_id: number
+  changed_at: string
+  changed_by_user_id?: number | null
+  role_old?: string | null
+  role_new?: string | null
+  tariff_old?: string | null
+  tariff_new?: string | null
 }
 
 export interface AuthState {

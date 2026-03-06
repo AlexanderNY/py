@@ -24,3 +24,17 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Описания функций для админки (id, name_ru, description)
+SCHEDULER_FUNCTIONS_FOR_ADMIN = [
+    {
+        "id": "schedule_collection",
+        "name_ru": "Запуск сбора расписаний для сервисов",
+        "description": "Периодический опрос Core (GET /core/schedules), получение профилей платформ (tg, wp, tw, vk, threads) через API Gateway, преобразование в расписания и сохранение в таблицу schedule_snapshots.",
+    },
+    {
+        "id": "notify_bots_on_change",
+        "name_ru": "Оповещение ботов при изменении расписания",
+        "description": "При изменении снимка расписания оповещение ботов платформ (tg, wp, vk, url, threads) для обновления их конфигурации.",
+    },
+]

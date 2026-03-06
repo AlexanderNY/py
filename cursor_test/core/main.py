@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -16,6 +18,7 @@ from routers import (
     cpost,
     notifications,
     admin,
+    threads,
 )
 
 
@@ -57,6 +60,7 @@ app.include_router(curl.router)
 app.include_router(cpost.router)
 app.include_router(notifications.router)
 app.include_router(admin.router)
+app.include_router(threads.router)
 
 
 @app.get("/")
@@ -74,7 +78,8 @@ async def health_check():
     """Проверка здоровья сервиса."""
     return {
         "status": "healthy",
-        "service": "core"
+        "service": "core",
+        "server_time": datetime.utcnow().isoformat() + "Z",
     }
 
 

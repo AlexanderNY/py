@@ -2,6 +2,7 @@ export interface HealthcheckItem {
   service_name: string
   status: 'ok' | 'error'
   error?: string
+  server_time?: string | null
 }
 
 export interface HealthcheckResponse {
@@ -74,30 +75,67 @@ export interface LoopStatus {
   last_cycle_count: number
 }
 
+export interface CollectorFunction {
+  id: string
+  name_ru: string
+  description: string
+}
+
 export interface CollectorStatusDetail {
   service: string
   version: string
   collect_interval_sec?: number | null
   distribute_interval_sec?: number | null
+  collect_batch_size?: number | null
+  distribute_batch_size?: number | null
   collector?: LoopStatus | null
   distributor?: LoopStatus | null
+  current_time?: string | null
+  started_at?: string | null
+  collect_functions?: CollectorFunction[] | null
   error?: string | null
+}
+
+export interface ProcessingOption {
+  id: string
+  name_ru: string
+  description: string
 }
 
 export interface ProcessorStatusDetail {
   service: string
   version: string
   process_interval_sec?: number | null
+  process_batch_size?: number | null
   processor?: LoopStatus | null
+  current_time?: string | null
+  started_at?: string | null
+  processing_options?: ProcessingOption[] | null
   error?: string | null
+}
+
+export interface ScheduleFunction {
+  id: string
+  name_ru: string
+  description: string
 }
 
 export interface SchedulerStatusDetail {
   service: string
   version: string
   poll_interval_sec?: number | null
+  notify_on_change_only?: boolean | null
   last_poll_at?: string | null
+  current_time?: string | null
+  started_at?: string | null
+  schedule_functions?: ScheduleFunction[] | null
   error?: string | null
+}
+
+export interface ProcessorRunResponse {
+  status: string
+  message: string
+  count: number
 }
 
 export interface ServicesStatusResponse {
@@ -121,4 +159,40 @@ export interface PostsTablesResponse {
   posts_table_processor?: Record<string, number> | null
   collector_error?: string | null
   processor_error?: string | null
+}
+
+/** Одна строка таблицы posts (все столбцы). */
+export interface PostRow {
+  id: number
+  user_id: number
+  domain?: string | null
+  url?: string | null
+  title?: string | null
+  author?: string | null
+  avatar?: string | null
+  post_date?: string | null
+  post_text?: string | null
+  screenshot?: string | null
+  images?: unknown[] | null
+  image_over_text?: string | null
+  comments: number
+  reposts: number
+  likes: number
+  views: number
+  is_ad: boolean
+  status?: string | null
+  post_type?: string | null
+  to_tg: boolean
+  to_tw: boolean
+  to_wp: boolean
+  to_vk: boolean
+  to_threads?: boolean
+  created_at?: string | null
+  updated_at?: string | null
+  source_platform?: string | null
+  source_id?: number | null
+}
+
+export interface PostsListResponse {
+  posts: PostRow[]
 }

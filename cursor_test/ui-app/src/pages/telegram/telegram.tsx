@@ -27,7 +27,7 @@ export function TelegramPage() {
   const [searchParams, setSearchParams] = useSearchParams()
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'postProfile' | 'processing' | 'parserProfile' | 'auth'>(() => {
+  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'processing' | 'auth'>(() => {
     // If navigated with ?auth=1, open auth tab immediately
     return searchParams.get('auth') === '1' ? 'auth' : 'create'
   })
@@ -115,7 +115,7 @@ export function TelegramPage() {
     }
   }, [user?.id])
 
-  // Poll auth status when user is logged in and on postProfile/parserProfile tabs
+  // Poll auth status when user is logged in (used on profile tab)
   useEffect(() => {
     if (!user?.id) return
     loadAuthStatus()
@@ -262,7 +262,7 @@ export function TelegramPage() {
     }
   }
 
-  async function handleSavePostProfile(e: FormEvent) {
+  async function handleSaveProfile(e: FormEvent) {
     e.preventDefault()
     setError('')
     setSuccess('')
@@ -288,47 +288,11 @@ export function TelegramPage() {
       })
       // Триггерим перезагрузку tg-bot для запроса кода авторизации
       await telegramService.reloadBot()
-      setSuccess('Post profile settings saved successfully')
+      setSuccess('Profile settings saved successfully')
       // Через 5 секунд обновляем статус авторизации (бот запросит код)
       setTimeout(loadAuthStatus, 5000)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save post profile settings')
-    } finally {
-      setIsSavingProfile(false)
-    }
-  }
-
-  async function handleSaveParserProfile(e: FormEvent) {
-    e.preventDefault()
-    setError('')
-    setSuccess('')
-    setIsSavingProfile(true)
-    const timeIntervals = publishScheduleType === 'by_intervals'
-      ? [{ start: `${String(publishScheduleHour).padStart(2, '0')}:${String(publishScheduleMinute).padStart(2, '0')}` }]
-      : []
-    try {
-      await telegramService.saveConfig({
-        publish_enabled: publishEnabled,
-        collect_enabled: collectEnabled,
-        schedule_type: publishScheduleType,
-        time_intervals: timeIntervals,
-        api_id: apiId || undefined,
-        api_hash: apiHash || undefined,
-        telegram_username: telegramUsername || undefined,
-        auth_phone_number: authPhoneNumber || undefined,
-        chats_to_read: chatsToRead.map(f => f.value).filter(Boolean),
-        save_conditions: saveConditions.map(f => f.value).filter(Boolean),
-        channel_to_post: channelToPost || undefined,
-        process_enabled: processEnabled,
-        processing_description: processEnabled ? processingDescription || undefined : undefined,
-      })
-      // Триггерим перезагрузку tg-bot для запроса кода авторизации
-      await telegramService.reloadBot()
-      setSuccess('Parser profile settings saved successfully')
-      // Через 5 секунд обновляем статус авторизации (бот запросит код)
-      setTimeout(loadAuthStatus, 5000)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save parser profile settings')
+      setError(err instanceof Error ? err.message : 'Failed to save profile settings')
     } finally {
       setIsSavingProfile(false)
     }
@@ -518,14 +482,14 @@ export function TelegramPage() {
         </button>
         <button
           className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === 'postProfile'
+            activeTab === 'profile'
               ? 'text-primary-400'
               : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
           }`}
-          onClick={() => setActiveTab('postProfile')}
+          onClick={() => setActiveTab('profile')}
         >
-          Post Profile Settings
-          {activeTab === 'postProfile' && (
+          Profile Settings
+          {activeTab === 'profile' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
           )}
         </button>
@@ -539,19 +503,6 @@ export function TelegramPage() {
         >
           Обработка
           {activeTab === 'processing' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
-          )}
-        </button>
-        <button
-          className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === 'parserProfile'
-              ? 'text-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-          onClick={() => setActiveTab('parserProfile')}
-        >
-          Parser Profile Settings
-          {activeTab === 'parserProfile' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
           )}
         </button>
@@ -904,159 +855,265 @@ export function TelegramPage() {
         </Card>
       )}
 
-      {/* Post Profile Settings */}
-      {activeTab === 'postProfile' && (
+      {/* Profile Settings (Post + Parser) */}
+      {activeTab === 'profile' && (
         <Card className="animate-slide-up">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
-              Post Profile Settings
+              Profile Settings
             </CardTitle>
-            <CardDescription>Configure Telegram connection and publishing settings</CardDescription>
+            <CardDescription>Configure Telegram connection, publishing and collection settings</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingProfile ? (
               <div className="text-center py-8 text-[var(--text-muted)]">Loading profile...</div>
             ) : (
-              <form onSubmit={handleSavePostProfile} className="space-y-6">
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
-                      checked={publishEnabled}
-                      onChange={(e) => setPublishEnabled(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                  </div>
-                  <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
-                    Enable publishing
-                  </span>
-                </label>
+              <form onSubmit={handleSaveProfile} className="space-y-8">
+                {/* Post profile (publishing) */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                    Publishing
+                  </h3>
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={publishEnabled}
+                        onChange={(e) => setPublishEnabled(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                    </div>
+                    <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                      Enable publishing
+                    </span>
+                  </label>
 
-                {publishEnabled && (
-                  <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 animate-slide-down">
-                    <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                      </svg>
-                      Telegram Connection
-                    </h3>
-                    
-                    <Input
-                      label="API ID"
-                      type="text"
-                      value={apiId}
-                      onChange={(e) => setApiId(e.target.value)}
-                      placeholder="e.g., 0157230167"
-                    />
-                    
-                    <Input
-                      label="API Hash"
-                      type="text"
-                      value={apiHash}
-                      onChange={(e) => setApiHash(e.target.value)}
-                      placeholder="e.g., afd10c198eaa94bc4fe3f82415eb46ee67"
-                    />
-                    
-                    <Input
-                      label="Логин в Telegram"
-                      type="text"
-                      value={telegramUsername}
-                      onChange={(e) => setTelegramUsername(e.target.value)}
-                      placeholder="e.g., @username"
-                    />
+                  {publishEnabled && (
+                    <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 animate-slide-down">
+                      <h4 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                        Telegram Connection
+                      </h4>
+                      
+                      <Input
+                        label="API ID"
+                        type="text"
+                        value={apiId}
+                        onChange={(e) => setApiId(e.target.value)}
+                        placeholder="e.g., 0157230167"
+                      />
+                      
+                      <Input
+                        label="API Hash"
+                        type="text"
+                        value={apiHash}
+                        onChange={(e) => setApiHash(e.target.value)}
+                        placeholder="e.g., afd10c198eaa94bc4fe3f82415eb46ee67"
+                      />
+                      
+                      <Input
+                        label="Логин в Telegram"
+                        type="text"
+                        value={telegramUsername}
+                        onChange={(e) => setTelegramUsername(e.target.value)}
+                        placeholder="e.g., @username"
+                      />
 
-                    <Input
-                      label="Номер телефона для авторизации"
-                      type="text"
-                      value={authPhoneNumber}
-                      onChange={(e) => setAuthPhoneNumber(e.target.value)}
-                      placeholder="e.g., +79001234567"
-                    />
-                    
-                    <p className="text-xs text-[var(--text-muted)]">
-                      Get your API credentials from my.telegram.org. Номер телефона нужен для первой авторизации в Telegram.
-                    </p>
+                      <Input
+                        label="Номер телефона для авторизации"
+                        type="text"
+                        value={authPhoneNumber}
+                        onChange={(e) => setAuthPhoneNumber(e.target.value)}
+                        placeholder="e.g., +79001234567"
+                      />
+                      
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Get your API credentials from my.telegram.org. Номер телефона нужен для первой авторизации в Telegram.
+                      </p>
 
-                    <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
-                      <label className="text-sm font-medium text-[var(--text-secondary)] block">Publish Schedule</label>
-                      <div className="space-y-3">
-                        <label className="flex items-center gap-3 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="publishSchedule"
-                            value="on_new_messages"
-                            checked={publishScheduleType === 'on_new_messages'}
-                            onChange={() => setPublishScheduleType('on_new_messages')}
-                            className="w-4 h-4 text-primary-500"
-                          />
-                          <span className="text-[var(--text-primary)]">When new messages are checked</span>
-                        </label>
-                        <label className="flex items-center gap-3 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="publishSchedule"
-                            value="by_intervals"
-                            checked={publishScheduleType === 'by_intervals'}
-                            onChange={() => setPublishScheduleType('by_intervals')}
-                            className="w-4 h-4 text-primary-500"
-                          />
-                          <span className="text-[var(--text-primary)]">By time intervals</span>
-                        </label>
+                      <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
+                        <label className="text-sm font-medium text-[var(--text-secondary)] block">Publish Schedule</label>
+                        <div className="space-y-3">
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="publishSchedule"
+                              value="on_new_messages"
+                              checked={publishScheduleType === 'on_new_messages'}
+                              onChange={() => setPublishScheduleType('on_new_messages')}
+                              className="w-4 h-4 text-primary-500"
+                            />
+                            <span className="text-[var(--text-primary)]">When new messages are checked</span>
+                            </label>
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="publishSchedule"
+                              value="by_intervals"
+                              checked={publishScheduleType === 'by_intervals'}
+                              onChange={() => setPublishScheduleType('by_intervals')}
+                              className="w-4 h-4 text-primary-500"
+                            />
+                            <span className="text-[var(--text-primary)]">By time intervals</span>
+                          </label>
+                        </div>
+
+                        {publishScheduleType === 'by_intervals' && (
+                          <div className="space-y-3 mt-4 animate-slide-down flex flex-wrap gap-4 items-end">
+                            <div className="space-y-2 min-w-[6rem]">
+                              <label className="text-sm font-medium text-[var(--text-secondary)] block">Hour</label>
+                              <select
+                                value={publishScheduleHour}
+                                onChange={(e) => setPublishScheduleHour(Number(e.target.value))}
+                                className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                              >
+                                {Array.from({ length: 24 }, (_, i) => (
+                                  <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="space-y-2 min-w-[6rem]">
+                              <label className="text-sm font-medium text-[var(--text-secondary)] block">Minutes</label>
+                              <select
+                                value={publishScheduleMinute}
+                                onChange={(e) => setPublishScheduleMinute(Number(e.target.value) as ScheduleMinute)}
+                                className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                              >
+                                {SCHEDULE_MINUTES.map((m) => (
+                                  <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
-                      {publishScheduleType === 'by_intervals' && (
-                        <div className="space-y-3 mt-4 animate-slide-down flex flex-wrap gap-4 items-end">
-                          <div className="space-y-2 min-w-[6rem]">
-                            <label className="text-sm font-medium text-[var(--text-secondary)] block">Hour</label>
-                            <select
-                              value={publishScheduleHour}
-                              onChange={(e) => setPublishScheduleHour(Number(e.target.value))}
-                              className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-                            >
-                              {Array.from({ length: 24 }, (_, i) => (
-                                <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="space-y-2 min-w-[6rem]">
-                            <label className="text-sm font-medium text-[var(--text-secondary)] block">Minutes</label>
-                            <select
-                              value={publishScheduleMinute}
-                              onChange={(e) => setPublishScheduleMinute(Number(e.target.value) as ScheduleMinute)}
-                              className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-                            >
-                              {SCHEDULE_MINUTES.map((m) => (
-                                <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      )}
+                      <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
+                        <Input
+                          label="Channel to Post"
+                          type="text"
+                          value={channelToPost}
+                          onChange={(e) => setChannelToPost(e.target.value)}
+                          placeholder="e.g., -1002009872429"
+                        />
+                      </div>
                     </div>
+                  )}
+                </div>
 
-                    <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
-                      <Input
-                        label="Channel to Post"
-                        type="text"
-                        value={channelToPost}
-                        onChange={(e) => setChannelToPost(e.target.value)}
-                        placeholder="e.g., -1002009872429"
+                {/* Parser profile (collection) */}
+                <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                    Collection (Parser)
+                  </h3>
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={collectEnabled}
+                        onChange={(e) => setCollectEnabled(e.target.checked)}
+                        className="sr-only peer"
                       />
+                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
                     </div>
-                  </div>
-                )}
+                    <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                      Enable collection
+                    </span>
+                  </label>
+
+                  {collectEnabled && (
+                    <div className="space-y-6 animate-slide-down">
+                      <p className="text-sm text-[var(--text-muted)]">Access token is set in Publishing section above. Here you configure which groups to read from.</p>
+                      <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
+                        <h4 className="text-sm font-semibold text-[var(--text-primary)]">Chats to Read</h4>
+                        {chatsToRead.map((field, index) => (
+                          <div key={field.id} className="flex gap-3">
+                            <Input
+                              placeholder="e.g., -01001677806302"
+                              value={field.value}
+                              onChange={(e) => updateField(setChatsToRead, field.id, e.target.value)}
+                              className="flex-1"
+                            />
+                            {chatsToRead.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeField(setChatsToRead, field.id)}
+                                className="px-3 text-red-400 hover:text-red-300"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                        <Button type="button" variant="secondary" size="sm" onClick={() => addField(setChatsToRead)}>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          Add Chat
+                        </Button>
+                      </div>
+
+                      <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
+                        <h4 className="text-sm font-semibold text-[var(--text-primary)]">Save Conditions</h4>
+                        {saveConditions.map((field) => (
+                          <div key={field.id} className="flex gap-3">
+                            <Input
+                              placeholder="Enter condition (e.g., contains keyword)"
+                              value={field.value}
+                              onChange={(e) => updateField(setSaveConditions, field.id, e.target.value)}
+                              className="flex-1"
+                            />
+                            {saveConditions.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeField(setSaveConditions, field.id)}
+                                className="px-3 text-red-400 hover:text-red-300"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                        <Button type="button" variant="secondary" size="sm" onClick={() => addField(setSaveConditions)}>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          Add Condition
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <CardFooter className="px-0">
                   <Button type="submit" isLoading={isSavingProfile} className="w-full sm:w-auto">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    Save Post Profile Settings
+                    Save Profile Settings
                   </Button>
                 </CardFooter>
               </form>
@@ -1266,136 +1323,6 @@ export function TelegramPage() {
         </Card>
       )}
 
-      {/* Parser Profile Settings */}
-      {activeTab === 'parserProfile' && (
-        <Card className="animate-slide-up">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-              </svg>
-              Parser Profile Settings
-            </CardTitle>
-            <CardDescription>Configure collection (parser) settings</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoadingProfile ? (
-              <div className="text-center py-8 text-[var(--text-muted)]">Loading profile...</div>
-            ) : (
-              <form onSubmit={handleSaveParserProfile} className="space-y-6">
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
-                      checked={collectEnabled}
-                      onChange={(e) => setCollectEnabled(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                  </div>
-                  <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
-                    Enable collection
-                  </span>
-                </label>
-
-                {collectEnabled && (
-                  <div className="space-y-6 animate-slide-down">
-                    <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
-                      <h3 className="text-sm font-semibold text-[var(--text-primary)]">Telegram Authorization</h3>
-                      <Input
-                        label="Номер телефона для авторизации"
-                        type="text"
-                        value={authPhoneNumber}
-                        onChange={(e) => setAuthPhoneNumber(e.target.value)}
-                        placeholder="e.g., +79001234567"
-                      />
-                      <p className="text-xs text-[var(--text-muted)]">
-                        Номер телефона для первой авторизации при сборе сообщений (формат +79001234567).
-                      </p>
-                    </div>
-
-                    <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
-                      <h3 className="text-sm font-semibold text-[var(--text-primary)]">Chats to Read</h3>
-                      {chatsToRead.map((field, index) => (
-                        <div key={field.id} className="flex gap-3">
-                          <Input
-                            placeholder="e.g., -01001677806302"
-                            value={field.value}
-                            onChange={(e) => updateField(setChatsToRead, field.id, e.target.value)}
-                            className="flex-1"
-                          />
-                          {chatsToRead.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeField(setChatsToRead, field.id)}
-                              className="px-3 text-red-400 hover:text-red-300"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </Button>
-                          )}
-                        </div>
-                      ))}
-                      <Button type="button" variant="secondary" size="sm" onClick={() => addField(setChatsToRead)}>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Add Chat
-                      </Button>
-                    </div>
-
-                    <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
-                      <h3 className="text-sm font-semibold text-[var(--text-primary)]">Save Conditions</h3>
-                      {saveConditions.map((field) => (
-                        <div key={field.id} className="flex gap-3">
-                          <Input
-                            placeholder="Enter condition (e.g., contains keyword)"
-                            value={field.value}
-                            onChange={(e) => updateField(setSaveConditions, field.id, e.target.value)}
-                            className="flex-1"
-                          />
-                          {saveConditions.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeField(setSaveConditions, field.id)}
-                              className="px-3 text-red-400 hover:text-red-300"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </Button>
-                          )}
-                        </div>
-                      ))}
-                      <Button type="button" variant="secondary" size="sm" onClick={() => addField(setSaveConditions)}>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Add Condition
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                <CardFooter className="px-0">
-                  <Button type="submit" isLoading={isSavingProfile} className="w-full sm:w-auto">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Save Parser Profile Settings
-                  </Button>
-                </CardFooter>
-              </form>
-            )}
-          </CardContent>
-        </Card>
-      )}
     </div>
   )
 }

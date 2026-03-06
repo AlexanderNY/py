@@ -5,6 +5,7 @@ from typing import Optional
 from services.profile_service import profile_service
 from services.post_service import post_service
 from schemas import VKontakteProfileCreate, VKontaktePost
+from pydantic import BaseModel
 
 
 router = APIRouter(prefix="/vk", tags=["VKontakte"])
@@ -42,7 +43,10 @@ async def get_vk_profile(x_user_id: Optional[str] = Header(None)):
         "message": None,
         "attachments": None,
         "signed": False,
-        "mark_as_ads": False
+        "mark_as_ads": False,
+        "access_token": None,
+        "groups_to_read": [],
+        "group_to_post": None,
     }
 
 
@@ -75,6 +79,18 @@ async def get_all_vk_profiles():
     return {"profiles": profiles}
 
 
+@router.get("/posts")
+async def get_vk_posts(
+    x_user_id: Optional[str] = Header(None),
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Возвращает список постов VKontakte пользователя из таблицы vk_posts."""
+    user_id = get_user_id_from_header(x_user_id)
+    posts = await post_service.get_vk_posts(user_id=user_id, limit=limit, offset=offset)
+    return posts
+
+
 @router.post("/post")
 async def create_vk_post(
     data: VKontaktePost,
@@ -103,3 +119,57 @@ async def create_vk_post(
         return post
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class VKontaktePostUpdate(BaseModel):
+    """Тело запроса для обновления поста VK."""
+    text: Optional[str] = None
+    status: Optional[str] = None
+
+
+@router.get("/post/{post_id}")
+async def get_vk_post(
+    post_id: int,
+    x_user_id: Optional[str] = Header(None),
+):
+    """Возвращает один пост VKontakte по id."""
+    user_id = get_user_id_from_header(x_user_id)
+    post = await post_service.get_vk_post(user_id=user_id, post_id=post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return post
+
+
+@router.put("/post/{post_id}")
+async def update_vk_post(
+    post_id: int,
+    data: VKontaktePostUpdate,
+    x_user_id: Optional[str] = Header(None),
+):
+    """Обновляет пост VKontakte (текст и/или статус)."""
+    user_id = get_user_id_from_header(x_user_id)
+    try:
+        post = await post_service.update_vk_post(
+            user_id=user_id,
+            post_id=post_id,
+            text=data.text,
+            status=data.status,
+        )
+        if not post:
+            raise HTTPException(status_code=404, detail="Post not found")
+        return post
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/post/{post_id}")
+async def delete_vk_post(
+    post_id: int,
+    x_user_id: Optional[str] = Header(None),
+):
+    """Помечает пост VKontakte как удаленный (status = deleted)."""
+    user_id = get_user_id_from_header(x_user_id)
+    post = await post_service.delete_vk_post(user_id=user_id, post_id=post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return post

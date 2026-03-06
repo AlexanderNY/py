@@ -1,7 +1,7 @@
 """Сервис для управления профилями пользователей."""
 
 import json
-from typing import Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 from database import get_db_connection, release_db_connection
 
 
@@ -129,6 +129,170 @@ class ProfileService:
         profile.setdefault("status_review_after_process", False)
         profile.setdefault("add_static_html", False)
         return profile
+    
+    # ==================== Threads ====================
+    
+    async def get_threads_profile(self, user_id: int) -> Optional[Dict]:
+        """Получает профиль Threads пользователя."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT * FROM threads_profiles WHERE user_id = %s",
+                    (user_id,)
+                )
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_threads_profile(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+    
+    async def save_threads_profile(self, user_id: int, data: Dict) -> Dict:
+        """Сохраняет или обновляет профиль Threads (без записи токенов)."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                process_services = data.get("process_services")
+                process_services_json = json.dumps(process_services) if isinstance(process_services, list) else None
+                await cur.execute(
+                    """
+                    INSERT INTO threads_profiles (
+                        user_id, publish_enabled, collect_enabled, schedule_type,
+                        time_intervals, process_enabled, processing_description,
+                        remove_emojis, remove_images, clean_html, process_services,
+                        status_review_after_process, add_static_html, static_html_content
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        publish_enabled = EXCLUDED.publish_enabled,
+                        collect_enabled = EXCLUDED.collect_enabled,
+                        schedule_type = EXCLUDED.schedule_type,
+                        time_intervals = EXCLUDED.time_intervals,
+                        process_enabled = EXCLUDED.process_enabled,
+                        processing_description = EXCLUDED.processing_description,
+                        remove_emojis = EXCLUDED.remove_emojis,
+                        remove_images = EXCLUDED.remove_images,
+                        clean_html = EXCLUDED.clean_html,
+                        process_services = EXCLUDED.process_services,
+                        status_review_after_process = EXCLUDED.status_review_after_process,
+                        add_static_html = EXCLUDED.add_static_html,
+                        static_html_content = EXCLUDED.static_html_content,
+                        updated_at = CURRENT_TIMESTAMP
+                    RETURNING *
+                    """,
+                    (
+                        user_id,
+                        data.get("publish_enabled", False),
+                        data.get("collect_enabled", False),
+                        data.get("schedule_type", "immediate"),
+                        json.dumps(data.get("time_intervals", [])),
+                        data.get("process_enabled", False),
+                        data.get("processing_description"),
+                        data.get("remove_emojis", False),
+                        data.get("remove_images", False),
+                        data.get("clean_html", False),
+                        process_services_json,
+                        data.get("status_review_after_process", False),
+                        data.get("add_static_html", False),
+                        data.get("static_html_content"),
+                    )
+                )
+                row = await cur.fetchone()
+                return self._row_to_threads_profile(row, cur.description)
+        finally:
+            await release_db_connection(conn)
+    
+    async def save_threads_oauth_tokens(
+        self,
+        user_id: int,
+        access_token: str,
+        refresh_token: Optional[str] = None,
+        token_expires_at: Optional[Any] = None,
+        threads_user_id: Optional[str] = None,
+    ) -> None:
+        """Сохраняет OAuth токены Threads после callback (обновляет существующий профиль или создает минимальный)."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO threads_profiles (user_id, access_token, refresh_token, token_expires_at, threads_user_id)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        access_token = EXCLUDED.access_token,
+                        refresh_token = EXCLUDED.refresh_token,
+                        token_expires_at = EXCLUDED.token_expires_at,
+                        threads_user_id = EXCLUDED.threads_user_id,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (user_id, access_token, refresh_token, token_expires_at, threads_user_id),
+                )
+        finally:
+            await release_db_connection(conn)
+    
+    def _row_to_threads_profile(self, row, description) -> Dict:
+        """Преобразует строку БД в словарь профиля Threads (токены не отдаем)."""
+        columns = [col.name for col in description]
+        profile = dict(zip(columns, row))
+        if isinstance(profile.get("time_intervals"), str):
+            try:
+                profile["time_intervals"] = json.loads(profile["time_intervals"])
+            except (json.JSONDecodeError, TypeError):
+                profile["time_intervals"] = []
+        ps = profile.get("process_services")
+        if ps is not None and isinstance(ps, str):
+            try:
+                profile["process_services"] = json.loads(ps)
+            except (json.JSONDecodeError, TypeError):
+                profile["process_services"] = []
+        elif not isinstance(profile.get("process_services"), list):
+            profile["process_services"] = []
+        profile["threads_connected"] = bool(profile.get("access_token"))
+        if "access_token" in profile:
+            del profile["access_token"]
+        if "refresh_token" in profile:
+            del profile["refresh_token"]
+        return profile
+    
+    async def get_all_threads_profiles(self) -> List[Dict]:
+        """Получает все профили Threads (для админки, без токенов)."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT * FROM threads_profiles")
+                rows = await cur.fetchall()
+                return [self._row_to_threads_profile(row, cur.description) for row in rows]
+        finally:
+            await release_db_connection(conn)
+    
+    async def get_threads_profile_with_token(self, user_id: int) -> Optional[Dict]:
+        """Получает профиль Threads с access_token для th-bot (внутренний вызов)."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT * FROM threads_profiles WHERE user_id = %s",
+                    (user_id,)
+                )
+                row = await cur.fetchone()
+                if not row:
+                    return None
+                columns = [col.name for col in cur.description]
+                profile = dict(zip(columns, row))
+                if isinstance(profile.get("time_intervals"), str):
+                    try:
+                        profile["time_intervals"] = json.loads(profile["time_intervals"])
+                    except (json.JSONDecodeError, TypeError):
+                        profile["time_intervals"] = []
+                ps = profile.get("process_services")
+                if ps is not None and isinstance(ps, str):
+                    try:
+                        profile["process_services"] = json.loads(ps)
+                    except (json.JSONDecodeError, TypeError):
+                        profile["process_services"] = []
+                return profile
+        finally:
+            await release_db_connection(conn)
     
     # ==================== Twitter ====================
     
@@ -477,6 +641,14 @@ class ProfileService:
     
     async def save_vk_profile(self, user_id: int, data: Dict) -> Dict:
         """Сохраняет или обновляет профиль VKontakte."""
+        access_token = data.get("access_token")
+        # При обновлении не перезаписываем токен маской "***"
+        if access_token in (None, "", "***"):
+            access_token = None
+        groups_to_read = data.get("groups_to_read", [])
+        if not isinstance(groups_to_read, list):
+            groups_to_read = []
+        group_to_post = data.get("group_to_post")
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -485,8 +657,9 @@ class ProfileService:
                     INSERT INTO vk_profiles (
                         user_id, publish_enabled, collect_enabled, schedule_type,
                         time_intervals, owner_id, friends_only, from_group,
-                        message, attachments, signed, mark_as_ads
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        message, attachments, signed, mark_as_ads,
+                        access_token, groups_to_read, group_to_post
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -499,6 +672,9 @@ class ProfileService:
                         attachments = EXCLUDED.attachments,
                         signed = EXCLUDED.signed,
                         mark_as_ads = EXCLUDED.mark_as_ads,
+                        access_token = COALESCE(NULLIF(EXCLUDED.access_token, ''), vk_profiles.access_token),
+                        groups_to_read = COALESCE(EXCLUDED.groups_to_read, vk_profiles.groups_to_read),
+                        group_to_post = EXCLUDED.group_to_post,
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING *
                     """,
@@ -515,6 +691,9 @@ class ProfileService:
                         data.get("attachments"),
                         data.get("signed", False),
                         data.get("mark_as_ads", False),
+                        access_token,
+                        json.dumps(groups_to_read),
+                        group_to_post,
                     )
                 )
                 row = await cur.fetchone()
@@ -523,11 +702,18 @@ class ProfileService:
             await release_db_connection(conn)
     
     def _row_to_vk_profile(self, row, description) -> Dict:
-        """Преобразует строку БД в словарь профиля VKontakte."""
+        """Преобразует строку БД в словарь профиля VKontakte. Токен маскируется в ответах."""
         columns = [col.name for col in description]
         profile = dict(zip(columns, row))
         if isinstance(profile.get("time_intervals"), str):
             profile["time_intervals"] = json.loads(profile["time_intervals"])
+        if isinstance(profile.get("groups_to_read"), str):
+            try:
+                profile["groups_to_read"] = json.loads(profile["groups_to_read"])
+            except (json.JSONDecodeError, TypeError):
+                profile["groups_to_read"] = []
+        if profile.get("access_token"):
+            profile["access_token"] = "***"
         return profile
     
     # ==================== cURL ====================
@@ -646,17 +832,42 @@ class ProfileService:
                 }]
             else:
                 settings["urls"] = []
-        # Normalize urls: ensure schedule_time, drop legacy time_interval
+        # Normalize urls: ensure schedule_time, run_once, drop legacy time_interval
         for item in settings.get("urls") or []:
             if "time_interval" in item:
                 item["schedule_time"] = (item["time_interval"] or {}).get("start") or "09:00"
                 del item["time_interval"]
             item.setdefault("schedule_time", "09:00")
+            item.setdefault("run_once", False)
         for key in ("time_intervals", "schedule_type", "url", "xpath", "take_screenshot", "to_tg", "to_tw", "to_vk", "to_wp"):
             settings.pop(key, None)
         if isinstance(settings.get("process_services"), str):
             settings["process_services"] = json.loads(settings["process_services"]) if settings["process_services"] else []
         return settings
+
+    async def record_curl_one_time_done_batch(self, items: List[Dict[str, Any]]) -> None:
+        """Записывает выполненные одноразовые URL в curl_one_time_done (ON CONFLICT DO NOTHING)."""
+        if not items:
+            return
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                for it in items:
+                    user_id = it.get("user_id")
+                    url = (it.get("url") or "").strip()
+                    xpath = (it.get("xpath") or "").strip()
+                    if user_id is None:
+                        continue
+                    await cur.execute(
+                        """
+                        INSERT INTO curl_one_time_done (user_id, url, xpath)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (user_id, url, xpath) DO NOTHING
+                        """,
+                        (user_id, url, xpath),
+                    )
+        finally:
+            await release_db_connection(conn)
     
     # ==================== cPost ====================
     
@@ -692,7 +903,7 @@ class ProfileService:
                     """,
                     (
                         user_id,
-                        json.dumps(data.get("default_platforms", {"tg": False, "tw": False, "wp": False, "vk": False})),
+                        json.dumps(data.get("default_platforms", {"tg": False, "tw": False, "wp": False, "vk": False, "threads": False})),
                     )
                 )
                 row = await cur.fetchone()

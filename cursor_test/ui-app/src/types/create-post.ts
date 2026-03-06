@@ -4,6 +4,7 @@ export interface CreatePostRequest {
     tw?: boolean
     vk?: boolean
     wp?: boolean
+    threads?: boolean
   }
   text: string
   title?: string
@@ -48,6 +49,7 @@ export interface CpostPostListItem {
   to_tw?: boolean
   to_wp?: boolean
   to_vk?: boolean
+  to_threads?: boolean
   created_at?: string
   updated_at?: string
 }
@@ -77,4 +79,5 @@ export interface CpostPostUpdateRequest {
   to_tw?: boolean
   to_wp?: boolean
   to_vk?: boolean
+  to_threads?: boolean
 }

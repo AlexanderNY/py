@@ -43,6 +43,11 @@ BEGIN
   ALTER TABLE posts ADD COLUMN source_id INTEGER;
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
+DO $$
+BEGIN
+  ALTER TABLE posts ADD COLUMN to_threads BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 """
 
 # Индексы для posts
@@ -391,6 +396,120 @@ CREATE TABLE IF NOT EXISTS vk_profiles (
 );
 """
 
+# Миграция: access_token, groups_to_read, group_to_post для vk_profiles (сбор и публикация)
+VK_PROFILES_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN access_token VARCHAR(512);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN groups_to_read JSONB DEFAULT '[]';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN group_to_post VARCHAR(50);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN process_enabled BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN processing_description TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN remove_emojis BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN remove_images BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN clean_html BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN process_services JSONB;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN status_review_after_process BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN add_static_html BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN static_html_content TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+"""
+
+# Таблица vk_posts - посты VKontakte (структура аналогична tg_posts)
+VK_POSTS_TABLE = """
+CREATE TABLE IF NOT EXISTS vk_posts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    vk_source_id INTEGER,
+    domain VARCHAR(255),
+    url TEXT,
+    title VARCHAR(500),
+    author VARCHAR(255),
+    avatar TEXT,
+    post_date TIMESTAMP,
+    post_text TEXT,
+    screenshot TEXT,
+    images JSONB DEFAULT '[]',
+    image_over_text TEXT,
+    comments INTEGER DEFAULT 0,
+    reposts INTEGER DEFAULT 0,
+    likes INTEGER DEFAULT 0,
+    views INTEGER DEFAULT 0,
+    is_ad BOOLEAN DEFAULT FALSE,
+    status VARCHAR(50) DEFAULT 'collected',
+    post_type VARCHAR(50),
+    to_tg BOOLEAN DEFAULT FALSE,
+    to_tw BOOLEAN DEFAULT FALSE,
+    to_wp BOOLEAN DEFAULT FALSE,
+    to_vk BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+# Индексы для vk_posts
+VK_POSTS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_vk_posts_user_id ON vk_posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_vk_posts_status ON vk_posts(status);
+CREATE INDEX IF NOT EXISTS idx_vk_posts_created_at ON vk_posts(created_at);
+CREATE INDEX IF NOT EXISTS idx_vk_posts_status_created ON vk_posts(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_vk_posts_user_domain ON vk_posts(user_id, domain);
+"""
+
+# Миграция: vk_source_id для дедупликации постов из VK API
+VK_POSTS_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE vk_posts ADD COLUMN vk_source_id INTEGER;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+"""
+
 # Таблица url_posts - посты из url-bot (структура как tg_posts)
 URL_POSTS_TABLE = """
 CREATE TABLE IF NOT EXISTS url_posts (
@@ -428,6 +547,97 @@ CREATE INDEX IF NOT EXISTS idx_url_posts_user_id ON url_posts(user_id);
 CREATE INDEX IF NOT EXISTS idx_url_posts_status ON url_posts(status);
 CREATE INDEX IF NOT EXISTS idx_url_posts_created_at ON url_posts(created_at);
 CREATE INDEX IF NOT EXISTS idx_url_posts_status_created ON url_posts(status, created_at);
+"""
+
+# Таблица threads_profiles - настройки Threads (Meta OAuth, публикация, сбор, обработка)
+THREADS_PROFILES_TABLE = """
+CREATE TABLE IF NOT EXISTS threads_profiles (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER UNIQUE NOT NULL,
+    publish_enabled BOOLEAN DEFAULT FALSE,
+    collect_enabled BOOLEAN DEFAULT FALSE,
+    schedule_type VARCHAR(20) DEFAULT 'immediate',
+    time_intervals JSONB DEFAULT '[]',
+    access_token VARCHAR(512),
+    refresh_token VARCHAR(512),
+    token_expires_at TIMESTAMP,
+    threads_user_id VARCHAR(100),
+    process_enabled BOOLEAN DEFAULT FALSE,
+    processing_description TEXT,
+    remove_emojis BOOLEAN DEFAULT FALSE,
+    remove_images BOOLEAN DEFAULT FALSE,
+    clean_html BOOLEAN DEFAULT FALSE,
+    process_services JSONB,
+    status_review_after_process BOOLEAN DEFAULT FALSE,
+    add_static_html BOOLEAN DEFAULT FALSE,
+    static_html_content TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+# Таблица threads_posts - посты Threads (структура аналогична tg_posts)
+THREADS_POSTS_TABLE = """
+CREATE TABLE IF NOT EXISTS threads_posts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    domain VARCHAR(255),
+    url TEXT,
+    title VARCHAR(500),
+    author VARCHAR(255),
+    avatar TEXT,
+    post_date TIMESTAMP,
+    post_text TEXT,
+    screenshot TEXT,
+    images JSONB DEFAULT '[]',
+    image_over_text TEXT,
+    comments INTEGER DEFAULT 0,
+    reposts INTEGER DEFAULT 0,
+    likes INTEGER DEFAULT 0,
+    views INTEGER DEFAULT 0,
+    is_ad BOOLEAN DEFAULT FALSE,
+    status VARCHAR(50) DEFAULT 'collected',
+    post_type VARCHAR(50),
+    to_tg BOOLEAN DEFAULT FALSE,
+    to_tw BOOLEAN DEFAULT FALSE,
+    to_wp BOOLEAN DEFAULT FALSE,
+    to_vk BOOLEAN DEFAULT FALSE,
+    to_threads BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+# Индексы для threads_posts
+THREADS_POSTS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_threads_posts_user_id ON threads_posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_threads_posts_status ON threads_posts(status);
+CREATE INDEX IF NOT EXISTS idx_threads_posts_created_at ON threads_posts(created_at);
+CREATE INDEX IF NOT EXISTS idx_threads_posts_status_created ON threads_posts(status, created_at);
+"""
+
+# Миграция: to_threads для существующих таблиц постов
+TO_THREADS_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE tg_posts ADD COLUMN to_threads BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE wp_posts ADD COLUMN to_threads BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_posts ADD COLUMN to_threads BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE url_posts ADD COLUMN to_threads BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 """
 
 # Таблица curl_settings - настройки cURL скрапинга
@@ -504,6 +714,19 @@ EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 """
 
+# Таблица curl_one_time_done - выполненные одноразовые URL (user_id, url, xpath)
+CURL_ONE_TIME_DONE_TABLE = """
+CREATE TABLE IF NOT EXISTS curl_one_time_done (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    xpath TEXT NOT NULL,
+    executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, url, xpath)
+);
+CREATE INDEX IF NOT EXISTS idx_curl_one_time_done_user ON curl_one_time_done(user_id);
+"""
+
 # Таблица cpost_profiles - настройки ручных постов
 CPOST_PROFILES_TABLE = """
 CREATE TABLE IF NOT EXISTS cpost_profiles (
@@ -566,10 +789,19 @@ ALL_TABLES = [
     WP_POSTS_TABLE,
     WP_POSTS_INDEXES,
     VK_PROFILES_TABLE,
+    VK_PROFILES_MIGRATION,
+    VK_POSTS_TABLE,
+    VK_POSTS_INDEXES,
+    VK_POSTS_MIGRATION,
     URL_POSTS_TABLE,
     URL_POSTS_INDEXES,
+    THREADS_PROFILES_TABLE,
+    THREADS_POSTS_TABLE,
+    THREADS_POSTS_INDEXES,
+    TO_THREADS_MIGRATION,
     CURL_SETTINGS_TABLE,
     CURL_SETTINGS_MIGRATION,
+    CURL_ONE_TIME_DONE_TABLE,
     CPOST_PROFILES_TABLE,
     NOTIFICATIONS_TABLE,
     NOTIFICATIONS_MIGRATION,

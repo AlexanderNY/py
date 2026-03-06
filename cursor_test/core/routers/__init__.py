@@ -9,6 +9,7 @@ from . import curl
 from . import cpost
 from . import notifications
 from . import admin
+from . import threads
 
 __all__ = [
     "healthcheck",
@@ -22,4 +23,5 @@ __all__ = [
     "cpost",
     "notifications",
     "admin",
+    "threads",
 ]

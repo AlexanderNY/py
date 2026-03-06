@@ -1,15 +1,23 @@
 """Pydantic-модели для Collector API."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 from pydantic import BaseModel
+
+
+class CollectorFunction(BaseModel):
+    """Описание одной функции сервиса."""
+    id: str
+    name_ru: str
+    description: str
 
 
 class HealthResponse(BaseModel):
     """Ответ healthcheck."""
     status: str
     service: str
+    server_time: Optional[str] = None
 
 
 class CycleResult(BaseModel):
@@ -32,8 +40,13 @@ class ServiceStatus(BaseModel):
     version: str
     collect_interval_sec: int
     distribute_interval_sec: int
+    collect_batch_size: int
+    distribute_batch_size: int
     collector: LoopStatus
     distributor: LoopStatus
+    current_time: str = ""
+    started_at: Optional[str] = None
+    collect_functions: List[CollectorFunction] = []
 
 
 class PlatformMetric(BaseModel):

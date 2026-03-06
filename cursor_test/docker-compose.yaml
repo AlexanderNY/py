@@ -145,6 +145,17 @@ services:
       monitoring_network:
         ipv4_address: 172.20.10.10
 
+  th-bot:
+    build: th-bot
+    ports:
+      - "8011:8011"
+    environment:
+      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      - LOG_LEVEL=INFO
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.11
+
   tg-bot:
     build: ./tg-bot
     ports:

@@ -14,7 +14,7 @@ from database import get_db_connection
 
 logger = logging.getLogger(__name__)
 
-BOT_PLATFORMS = ["tg", "wp", "vk", "url"]
+BOT_PLATFORMS = ["tg", "wp", "vk", "url", "threads"]
 
 # Для /status: время последнего успешного цикла опроса
 _last_poll_at: Optional[Any] = None
@@ -96,6 +96,7 @@ async def _fetch_profiles_parallel(token: str) -> dict[str, list[dict[str, Any]]
         fetch_platform_profiles("tg"),
         fetch_platform_profiles("tw"),
         fetch_platform_profiles("vk"),
+        fetch_platform_profiles("threads"),
         return_exceptions=True
     )
     
@@ -277,6 +278,7 @@ async def run_poll_cycle(token: str) -> bool:
             data = await _notify_bot(platform, by_platform[platform], token)
             if platform == "url" and data and by_platform["url"]:
                 await _persist_url_posts(data, token)
+                await _mark_curl_one_time_done(by_platform["url"], data, token)
     _last_poll_at = datetime.utcnow()
     return changed
 
@@ -318,6 +320,44 @@ async def _persist_url_posts(schedule_response: dict[str, Any], token: str) -> N
             logger.info("Saved %d url posts to Core", len(posts))
     except Exception as e:
         logger.exception("Save url posts error: %s", e)
+
+
+async def _mark_curl_one_time_done(
+    url_schedules: list[dict[str, Any]], schedule_response: dict[str, Any], token: str
+) -> None:
+    """Отмечает одноразовые URL как выполненные в Core (POST /curl/one-time-done)."""
+    details = schedule_response.get("details") or []
+    success_set = {
+        (d.get("user_id"), (d.get("url") or "").strip(), (d.get("xpath") or "").strip())
+        for d in details
+        if not d.get("error")
+    }
+    run_once_triples = [
+        (s.get("user_id"), (u.get("url") or "").strip(), (u.get("xpath") or "").strip())
+        for s in url_schedules
+        for u in (s.get("urls") or [])
+        if u.get("run_once")
+    ]
+    items = [
+        {"user_id": uid, "url": url, "xpath": xpath}
+        for (uid, url, xpath) in run_once_triples
+        if (uid, url, xpath) in success_set
+    ]
+    if not items:
+        return
+    base = settings.API_GATEWAY_URL.rstrip("/")
+    url = f"{base}/curl/one-time-done"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    payload = {"items": items}
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+        if resp.status_code >= 400:
+            logger.warning("One-time-done failed: %s %s", resp.status_code, resp.text)
+        else:
+            logger.info("Marked %d one-time URL(s) done", len(items))
+    except Exception as e:
+        logger.exception("One-time-done request error: %s", e)
 
 
 def _has_login_credentials() -> bool:

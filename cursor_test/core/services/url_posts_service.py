@@ -96,7 +96,52 @@ async def save_url_post(item: dict[str, Any]) -> int | None:
                 ),
             )
             row = await cur.fetchone()
-            return row[0] if row else None
+            url_post_id = row[0] if row else None
+            if url_post_id is None:
+                return None
+
+            # Дублируем пост в общую таблицу posts для обработки по общим правилам (processor и т.д.)
+            await cur.execute(
+                """
+                INSERT INTO posts (
+                    user_id, domain, url, title, author, avatar, post_date, post_text,
+                    screenshot, images, image_over_text, comments, reposts, likes, views,
+                    is_ad, status, post_type, to_tg, to_tw, to_wp, to_vk,
+                    source_platform, source_id
+                ) VALUES (
+                    %s, NULL, %s, NULL, NULL, NULL, %s, %s, NULL, %s::jsonb, NULL,
+                    0, 0, 0, 0, FALSE, 'collected', NULL, %s, %s, %s, %s,
+                    'url', %s
+                )
+                ON CONFLICT (source_platform, source_id)
+                    WHERE source_platform IS NOT NULL
+                DO NOTHING
+                """,
+                (
+                    user_id,
+                    url,
+                    post_date,
+                    post_text,
+                    images_json,
+                    to_tg,
+                    to_tw,
+                    to_wp,
+                    to_vk,
+                    url_post_id,
+                ),
+            )
+
+            # Помечаем запись в url_posts как переданную в posts (чтобы collector не копировал повторно)
+            await cur.execute(
+                """
+                UPDATE url_posts
+                SET status = 'processing', updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                """,
+                (url_post_id,),
+            )
+
+            return url_post_id
     except Exception as e:
         logger.exception("Save url post failed: %s", e)
         return None

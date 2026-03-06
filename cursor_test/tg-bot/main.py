@@ -39,7 +39,8 @@ _reload_task = None
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "ok", "service": "tg-bot"}
+    from datetime import datetime
+    return {"status": "ok", "service": "tg-bot", "server_time": datetime.utcnow().isoformat() + "Z"}
 
 
 @app.post("/tg/reload")

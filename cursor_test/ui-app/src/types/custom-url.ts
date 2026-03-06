@@ -12,6 +12,8 @@ export interface URLConfig {
   }
   /** Время запуска (HH:MM) */
   schedule_time: string
+  /** Выполнить один раз в заданное время (иначе — ежедневно) */
+  run_once?: boolean
 }
 
 export interface CustomURLSettings {

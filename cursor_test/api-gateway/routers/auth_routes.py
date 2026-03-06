@@ -148,10 +148,38 @@ async def get_users(
     current_user: dict = Depends(get_current_user)
 ) -> Response:
     """Получает список всех пользователей (только для администраторов).
-    
+
     GET /api/auth/users -> GET /users на auth сервисе
     Требует JWT аутентификации и роли admin.
     """
     return await forward_to_auth("/users", request)
+
+
+@router.patch("/users/{user_id}")
+async def update_user(
+    request: Request,
+    user_id: int,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Обновляет роль и/или тариф пользователя (только для администраторов).
+
+    PATCH /api/auth/users/{user_id} -> PATCH /users/{user_id} на auth сервисе
+    Требует JWT аутентификации и роли admin.
+    """
+    return await forward_to_auth(f"/users/{user_id}", request)
+
+
+@router.get("/users/{user_id}/role-tariff-history")
+async def get_role_tariff_history(
+    request: Request,
+    user_id: int,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """История изменений роли и тарифа пользователя.
+
+    GET /api/auth/users/{user_id}/role-tariff-history -> GET /users/{user_id}/role-tariff-history на auth сервисе
+    Админ — любой user_id, иначе только свой.
+    """
+    return await forward_to_auth(f"/users/{user_id}/role-tariff-history", request)
 
 

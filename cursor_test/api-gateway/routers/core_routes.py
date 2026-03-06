@@ -82,6 +82,19 @@ async def get_admin_services_status(
     return await forward_to_core("/admin/services-status", request)
 
 
+@router.post("/admin/processor/run")
+async def run_processor_cycle(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Принудительный запуск одного цикла обработки на processor через core.
+    
+    POST /core/admin/processor/run -> POST /admin/processor/run на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core("/admin/processor/run", request)
+
+
 @router.get("/admin/posts-tables")
 async def get_admin_posts_tables(
     request: Request,
@@ -93,6 +106,19 @@ async def get_admin_posts_tables(
     Требует JWT аутентификации.
     """
     return await forward_to_core("/admin/posts-tables", request)
+
+
+@router.get("/admin/posts")
+async def get_admin_posts(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает список постов из core (вся таблица posts, все столбцы).
+    
+    GET /core/admin/posts -> GET /admin/posts на core сервисе
+    Требует JWT аутентификации. Query: limit, offset.
+    """
+    return await forward_to_core("/admin/posts", request)
 
 
 @router.get("/schedules")

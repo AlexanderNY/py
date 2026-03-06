@@ -78,3 +78,16 @@ async def save_url_posts(
     Вызывается scheduler после ответа url-bot /schedule.
     """
     return await forward_to_core("/curl/url-posts", request)
+
+
+@router.post("/one-time-done")
+async def curl_one_time_done(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Отмечает одноразовые URL как выполненные (Core).
+    
+    POST /curl/one-time-done -> POST /curl/one-time-done на core сервисе.
+    Вызывается scheduler после успешного выполнения run_once URL.
+    """
+    return await forward_to_core("/curl/one-time-done", request)

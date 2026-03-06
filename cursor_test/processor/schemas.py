@@ -1,14 +1,22 @@
 """Pydantic модели для Processor API."""
 
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
+
+
+class ProcessingOption(BaseModel):
+    """Описание одной функции обработки текста."""
+    id: str
+    name_ru: str
+    description: str
 
 
 class HealthResponse(BaseModel):
     """Ответ healthcheck."""
     status: str
     service: str
+    server_time: Optional[str] = None
 
 
 class CycleResult(BaseModel):
@@ -30,7 +38,11 @@ class ServiceStatus(BaseModel):
     service: str
     version: str
     process_interval_sec: int
+    process_batch_size: int
     processor: LoopStatus
+    current_time: str = ""
+    started_at: Optional[str] = None
+    processing_options: List[ProcessingOption] = []
 
 
 class MetricsResponse(BaseModel):

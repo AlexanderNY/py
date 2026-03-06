@@ -96,3 +96,58 @@ async def url_bot_schedule(
 async def url_bot_run(request: Request) -> Response:
     """POST /url-bot/run -> url-bot /run. Тестовый запуск скрапинга по запросу (без JWT)."""
     return await _forward_to_bot(settings.URL_BOT_SERVICE_URL, "/run", request)
+
+
+# ==================== Threads Bot ====================
+
+@router.get("/threads-bot/auth/status/{user_id}")
+async def threads_bot_auth_status(
+    user_id: int,
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    """GET /th-bot/auth/status/{user_id} -> th-bot."""
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        f"/threads/auth/status/{user_id}",
+        request,
+    )
+
+
+@router.get("/threads-bot/auth/url")
+async def threads_bot_auth_url(
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    """GET /th-bot/auth/url -> th-bot (OAuth URL для редиректа)."""
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        "/threads/auth/url",
+        request,
+    )
+
+
+@router.post("/threads-bot/reload")
+async def threads_bot_reload(
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    """POST /th-bot/reload -> th-bot."""
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        "/threads/reload",
+        request,
+    )
+
+
+@router.post("/threads-bot/schedule")
+async def threads_bot_schedule(
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    """POST /th-bot/schedule -> th-bot."""
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        "/schedule",
+        request,
+    )

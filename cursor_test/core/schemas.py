@@ -26,6 +26,7 @@ class HealthcheckItem(BaseModel):
     service_name: str
     status: str  # "ok" или "error"
     error: Optional[str] = None
+    server_time: Optional[str] = None
 
 
 class HealthcheckResponse(BaseModel):
@@ -173,6 +174,83 @@ class TelegramPostFull(BaseModel):
     to_tw: bool = False
     to_wp: bool = False
     to_vk: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+
+# ==================== Threads ====================
+
+class ThreadsProfileBase(BaseModel):
+    """Базовая модель профиля Threads (Meta OAuth)."""
+    publish_enabled: bool = False
+    collect_enabled: bool = False
+    schedule_type: Optional[str] = "immediate"
+    time_intervals: List[TimeInterval] = []
+    process_enabled: bool = False
+    processing_description: Optional[str] = None
+    remove_emojis: bool = False
+    remove_images: bool = False
+    clean_html: bool = False
+    process_services: Optional[List[str]] = None
+    status_review_after_process: bool = False
+    add_static_html: bool = False
+    static_html_content: Optional[str] = None
+
+
+class ThreadsProfileCreate(ThreadsProfileBase):
+    """Модель для создания/обновления профиля Threads (без токенов)."""
+    pass
+
+
+class ThreadsProfile(ThreadsProfileBase):
+    """Модель профиля Threads с ID (токены не отдаются)."""
+    id: int
+    user_id: int
+    threads_connected: bool = False
+    threads_user_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ThreadsPostListItem(BaseModel):
+    """Модель элемента списка постов Threads."""
+    id: int
+    post_text: str
+    images: Optional[List[str]] = []
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ThreadsPostFull(BaseModel):
+    """Модель полного поста Threads."""
+    id: int
+    user_id: int
+    domain: Optional[str] = None
+    url: Optional[str] = None
+    title: Optional[str] = None
+    author: Optional[str] = None
+    avatar: Optional[str] = None
+    post_date: Optional[datetime] = None
+    post_text: str
+    screenshot: Optional[str] = None
+    images: Optional[List[str]] = []
+    image_over_text: Optional[str] = None
+    comments: int = 0
+    reposts: int = 0
+    likes: int = 0
+    views: int = 0
+    is_ad: bool = False
+    status: str
+    post_type: Optional[str] = None
+    to_tg: bool = False
+    to_tw: bool = False
+    to_wp: bool = False
+    to_vk: bool = False
+    to_threads: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -331,6 +409,10 @@ class VKontakteProfileBase(BaseModel):
     attachments: Optional[str] = None
     signed: bool = False
     mark_as_ads: bool = False
+    # Сбор и публикация (vk-bot)
+    access_token: Optional[str] = None
+    groups_to_read: List[int] = []  # ID групп для чтения стены, например [-123456] -> 123456
+    group_to_post: Optional[str] = None  # ID или short_name группы для публикации
 
 
 class VKontakteProfileCreate(VKontakteProfileBase):
@@ -376,6 +458,7 @@ class CurlUrlItem(BaseModel):
     screenshot_format: Optional[str] = None  # "base64" | "file" — формат скриншота при take_screenshot
     target_social_networks: CurlTargetSocialNetworks = Field(default_factory=CurlTargetSocialNetworks)
     schedule_time: Optional[str] = None  # HH:MM
+    run_once: bool = False  # выполнить один раз в заданное время, иначе ежедневно
 
 
 class CurlSettingsBase(BaseModel):
@@ -427,6 +510,18 @@ class UrlPostsBatchRequest(BaseModel):
     posts: List[UrlPostItem] = Field(default_factory=list)
 
 
+class CurlOneTimeDoneItem(BaseModel):
+    """Одна запись о выполнении одноразового URL (для POST /curl/one-time-done)."""
+    user_id: int
+    url: str = ""
+    xpath: str = ""
+
+
+class CurlOneTimeDoneRequest(BaseModel):
+    """Тело запроса POST /curl/one-time-done (вызывается scheduler после успешного run_once)."""
+    items: List[CurlOneTimeDoneItem] = Field(default_factory=list)
+
+
 # ==================== cPost (ручные посты) ====================
 
 class DefaultPlatforms(BaseModel):
@@ -435,6 +530,7 @@ class DefaultPlatforms(BaseModel):
     tw: bool = False
     wp: bool = False
     vk: bool = False
+    threads: bool = False
 
 
 class CpostProfileBase(BaseModel):
@@ -480,6 +576,7 @@ class CpostPost(BaseModel):
     to_tw: bool = False
     to_wp: bool = False
     to_vk: bool = False
+    to_threads: bool = False
 
 
 class CpostPostUpdate(BaseModel):
@@ -504,6 +601,7 @@ class CpostPostUpdate(BaseModel):
     to_tw: Optional[bool] = None
     to_wp: Optional[bool] = None
     to_vk: Optional[bool] = None
+    to_threads: Optional[bool] = None
 
 
 # ==================== Post (общая модель) ====================
@@ -592,6 +690,7 @@ class CollectorStatusDetail(BaseModel):
     distribute_interval_sec: Optional[int] = None
     collector: Optional[LoopStatus] = None
     distributor: Optional[LoopStatus] = None
+    current_time: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -601,6 +700,7 @@ class ProcessorStatusDetail(BaseModel):
     version: str = "1.0.0"
     process_interval_sec: Optional[int] = None
     processor: Optional[LoopStatus] = None
+    current_time: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -610,7 +710,15 @@ class SchedulerStatusDetail(BaseModel):
     version: str = "1.0.0"
     poll_interval_sec: Optional[int] = None
     last_poll_at: Optional[datetime] = None
+    current_time: Optional[str] = None
     error: Optional[str] = None
+
+
+class ProcessorRunResponse(BaseModel):
+    """Ответ принудительного запуска цикла processor."""
+    status: str
+    message: str
+    count: int
 
 
 class ServicesStatusResponse(BaseModel):
@@ -637,3 +745,42 @@ class PostsTablesResponse(BaseModel):
     posts_table_processor: Optional[Dict[str, int]] = None
     collector_error: Optional[str] = None
     processor_error: Optional[str] = None
+
+
+class PostRow(BaseModel):
+    """Одна строка таблицы posts (все столбцы)."""
+    id: int
+    user_id: int
+    domain: Optional[str] = None
+    url: Optional[str] = None
+    title: Optional[str] = None
+    author: Optional[str] = None
+    avatar: Optional[str] = None
+    post_date: Optional[datetime] = None
+    post_text: Optional[str] = None
+    screenshot: Optional[str] = None
+    images: Optional[List[Any]] = None
+    image_over_text: Optional[str] = None
+    comments: int = 0
+    reposts: int = 0
+    likes: int = 0
+    views: int = 0
+    is_ad: bool = False
+    status: Optional[str] = None
+    post_type: Optional[str] = None
+    to_tg: bool = False
+    to_tw: bool = False
+    to_wp: bool = False
+    to_vk: bool = False
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    source_platform: Optional[str] = None
+    source_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PostsListResponse(BaseModel):
+    """Ответ со списком постов (админ)."""
+    posts: List[PostRow] = []

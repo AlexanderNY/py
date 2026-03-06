@@ -90,9 +90,11 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Проверка здоровья сервиса."""
+    from datetime import datetime
     return {
         "status": "healthy",
-        "service": "wp-bot"
+        "service": "wp-bot",
+        "server_time": datetime.utcnow().isoformat() + "Z",
     }
 
 

@@ -6,6 +6,8 @@ import type {
   ScheduleResponse,
   ServicesStatusResponse,
   PostsTablesResponse,
+  PostsListResponse,
+  ProcessorRunResponse,
 } from '@/types/core'
 
 export const coreService = {
@@ -75,6 +77,26 @@ export const coreService = {
   async getPostsTablesOverview(): Promise<PostsTablesResponse> {
     try {
       const response = await apiClient.get<PostsTablesResponse>('/core/admin/posts-tables')
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getPostsList(limit = 500, offset = 0, status?: string): Promise<PostsListResponse> {
+    try {
+      const response = await apiClient.get<PostsListResponse>('/core/admin/posts', {
+        params: { limit, offset, ...(status ? { status } : {}) },
+      })
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async runProcessorCycle(): Promise<ProcessorRunResponse> {
+    try {
+      const response = await apiClient.post<ProcessorRunResponse>('/core/admin/processor/run')
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))

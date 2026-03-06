@@ -27,6 +27,7 @@ def _get_platform_max_length(platform: str) -> int:
         "telegram": settings.TELEGRAM_MAX_LENGTH,
         "twitter": settings.TWITTER_MAX_LENGTH,
         "vkontakte": settings.VKONTAKTE_MAX_LENGTH,
+        "threads": getattr(settings, "THREADS_MAX_LENGTH", 500),
     }
     return limits.get(platform, settings.WORDPRESS_MAX_LENGTH)
 

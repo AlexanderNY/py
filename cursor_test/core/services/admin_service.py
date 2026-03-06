@@ -29,8 +29,13 @@ class AdminService:
                         "version": data.get("version", "1.0.0"),
                         "collect_interval_sec": data.get("collect_interval_sec"),
                         "distribute_interval_sec": data.get("distribute_interval_sec"),
+                        "collect_batch_size": data.get("collect_batch_size"),
+                        "distribute_batch_size": data.get("distribute_batch_size"),
                         "collector": _parse_loop_status(data.get("collector")),
                         "distributor": _parse_loop_status(data.get("distributor")),
+                        "current_time": data.get("current_time"),
+                        "started_at": data.get("started_at"),
+                        "collect_functions": data.get("collect_functions") or [],
                         "error": None,
                     }
                 else:
@@ -47,7 +52,11 @@ class AdminService:
                         "service": data.get("service", "processor"),
                         "version": data.get("version", "1.0.0"),
                         "process_interval_sec": data.get("process_interval_sec"),
+                        "process_batch_size": data.get("process_batch_size"),
                         "processor": _parse_loop_status(data.get("processor")),
+                        "current_time": data.get("current_time"),
+                        "started_at": data.get("started_at"),
+                        "processing_options": data.get("processing_options") or [],
                         "error": None,
                     }
                 else:
@@ -64,7 +73,11 @@ class AdminService:
                         "service": data.get("service", "scheduler"),
                         "version": data.get("version", "1.0.0"),
                         "poll_interval_sec": data.get("poll_interval_sec"),
+                        "notify_on_change_only": data.get("notify_on_change_only"),
                         "last_poll_at": data.get("last_poll_at"),
+                        "current_time": data.get("current_time"),
+                        "started_at": data.get("started_at"),
+                        "schedule_functions": data.get("schedule_functions") or [],
                         "error": None,
                     }
                 else:
@@ -74,7 +87,7 @@ class AdminService:
 
         return {
             "healthchecks": [
-                {"service_name": h["service_name"], "status": h["status"], "error": h.get("error")}
+                {"service_name": h["service_name"], "status": h["status"], "error": h.get("error"), "server_time": h.get("server_time")}
                 for h in healthchecks
             ],
             "collector": collector_status,
@@ -131,6 +144,30 @@ class AdminService:
             "collector_error": collector_error,
             "processor_error": processor_error,
         }
+
+    async def run_processor_cycle(self) -> Dict[str, Any]:
+        """Запускает один цикл обработки на processor. Проксирует POST /process/run."""
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(f"{settings.PROCESSOR_SERVICE_URL}/process/run")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return {
+                        "status": data.get("status", "success"),
+                        "message": data.get("message", ""),
+                        "count": int(data.get("count", 0)),
+                    }
+                return {
+                    "status": "error",
+                    "message": f"Processor returned HTTP {resp.status_code}",
+                    "count": 0,
+                }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": str(e),
+                "count": 0,
+            }
 
 
 def _parse_loop_status(raw: Any) -> Optional[Dict[str, Any]]:

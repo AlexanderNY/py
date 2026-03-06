@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     COLLECTOR_SERVICE_URL: str = "http://localhost:8009"
     PROCESSOR_SERVICE_URL: str = "http://localhost:8010"
     
+    # Threads (Meta) OAuth
+    META_APP_ID: str = ""
+    META_APP_SECRET: str = ""
+    THREADS_OAUTH_REDIRECT_URI: str = ""
+    FRONTEND_URL: str = "http://localhost:5173"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

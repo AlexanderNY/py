@@ -26,7 +26,7 @@ const PUBLISH_INTERVAL_MINUTES_OPTIONS = Array.from({ length: 97 }, (_, i) => 15
 
 export function WordPressPage() {
   // Tab state
-  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'postProfile' | 'processing' | 'parserProfile'>('create')
+  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'processing'>('create')
 
   // Profile state
   const [siteUrl, setSiteUrl] = useState('')
@@ -283,33 +283,69 @@ export function WordPressPage() {
     }
   }
 
-  async function handleSaveParserProfile(e: FormEvent) {
+  async function handleSaveProfile(e: FormEvent) {
     e.preventDefault()
     setError('')
     setSuccess('')
     setIsSavingProfile(true)
+    const timeIntervals = publishScheduleType === 'by_intervals'
+      ? `${String(publishScheduleHour).padStart(2, '0')}:${String(publishScheduleMinute).padStart(2, '0')}`
+      : undefined
+    const limitNum = publishLimit.trim() ? parseInt(publishLimit, 10) : undefined
+    if (publishLimit.trim() && (Number.isNaN(limitNum) || limitNum < 0)) {
+      setError('Publish limit must be a non-negative number')
+      setIsSavingProfile(false)
+      return
+    }
     const collect_sites = collectSites.map((s) => ({
       site_url: s.siteUrl || undefined,
       schedule_type: s.scheduleType,
       time_intervals: `${String(s.scheduleHour).padStart(2, '0')}:${String(s.scheduleMinute).padStart(2, '0')}`,
     }))
     const limitVal = parseInt(collectLimit, 10) || 1
-    const limitNum = collectAllAvailable ? undefined : Math.max(1, Math.min(25, limitVal))
+    const collectLimitNum = collectAllAvailable ? undefined : Math.max(1, Math.min(25, limitVal))
     if (!collectAllAvailable && (limitVal < 1 || limitVal > 25)) {
       setError('Ограничение количества постов: от 1 до 25')
       setIsSavingProfile(false)
       return
     }
     try {
-      await wordpressService.saveCollectProfile({
-        collect_enabled: collectEnabled,
-        collect_sites,
-        collect_all_available: collectAllAvailable,
-        collect_limit: limitNum,
-      })
-      setSuccess('Parser profile settings saved successfully')
+      await Promise.all([
+        wordpressService.savePublishProfile({
+          publish_enabled: publishEnabled,
+          schedule_type: publishScheduleType,
+          time_intervals: timeIntervals,
+          site_url: siteUrl || undefined,
+          username: username || undefined,
+          app_password: appPassword || undefined,
+          publish_all_ready: publishAllReady,
+          publish_limit: publishAllReady ? undefined : limitNum,
+          publish_interval_minutes: publishAllReady ? undefined : publishIntervalMinutes,
+          process_before_publish: processBeforePublish,
+          process_description: processBeforePublish ? processDescription || undefined : undefined,
+          remove_emojis: removeEmojis,
+          remove_images: removeImages,
+          clean_html: cleanHtml,
+          process_services: [
+            ...(processServiceWordpress ? ['wordpress'] : []),
+            ...(processServiceTelegram ? ['telegram'] : []),
+            ...(processServiceTwitter ? ['twitter'] : []),
+            ...(processServiceVkontakte ? ['vkontakte'] : []),
+          ],
+          status_review_after_process: statusReviewAfterProcess,
+          add_static_html: addStaticHtml,
+          static_html_content: addStaticHtml ? (staticHtmlContent || undefined)?.slice(0, 1000) : undefined,
+        }),
+        wordpressService.saveCollectProfile({
+          collect_enabled: collectEnabled,
+          collect_sites,
+          collect_all_available: collectAllAvailable,
+          collect_limit: collectLimitNum,
+        }),
+      ])
+      setSuccess('Profile settings saved successfully')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save parser profile settings')
+      setError(err instanceof Error ? err.message : 'Failed to save profile settings')
     } finally {
       setIsSavingProfile(false)
     }
@@ -494,14 +530,14 @@ export function WordPressPage() {
         </button>
         <button
           className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === 'postProfile'
+            activeTab === 'profile'
               ? 'text-primary-400'
               : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
           }`}
-          onClick={() => setActiveTab('postProfile')}
+          onClick={() => setActiveTab('profile')}
         >
-          Post Profile Settings
-          {activeTab === 'postProfile' && (
+          Profile Settings
+          {activeTab === 'profile' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
           )}
         </button>
@@ -515,19 +551,6 @@ export function WordPressPage() {
         >
           Обработка
           {activeTab === 'processing' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
-          )}
-        </button>
-        <button
-          className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === 'parserProfile'
-              ? 'text-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-          onClick={() => setActiveTab('parserProfile')}
-        >
-          Parser Profile Settings
-          {activeTab === 'parserProfile' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
           )}
         </button>
@@ -825,23 +848,32 @@ export function WordPressPage() {
         </Card>
       )}
 
-      {/* Post Profile Settings — publishing only */}
-      {activeTab === 'postProfile' && (
+      {/* Profile Settings (Publishing + Collection) */}
+      {activeTab === 'profile' && (
         <Card className="animate-slide-up">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
-              Post Profile Settings
+              Profile Settings
             </CardTitle>
-            <CardDescription>Configure WordPress connection and publishing settings</CardDescription>
+            <CardDescription>Configure WordPress connection, publishing and collection settings</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingProfile ? (
               <div className="text-center py-8 text-[var(--text-muted)]">Loading profile...</div>
             ) : (
-              <form onSubmit={handleSavePostProfile} className="space-y-6">
+              <form onSubmit={handleSaveProfile} className="space-y-8">
+                {/* Publishing */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                    Publishing
+                  </h3>
                 <label className="flex items-center gap-3 cursor-pointer group">
                   <div className="relative">
                     <input
@@ -1001,12 +1033,175 @@ export function WordPressPage() {
                   </div>
                 )}
 
+                </div>
+
+                {/* Collection (Parser) */}
+                <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                    Collection (Parser)
+                  </h3>
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={collectEnabled}
+                        onChange={(e) => setCollectEnabled(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                    </div>
+                    <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                      Enable collection
+                    </span>
+                  </label>
+
+                  {collectEnabled && (
+                    <>
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <div className="relative">
+                          <input
+                            type="checkbox"
+                            checked={collectAllAvailable}
+                            onChange={(e) => setCollectAllAvailable(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                          <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                        </div>
+                        <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                          Собрать все доступное
+                        </span>
+                      </label>
+
+                      {!collectAllAvailable && (
+                        <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-2 animate-slide-down max-w-xs">
+                          <label className="text-sm font-medium text-[var(--text-secondary)] block">Ограничение количества постов</label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={25}
+                            value={collectLimit || '1'}
+                            onChange={(e) => {
+                              const v = e.target.value.replace(/\D/g, '').slice(0, 3)
+                              if (v === '' || (parseInt(v, 10) >= 1 && parseInt(v, 10) <= 25)) setCollectLimit(v)
+                            }}
+                            placeholder="1"
+                            className="w-full"
+                          />
+                          <p className="text-xs text-[var(--text-muted)]">От 1 до 25, по умолчанию 1</p>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {collectEnabled && (
+                    <div className="space-y-6 animate-slide-down">
+                      <h4 className="text-sm font-semibold text-[var(--text-primary)]">Collection sites</h4>
+                      {collectSites.map((site, index) => (
+                        <div key={site.id} className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-[var(--text-secondary)]">Site {index + 1}</span>
+                            {collectSites.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeCollectSite(site.id)}
+                                className="text-red-400 hover:text-red-300"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                                Remove
+                              </Button>
+                            )}
+                          </div>
+                          <Input
+                            label="Site URL"
+                            type="url"
+                            value={site.siteUrl}
+                            onChange={(e) => updateCollectSiteUrl(site.id, e.target.value)}
+                            placeholder="https://example.com"
+                          />
+                          <div className="space-y-4">
+                            <label className="text-sm font-medium text-[var(--text-secondary)] block">Publish Schedule</label>
+                            <div className="space-y-3">
+                              <label className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`collectSchedule-${site.id}`}
+                                  value="on_new_messages"
+                                  checked={site.scheduleType === 'on_new_messages'}
+                                  onChange={() => updateCollectSiteScheduleType(site.id, 'on_new_messages')}
+                                  className="w-4 h-4 text-primary-500"
+                                />
+                                <span className="text-[var(--text-primary)]">When new messages are checked</span>
+                              </label>
+                              <label className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`collectSchedule-${site.id}`}
+                                  value="by_intervals"
+                                  checked={site.scheduleType === 'by_intervals'}
+                                  onChange={() => updateCollectSiteScheduleType(site.id, 'by_intervals')}
+                                  className="w-4 h-4 text-primary-500"
+                                />
+                                <span className="text-[var(--text-primary)]">By time intervals</span>
+                              </label>
+                            </div>
+                            {site.scheduleType === 'by_intervals' && (
+                              <div className="space-y-3 mt-4 flex flex-wrap gap-4 items-end">
+                                <div className="space-y-2 min-w-[6rem]">
+                                  <label className="text-sm font-medium text-[var(--text-secondary)] block">Hour</label>
+                                  <select
+                                    value={site.scheduleHour}
+                                    onChange={(e) => updateCollectSiteScheduleTime(site.id, Number(e.target.value))}
+                                    className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                                  >
+                                    {Array.from({ length: 24 }, (_, i) => (
+                                      <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="space-y-2 min-w-[6rem]">
+                                  <label className="text-sm font-medium text-[var(--text-secondary)] block">Minutes</label>
+                                  <select
+                                    value={site.scheduleMinute}
+                                    onChange={(e) => updateCollectSiteScheduleTime(site.id, undefined, Number(e.target.value) as ScheduleMinute)}
+                                    className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                                  >
+                                    {SCHEDULE_MINUTES.map((m) => (
+                                      <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {collectSites.length < 5 && (
+                        <Button type="button" variant="secondary" size="sm" onClick={addCollectSite}>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          Add collection site
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <CardFooter className="px-0">
                   <Button type="submit" isLoading={isSavingProfile} className="w-full sm:w-auto">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    Save Post Profile Settings
+                    Save Profile Settings
                   </Button>
                 </CardFooter>
               </form>
@@ -1216,188 +1411,6 @@ export function WordPressPage() {
         </Card>
       )}
 
-      {/* Parser Profile Settings — collection only */}
-      {activeTab === 'parserProfile' && (
-        <Card className="animate-slide-up">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-              </svg>
-              Parser Profile Settings
-            </CardTitle>
-            <CardDescription>Configure collection (parser) settings</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoadingProfile ? (
-              <div className="text-center py-8 text-[var(--text-muted)]">Loading profile...</div>
-            ) : (
-              <form onSubmit={handleSaveParserProfile} className="space-y-6">
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
-                      checked={collectEnabled}
-                      onChange={(e) => setCollectEnabled(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                  </div>
-                  <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
-                    Enable collection
-                  </span>
-                </label>
-
-                {collectEnabled && (
-                  <>
-                    <label className="flex items-center gap-3 cursor-pointer group">
-                      <div className="relative">
-                        <input
-                          type="checkbox"
-                          checked={collectAllAvailable}
-                          onChange={(e) => setCollectAllAvailable(e.target.checked)}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                        <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                      </div>
-                      <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
-                        Собрать все доступное
-                      </span>
-                    </label>
-
-                    {!collectAllAvailable && (
-                      <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-2 animate-slide-down max-w-xs">
-                        <label className="text-sm font-medium text-[var(--text-secondary)] block">Ограничение количества постов</label>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={25}
-                          value={collectLimit || '1'}
-                          onChange={(e) => {
-                            const v = e.target.value.replace(/\D/g, '').slice(0, 3)
-                            if (v === '' || (parseInt(v, 10) >= 1 && parseInt(v, 10) <= 25)) setCollectLimit(v)
-                          }}
-                          placeholder="1"
-                          className="w-full"
-                        />
-                        <p className="text-xs text-[var(--text-muted)]">От 1 до 25, по умолчанию 1</p>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {collectEnabled && (
-                  <div className="space-y-6 animate-slide-down">
-                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">Collection sites</h3>
-                    {collectSites.map((site, index) => (
-                      <div key={site.id} className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-[var(--text-secondary)]">Site {index + 1}</span>
-                          {collectSites.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeCollectSite(site.id)}
-                              className="text-red-400 hover:text-red-300"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                              Remove
-                            </Button>
-                          )}
-                        </div>
-                        <Input
-                          label="Site URL"
-                          type="url"
-                          value={site.siteUrl}
-                          onChange={(e) => updateCollectSiteUrl(site.id, e.target.value)}
-                          placeholder="https://example.com"
-                        />
-                        <div className="space-y-4">
-                          <label className="text-sm font-medium text-[var(--text-secondary)] block">Publish Schedule</label>
-                          <div className="space-y-3">
-                            <label className="flex items-center gap-3 cursor-pointer">
-                              <input
-                                type="radio"
-                                name={`collectSchedule-${site.id}`}
-                                value="on_new_messages"
-                                checked={site.scheduleType === 'on_new_messages'}
-                                onChange={() => updateCollectSiteScheduleType(site.id, 'on_new_messages')}
-                                className="w-4 h-4 text-primary-500"
-                              />
-                              <span className="text-[var(--text-primary)]">When new messages are checked</span>
-                            </label>
-                            <label className="flex items-center gap-3 cursor-pointer">
-                              <input
-                                type="radio"
-                                name={`collectSchedule-${site.id}`}
-                                value="by_intervals"
-                                checked={site.scheduleType === 'by_intervals'}
-                                onChange={() => updateCollectSiteScheduleType(site.id, 'by_intervals')}
-                                className="w-4 h-4 text-primary-500"
-                              />
-                              <span className="text-[var(--text-primary)]">By time intervals</span>
-                            </label>
-                          </div>
-                          {site.scheduleType === 'by_intervals' && (
-                            <div className="space-y-3 mt-4 flex flex-wrap gap-4 items-end">
-                              <div className="space-y-2 min-w-[6rem]">
-                                <label className="text-sm font-medium text-[var(--text-secondary)] block">Hour</label>
-                                <select
-                                  value={site.scheduleHour}
-                                  onChange={(e) => updateCollectSiteScheduleTime(site.id, Number(e.target.value))}
-                                  className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-                                >
-                                  {Array.from({ length: 24 }, (_, i) => (
-                                    <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div className="space-y-2 min-w-[6rem]">
-                                <label className="text-sm font-medium text-[var(--text-secondary)] block">Minutes</label>
-                                <select
-                                  value={site.scheduleMinute}
-                                  onChange={(e) => updateCollectSiteScheduleTime(site.id, undefined, Number(e.target.value) as ScheduleMinute)}
-                                  className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-                                >
-                                  {SCHEDULE_MINUTES.map((m) => (
-                                    <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
-                                  ))}
-                                </select>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {collectSites.length < 5 && (
-                      <Button type="button" variant="secondary" size="sm" onClick={addCollectSite}>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Add collection site
-                      </Button>
-                    )}
-                  </div>
-                )}
-
-                <CardFooter className="px-0">
-                  <Button type="submit" isLoading={isSavingProfile} className="w-full sm:w-auto">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Save Parser Profile Settings
-                  </Button>
-                </CardFooter>
-              </form>
-            )}
-          </CardContent>
-        </Card>
-      )}
     </div>
   )
 }

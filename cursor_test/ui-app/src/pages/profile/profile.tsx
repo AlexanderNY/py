@@ -1,4 +1,5 @@
 import { useState, FormEvent, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '@/contexts/auth-context'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -225,6 +226,19 @@ export function ProfilePage() {
             <div className="flex justify-between items-center py-3 border-b border-[var(--border-color)]">
               <span className="text-[var(--text-secondary)]">Password</span>
               <span className="font-medium text-[var(--text-muted)]">••••••••</span>
+            </div>
+            <div className="flex justify-between items-center py-3 border-b border-[var(--border-color)]">
+              <span className="text-[var(--text-secondary)]">Role</span>
+              <span className="font-medium">{user?.role ?? '—'}</span>
+            </div>
+            <div className="flex justify-between items-center py-3 border-b border-[var(--border-color)]">
+              <span className="text-[var(--text-secondary)]">Tariff</span>
+              <Link
+                to="/billing"
+                className="font-medium text-primary-400 hover:text-primary-300 hover:underline focus:outline-none focus:underline"
+              >
+                {user?.tariff ?? 'free'}
+              </Link>
             </div>
             <div className="flex justify-between items-center py-3">
               <span className="text-[var(--text-secondary)]">Member since</span>

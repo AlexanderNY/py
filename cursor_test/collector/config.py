@@ -39,14 +39,28 @@ SOURCE_TABLES = [
     {"platform": "tg", "table": "tg_posts"},
     {"platform": "wp", "table": "wp_posts"},
     {"platform": "url", "table": "url_posts"},
+    {"platform": "vk", "table": "vk_posts"},
     # {"platform": "tw", "table": "tw_posts"},
-    # {"platform": "vk", "table": "vk_posts"},
+]
+
+# Описания функций для админки (id, name_ru, description)
+COLLECTOR_FUNCTIONS_FOR_ADMIN = [
+    {
+        "id": "collect_posts",
+        "name_ru": "Запуск сбора постов для сервисов",
+        "description": "Периодический сбор постов из платформенных таблиц (tg_posts, wp_posts, url_posts, vk_posts) в центральную таблицу posts. Посты со статусом «collected» переносятся для дальнейшей обработки процессором.",
+    },
+    {
+        "id": "distribute_posts",
+        "name_ru": "Распределение готовых постов по платформам",
+        "description": "Перенос постов со статусом ready из центральной таблицы posts в платформенные таблицы (tg_posts, wp_posts, vk_posts) согласно флагам to_tg, to_wp, to_vk для публикации ботами.",
+    },
 ]
 
 # Маппинг флагов to_* -> целевые таблицы
 TARGET_TABLES = {
     "to_tg": {"platform": "tg", "table": "tg_posts"},
     "to_wp": {"platform": "wp", "table": "wp_posts"},
+    "to_vk": {"platform": "vk", "table": "vk_posts"},
     # "to_tw": {"platform": "tw", "table": "tw_posts"},
-    # "to_vk": {"platform": "vk", "table": "vk_posts"},
 }

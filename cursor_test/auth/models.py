@@ -7,10 +7,15 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(20) DEFAULT 'guest' NOT NULL CHECK (role IN ('guest', 'user', 'admin')),
+    tariff VARCHAR(50) DEFAULT 'free' NOT NULL,
     is_email_verified BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+"""
+
+ADD_TARIFF_TO_USERS = """
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tariff VARCHAR(50) DEFAULT 'free' NOT NULL;
 """
 
 CREATE_REFRESH_TOKENS_TABLE = """
@@ -52,6 +57,19 @@ CREATE TABLE IF NOT EXISTS email_verification_tokens (
 );
 """
 
+CREATE_USER_ROLE_TARIFF_HISTORY_TABLE = """
+CREATE TABLE IF NOT EXISTS user_role_tariff_history (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    changed_by_user_id INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+    role_old VARCHAR(20) NULL,
+    role_new VARCHAR(20) NULL,
+    tariff_old VARCHAR(50) NULL,
+    tariff_new VARCHAR(50) NULL
+);
+"""
+
 CREATE_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token);
@@ -60,10 +78,13 @@ CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_t
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_user_id ON email_verification_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_token ON email_verification_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_user_role_tariff_history_user_id ON user_role_tariff_history(user_id);
 """
 
 ALL_TABLES = [
     CREATE_USERS_TABLE,
+    ADD_TARIFF_TO_USERS,
+    CREATE_USER_ROLE_TARIFF_HISTORY_TABLE,
     CREATE_REFRESH_TOKENS_TABLE,
     CREATE_BLACKLISTED_TOKENS_TABLE,
     CREATE_PASSWORD_RESET_TOKENS_TABLE,

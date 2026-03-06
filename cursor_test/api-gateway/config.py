@@ -9,17 +9,14 @@ class Settings(BaseSettings):
     CORE_SERVICE_URL: str = "http://172.20.10.2:8002" #"http://localhost:8002"
     SCHEDULER_SERVICE_URL: str = "http://172.20.10.3:8003" #"http://localhost:8003"
     TG_BOT_SERVICE_URL: str = "http://172.20.10.4:8004"
+    THREADS_BOT_SERVICE_URL: str = "http://172.20.10.9:8009"
     VK_BOT_SERVICE_URL: str = "http://172.20.10.5:8005"
     WP_BOT_SERVICE_URL: str = "http://172.20.10.6:8006"
     URL_BOT_SERVICE_URL: str = "http://172.20.10.7:8007"
     SELECTCB_SERVICE_URL: str = "http://172.20.10.8:8008" #"http://localhost:8008"
     
-    # CORS настройки
-    CORS_ORIGINS: list[str] = [
-        "http://localhost:5173",
-        "http://localhost:8100",
-        "http://172.20.10.100:8100",
-    ]
+    # CORS настройки (в K8s/Minikube задать через env, например через запятую)
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:8100,http://172.20.10.100:8100"
     CORS_ALLOWED_METHODS: list[str] = ["GET", "POST"]
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_HEADERS: list[str] = ["*"]
@@ -41,6 +38,11 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
+def get_cors_origins_list() -> list[str]:
+    """Список CORS origins (парсинг из строки для env в K8s)."""
+    return [x.strip() for x in settings.CORS_ORIGINS.split(",") if x.strip()]
+
+
 # Rate limits по endpoints (requests per window_seconds)
 RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/auth/login": {"requests": 5, "window_seconds": 60},
@@ -58,6 +60,7 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/core/healthchecks": {"requests": 60, "window_seconds": 60},
     "/core/admin/services-status": {"requests": 60, "window_seconds": 60},
     "/core/admin/posts-tables": {"requests": 60, "window_seconds": 60},
+    "/core/admin/posts": {"requests": 60, "window_seconds": 60},
     "/auth/users": {"requests": 30, "window_seconds": 60},
     "/wp/posts": {"requests": 30, "window_seconds": 60},
     "/wp/profile": {"requests": 30, "window_seconds": 60},
@@ -71,6 +74,10 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/test/search": {"requests": 2, "window_seconds": 60},
     "/test/submit": {"requests": 2, "window_seconds": 60},
     "/tg-bot/schedule": {"requests": 60, "window_seconds": 60},
+    "/threads/profile": {"requests": 30, "window_seconds": 60},
+    "/threads/posts": {"requests": 30, "window_seconds": 60},
+    "/th-bot/schedule": {"requests": 60, "window_seconds": 60},
+    "/th-bot/reload": {"requests": 20, "window_seconds": 60},
     "/wp-bot/schedule": {"requests": 60, "window_seconds": 60},
     "/vk-bot/schedule": {"requests": 60, "window_seconds": 60},
     "/url-bot/schedule": {"requests": 60, "window_seconds": 60},
@@ -83,6 +90,7 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
 
 # Публичные endpoints без JWT проверки
 PUBLIC_ENDPOINTS: list[str] = [
+    "/threads/oauth/callback",
     "/auth/login",
     "/auth/register",
     "/auth/refresh",

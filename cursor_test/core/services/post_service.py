@@ -16,6 +16,7 @@ class PostService:
         "wp": 150000,
         "vk": 15985,
         "cpost": 150000,
+        "threads": 500,
     }
     
     async def create_post(
@@ -28,6 +29,7 @@ class PostService:
         to_tw: bool = False,
         to_wp: bool = False,
         to_vk: bool = False,
+        to_threads: bool = False,
         **kwargs
     ) -> Dict:
         """Создает новый пост.
@@ -63,12 +65,12 @@ class PostService:
                         user_id, post_text, title, domain, url, author, avatar,
                         post_date, screenshot, images, image_over_text,
                         comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk
+                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s,
                         %s, %s, %s, %s,
                         %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s
                     )
                     RETURNING *
                     """,
@@ -95,6 +97,7 @@ class PostService:
                         to_tw,
                         to_wp,
                         to_vk,
+                        to_threads,
                     )
                 )
                 row = await cur.fetchone()
@@ -282,6 +285,36 @@ class PostService:
         finally:
             await release_db_connection(conn)
 
+    async def get_all_posts(
+        self,
+        limit: int = 500,
+        offset: int = 0,
+        status: Optional[str] = None,
+        user_id: Optional[int] = None,
+    ) -> List[Dict]:
+        """Получает посты из таблицы posts (для админки). Опционально по status и user_id (только посты автора)."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                conditions = []
+                params: list = []
+                if user_id is not None:
+                    conditions.append("user_id = %s")
+                    params.append(user_id)
+                if status:
+                    conditions.append("status = %s")
+                    params.append(status)
+                where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+                params.extend([limit, offset])
+                await cur.execute(
+                    f"SELECT * FROM posts {where} ORDER BY id DESC LIMIT %s OFFSET %s",
+                    params,
+                )
+                rows = await cur.fetchall()
+                return [self._row_to_post(row, cur.description) for row in rows]
+        finally:
+            await release_db_connection(conn)
+
     async def update_post(
         self,
         user_id: int,
@@ -306,6 +339,7 @@ class PostService:
         to_tw: Optional[bool] = None,
         to_wp: Optional[bool] = None,
         to_vk: Optional[bool] = None,
+        to_threads: Optional[bool] = None,
     ) -> Optional[Dict]:
         """Обновляет пост в таблице posts (все переданные поля)."""
         conn = await get_db_connection()
@@ -373,6 +407,9 @@ class PostService:
                 if to_vk is not None:
                     updates.append("to_vk = %s")
                     params.append(to_vk)
+                if to_threads is not None:
+                    updates.append("to_threads = %s")
+                    params.append(to_threads)
                 if not updates:
                     return await self.get_post(user_id, post_id)
                 params.extend([user_id, post_id])
@@ -663,6 +700,221 @@ class PostService:
             Обновленный пост или None
         """
         return await self.update_tg_post(user_id, post_id, status="deleted")
+
+    # ==================== Threads ====================
+
+    async def create_threads_post_record(
+        self,
+        user_id: int,
+        text: str,
+        images: Optional[List[str]] = None,
+    ) -> Dict:
+        """Создает пост Threads в таблице threads_posts."""
+        limit = self.PLATFORM_LIMITS.get("threads", 500)
+        if len(text) > limit:
+            raise ValueError(f"Text exceeds threads limit of {limit} characters")
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO threads_posts (
+                        user_id, post_text, title, domain, url, author, avatar,
+                        post_date, screenshot, images, image_over_text,
+                        comments, reposts, likes, views, is_ad, status,
+                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads
+                    ) VALUES (
+                        %s, %s, NULL, NULL, NULL, NULL, NULL,
+                        NULL, NULL, %s, NULL,
+                        0, 0, 0, 0, FALSE, 'collected',
+                        'threads', FALSE, FALSE, FALSE, FALSE, TRUE
+                    )
+                    RETURNING *
+                    """,
+                    (user_id, text, json.dumps(images or [])),
+                )
+                row = await cur.fetchone()
+                return self._row_to_post(row, cur.description)
+        finally:
+            await release_db_connection(conn)
+
+    async def get_threads_posts(
+        self,
+        user_id: int,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """Получает посты Threads пользователя из таблицы threads_posts."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT *
+                    FROM threads_posts
+                    WHERE user_id = %s AND (status IS NULL OR status != 'deleted')
+                    ORDER BY created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (user_id, limit, offset),
+                )
+                rows = await cur.fetchall()
+                return [self._row_to_post(row, cur.description) for row in rows]
+        finally:
+            await release_db_connection(conn)
+
+    async def get_threads_post(self, user_id: int, post_id: int) -> Optional[Dict]:
+        """Получает один пост Threads по id."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT * FROM threads_posts WHERE user_id = %s AND id = %s",
+                    (user_id, post_id),
+                )
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_post(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+
+    async def update_threads_post(
+        self,
+        user_id: int,
+        post_id: int,
+        text: Optional[str] = None,
+        images: Optional[List[str]] = None,
+        status: Optional[str] = None,
+    ) -> Optional[Dict]:
+        """Обновляет пост Threads."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                updates = []
+                params = []
+                if text is not None:
+                    limit = self.PLATFORM_LIMITS.get("threads", 500)
+                    if len(text) > limit:
+                        raise ValueError(f"Text exceeds threads limit of {limit} characters")
+                    updates.append("post_text = %s")
+                    params.append(text)
+                if images is not None:
+                    updates.append("images = %s")
+                    params.append(json.dumps(images))
+                if status is not None:
+                    updates.append("status = %s")
+                    params.append(status)
+                if not updates:
+                    return await self.get_threads_post(user_id, post_id)
+                params.extend([user_id, post_id])
+                await cur.execute(
+                    f"""
+                    UPDATE threads_posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s AND id = %s
+                    RETURNING *
+                    """,
+                    params,
+                )
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_post(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+
+    async def delete_threads_post(self, user_id: int, post_id: int) -> Optional[Dict]:
+        """Помечает пост Threads как удаленный (status = 'deleted')."""
+        return await self.update_threads_post(user_id, post_id, status="deleted")
+
+    async def get_vk_posts(
+        self,
+        user_id: int,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[Dict]:
+        """Получает посты VKontakte пользователя из таблицы vk_posts."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT *
+                    FROM vk_posts
+                    WHERE user_id = %s AND (status IS NULL OR status != 'deleted')
+                    ORDER BY created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (user_id, limit, offset)
+                )
+                rows = await cur.fetchall()
+                return [self._row_to_post(row, cur.description) for row in rows]
+        finally:
+            await release_db_connection(conn)
+
+    async def get_vk_post(self, user_id: int, post_id: int) -> Optional[Dict]:
+        """Получает один пост VKontakte по id."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT * FROM vk_posts WHERE user_id = %s AND id = %s",
+                    (user_id, post_id)
+                )
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_post(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+
+    async def update_vk_post(
+        self,
+        user_id: int,
+        post_id: int,
+        text: Optional[str] = None,
+        images: Optional[List] = None,
+        status: Optional[str] = None,
+    ) -> Optional[Dict]:
+        """Обновляет пост VKontakte."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                updates = []
+                params = []
+                if text is not None:
+                    limit = self.PLATFORM_LIMITS.get("vk", 15985)
+                    if len(text) > limit:
+                        raise ValueError(f"Text exceeds vk limit of {limit} characters")
+                    updates.append("post_text = %s")
+                    params.append(text)
+                if images is not None:
+                    updates.append("images = %s")
+                    params.append(json.dumps(images))
+                if status is not None:
+                    updates.append("status = %s")
+                    params.append(status)
+                if not updates:
+                    return await self.get_vk_post(user_id, post_id)
+                params.extend([user_id, post_id])
+                await cur.execute(
+                    f"""
+                    UPDATE vk_posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s AND id = %s
+                    RETURNING *
+                    """,
+                    params
+                )
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_post(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+
+    async def delete_vk_post(self, user_id: int, post_id: int) -> Optional[Dict]:
+        """Помечает пост VKontakte как удаленный (status = 'deleted')."""
+        return await self.update_vk_post(user_id, post_id, status="deleted")
 
     async def get_url_posts(
         self,

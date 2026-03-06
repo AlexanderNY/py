@@ -116,10 +116,12 @@ BOT_SCHEDULE_PROTECTED = [
     "/wp-bot/schedule",
     "/vk-bot/schedule",
     "/url-bot/schedule",
+    "/th-bot/schedule",
+    "/th-bot/reload",
 ]
 
-# Пути авторизации tg-bot — требуют JWT
-BOT_AUTH_PROTECTED_PREFIXES = ["/tg-bot/auth/"]
+# Пути авторизации ботов — требуют JWT
+BOT_AUTH_PROTECTED_PREFIXES = ["/tg-bot/auth/", "/th-bot/auth/"]
 
 
 def check_public_endpoint(endpoint_path: str) -> bool:
@@ -145,7 +147,7 @@ def check_public_endpoint(endpoint_path: str) -> bool:
             return False
 
     # Проверка префиксов для заглушек
-    stub_prefixes = ["/scheduler", "/tg-bot", "/vk-bot", "/wp-bot", "/url-bot"]
+    stub_prefixes = ["/scheduler", "/tg-bot", "/vk-bot", "/wp-bot", "/url-bot", "/th-bot"]
     for prefix in stub_prefixes:
         if endpoint_path.startswith(prefix):
             return True
