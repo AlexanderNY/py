@@ -4,6 +4,9 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { PageHeader, PageContainer } from '@/components/ui'
+import { SkeletonCard } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui'
 import { threadsService } from '@/services/threads-service'
 import { useAuth } from '@/contexts/auth-context'
 import type { ThreadsConfig, ThreadsPostListItem, TimeInterval, PublishScheduleType } from '@/types/threads'
@@ -312,11 +315,8 @@ export function ThreadsPage() {
   const showAuthBlock = authStatus && !authStatus.connected
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-bold text-[var(--text-primary)]">Threads Integration</h1>
-        <p className="text-[var(--text-secondary)] mt-1">Manage your Threads posts and settings</p>
-      </div>
+    <PageContainer maxWidth="wide">
+      <PageHeader title="Threads Integration" description="Manage your Threads posts and settings" />
 
       {error && <Alert variant="error" className="animate-slide-down">{error}</Alert>}
       {success && <Alert variant="success" className="animate-slide-down">{success}</Alert>}
@@ -448,8 +448,16 @@ export function ThreadsPage() {
             <Button type="button" variant="secondary" size="sm" onClick={loadPosts} isLoading={isLoadingPosts}>Refresh</Button>
           </CardHeader>
           <CardContent>
-            {isLoadingPosts && posts.length === 0 && <div className="text-center py-8 text-[var(--text-muted)]">Loading posts...</div>}
-            {!isLoadingPosts && posts.length === 0 && hasLoadedPosts && <div className="text-center py-8 text-[var(--text-muted)]">No posts found.</div>}
+            {isLoadingPosts && posts.length === 0 && (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <SkeletonCard key={i} />
+                ))}
+              </div>
+            )}
+            {!isLoadingPosts && posts.length === 0 && hasLoadedPosts && (
+              <EmptyState title="No posts found" description="You have not created any posts yet." />
+            )}
             {!isLoadingPosts && posts.length > 0 && (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
@@ -606,6 +614,6 @@ export function ThreadsPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   )
 }

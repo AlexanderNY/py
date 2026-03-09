@@ -19,6 +19,10 @@ services:
       - SCHEDULER_SERVICE_URL=http://scheduler:8003
       - COLLECTOR_SERVICE_URL=http://collector:8009
       - PROCESSOR_SERVICE_URL=http://processor:8010
+    volumes:
+      # Общий с tg-bot том: изображения из раздела Telegram Integration сохраняются сюда,
+      # tg-bot при публикации читает из того же каталога
+      - tg-bot-uploads:/app/uploads
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.2

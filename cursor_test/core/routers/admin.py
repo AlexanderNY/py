@@ -11,6 +11,7 @@ from schemas import (
     PostsListResponse,
     PostRow,
     ProcessorRunResponse,
+    PostingDiagnosticsResponse,
 )
 
 
@@ -28,6 +29,20 @@ async def get_services_status():
 async def run_processor_cycle():
     """Принудительный запуск одного цикла обработки на processor."""
     data = await admin_service.run_processor_cycle()
+    return ProcessorRunResponse(**data)
+
+
+@router.post("/collect/run", response_model=ProcessorRunResponse)
+async def run_collect_cycle():
+    """Принудительный запуск одного цикла сбора на collector (tg_posts → posts)."""
+    data = await admin_service.run_collect_cycle()
+    return ProcessorRunResponse(**data)
+
+
+@router.post("/distribute/run", response_model=ProcessorRunResponse)
+async def run_distribute_cycle():
+    """Принудительный запуск одного цикла распределения на collector (posts ready → tg_posts ready)."""
+    data = await admin_service.run_distribute_cycle()
     return ProcessorRunResponse(**data)
 
 
@@ -56,3 +71,10 @@ async def get_admin_posts(
     rows = await post_service.get_all_posts(limit=limit, offset=offset, status=status, user_id=user_id)
     posts = [PostRow.model_validate(r) for r in rows]
     return PostsListResponse(posts=posts)
+
+
+@router.get("/posting-diagnostics", response_model=PostingDiagnosticsResponse)
+async def get_posting_diagnostics():
+    """Цикл диагностики постинга: сводки tg_posts/posts по статусам и подсказки для администратора."""
+    data = await admin_service.run_posting_diagnostics()
+    return PostingDiagnosticsResponse(**data)

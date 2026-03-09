@@ -1,15 +1,13 @@
 import { useAuth } from '@/contexts/auth-context'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { PageHeader, PageContainer } from '@/components/ui'
 
 export function BillingPage() {
   const { user } = useAuth()
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-bold text-[var(--text-primary)]">Billing</h1>
-        <p className="text-[var(--text-secondary)] mt-1">Your current plan and billing details</p>
-      </div>
+    <PageContainer>
+      <PageHeader title="Billing" description="Your current plan and billing details" />
 
       <Card className="animate-slide-up">
         <CardHeader>
@@ -26,6 +24,6 @@ export function BillingPage() {
           </p>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   )
 }

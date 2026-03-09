@@ -474,6 +474,7 @@ class CurlSettingsBase(BaseModel):
     status_review_after_process: bool = False
     add_static_html: bool = False
     static_html_content: Optional[str] = Field(None, max_length=1000)
+    screenshot_only: bool = False
 
 
 class CurlSettingsCreate(CurlSettingsBase):
@@ -715,10 +716,11 @@ class SchedulerStatusDetail(BaseModel):
 
 
 class ProcessorRunResponse(BaseModel):
-    """Ответ принудительного запуска цикла processor."""
+    """Ответ принудительного запуска цикла processor/collect/distribute."""
     status: str
     message: str
     count: int
+    errors: Optional[List[str]] = None
 
 
 class ServicesStatusResponse(BaseModel):
@@ -745,6 +747,34 @@ class PostsTablesResponse(BaseModel):
     posts_table_processor: Optional[Dict[str, int]] = None
     collector_error: Optional[str] = None
     processor_error: Optional[str] = None
+
+
+class PostingDiagnosticsResponse(BaseModel):
+    """Результат цикла диагностики постинга (Telegram и пайплайн)."""
+    tg_posts_by_status: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Сводка tg_posts: status -> count",
+    )
+    posts_by_status: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Сводка posts: status, source_platform -> count",
+    )
+    ready_for_telegram: int = Field(
+        default=0,
+        description="Число постов в tg_posts со статусом ready с заданным channel_to_post",
+    )
+    profiles_with_channel: int = Field(
+        default=0,
+        description="Число tg_profiles с заданным channel_to_post",
+    )
+    hints: List[str] = Field(
+        default_factory=list,
+        description="Рекомендации по диагностике",
+    )
+    collected_at: Optional[str] = Field(
+        default=None,
+        description="Время сбора диагностики (ISO)",
+    )
 
 
 class PostRow(BaseModel):

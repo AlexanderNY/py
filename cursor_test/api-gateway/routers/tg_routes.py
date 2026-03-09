@@ -134,3 +134,17 @@ async def delete_tg_post(
     Требует JWT аутентификации.
     """
     return await forward_to_core(f"/tg/post/{post_id}", request)
+
+
+@router.get("/uploads/{filename}")
+async def get_tg_upload(
+    filename: str,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Отдаёт файл из uploads/tg (core) для превью в UI.
+    
+    GET /tg/uploads/{filename} -> GET /tg/uploads/{filename} на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core(f"/tg/uploads/{filename}", request)

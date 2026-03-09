@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { PageHeader, PageContainer } from '@/components/ui'
 import { customURLService } from '@/services/custom-url-service'
 import type { URLConfig, CustomURLSettings, UrlPostListItem } from '@/types/custom-url'
 
@@ -35,6 +36,7 @@ export function CustomURLPage() {
   const [removeEmojis, setRemoveEmojis] = useState(false)
   const [removeImages, setRemoveImages] = useState(false)
   const [cleanHtml, setCleanHtml] = useState(false)
+  const [screenshotOnly, setScreenshotOnly] = useState(false)
   const [processServiceWordpress, setProcessServiceWordpress] = useState(false)
   const [processServiceTelegram, setProcessServiceTelegram] = useState(false)
   const [processServiceTwitter, setProcessServiceTwitter] = useState(false)
@@ -83,6 +85,7 @@ export function CustomURLPage() {
           setRemoveEmojis(settings.remove_emojis ?? false)
           setRemoveImages(settings.remove_images ?? false)
           setCleanHtml(settings.clean_html ?? false)
+          setScreenshotOnly(settings.screenshot_only ?? false)
           const ps = settings.process_services
           if (Array.isArray(ps)) {
             setProcessServiceWordpress(ps.includes('wordpress'))
@@ -178,6 +181,7 @@ export function CustomURLPage() {
       status_review_after_process: statusReviewAfterProcess,
       add_static_html: addStaticHtml,
       static_html_content: addStaticHtml ? staticHtmlContent.slice(0, 1000) : undefined,
+      screenshot_only: screenshotOnly,
     }
   }
 
@@ -197,11 +201,8 @@ export function CustomURLPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-bold text-[var(--text-primary)]">Custom URL Integration</h1>
-        <p className="text-[var(--text-secondary)] mt-1">Configure custom URL scraping and content collection</p>
-      </div>
+    <PageContainer>
+      <PageHeader title="Custom URL Integration" description="Configure custom URL scraping and content collection" />
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -482,6 +483,22 @@ export function CustomURLPage() {
 
                   <label className="flex items-center gap-3 cursor-pointer group">
                     <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={screenshotOnly}
+                        onChange={(e) => setScreenshotOnly(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
+                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
+                    </div>
+                    <span className="text-[var(--text-primary)]">
+                      Сохранять только скриншот (без текста)
+                    </span>
+                  </label>
+
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <div className="relative">
                       <input type="checkbox" checked={cleanHtml} onChange={(e) => setCleanHtml(e.target.checked)} className="sr-only peer" />
                       <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
                       <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
@@ -640,6 +657,6 @@ export function CustomURLPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   )
 }

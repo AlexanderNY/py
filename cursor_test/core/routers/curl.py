@@ -44,6 +44,7 @@ async def get_curl_settings(x_user_id: Optional[str] = Header(None)):
         "status_review_after_process": False,
         "add_static_html": False,
         "static_html_content": None,
+        "screenshot_only": False,
     }
 
 

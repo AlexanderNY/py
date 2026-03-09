@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 
 
 class UserRegister(BaseModel):
@@ -33,10 +33,13 @@ class UserProfile(BaseModel):
     id: Optional[int] = None
     username: str
     email: EmailStr
-    role: Literal["guest", "user", "admin"]
+    role: Literal["guest", "user", "admin", "manager", "author"]
     tariff: str = "free"
     is_email_verified: bool
     created_at: datetime
+    group_id: Optional[int] = None
+    group_name: Optional[str] = None
+    role_in_group: Optional[Literal["manager", "author"]] = None
 
     class Config:
         from_attributes = True
@@ -50,7 +53,7 @@ class UserProfileUpdate(BaseModel):
 
 class AdminUserUpdate(BaseModel):
     """Схема для обновления роли и тарифа пользователя (только для администраторов)."""
-    role: Optional[Literal["guest", "user", "admin"]] = None
+    role: Optional[Literal["guest", "user", "admin", "manager", "author"]] = None
     tariff: Optional[str] = Field(None, max_length=50)
 
 
@@ -74,6 +77,47 @@ class TokenVerifyResponse(BaseModel):
     """Схема ответа на валидацию токена."""
     valid: bool
     user_id: Optional[int] = None
+
+
+class GroupCreate(BaseModel):
+    """Схема создания группы (менеджер или admin)."""
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class GroupUpdate(BaseModel):
+    """Схема обновления названия группы."""
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class GroupMemberResponse(BaseModel):
+    """Участник группы в ответе API."""
+    user_id: int
+    username: str
+    email: str
+    tariff: str
+    role_in_group: Literal["manager", "author"]
+    joined_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class GroupResponse(BaseModel):
+    """Группа в ответе API."""
+    id: int
+    name: str
+    created_at: datetime
+    created_by_user_id: Optional[int] = None
+    role_in_group: Optional[Literal["manager", "author"]] = None
+    members: Optional[List["GroupMemberResponse"]] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AddMemberRequest(BaseModel):
+    """Добавление участника по email."""
+    email: str = Field(..., min_length=1)
 
 
 class RoleTariffHistoryEntry(BaseModel):

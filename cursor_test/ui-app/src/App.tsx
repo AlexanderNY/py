@@ -16,7 +16,10 @@ import { CustomURLPage } from '@/pages/stubs/custom-url'
 import { CreatePostPage } from '@/pages/create-post'
 import { TestPage } from '@/pages/test'
 import { AdministrationPage } from '@/pages/administration'
+import { GroupPage } from '@/pages/group'
 import { FigmaPreviewPage } from '@/pages/figma-preview'
+import { AboutPage } from '@/pages/about/about'
+import { RouteLoader } from '@/components/route-loader'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -25,13 +28,7 @@ interface ProtectedRouteProps {
 function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading } = useAuth()
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse-subtle text-primary-400">Loading...</div>
-      </div>
-    )
-  }
+  if (isLoading) return <RouteLoader />
 
   if (!isAuthenticated) {
     return <Navigate to="/sign-in" replace />
@@ -47,13 +44,7 @@ interface AdminRouteProps {
 function AdminRoute({ children }: AdminRouteProps) {
   const { isAuthenticated, isLoading, user } = useAuth()
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse-subtle text-primary-400">Loading...</div>
-      </div>
-    )
-  }
+  if (isLoading) return <RouteLoader />
 
   if (!isAuthenticated) {
     return <Navigate to="/sign-in" replace />
@@ -73,13 +64,7 @@ interface PublicRouteProps {
 function PublicRoute({ children }: PublicRouteProps) {
   const { isAuthenticated, isLoading } = useAuth()
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse-subtle text-primary-400">Loading...</div>
-      </div>
-    )
-  }
+  if (isLoading) return <RouteLoader />
 
   if (isAuthenticated) {
     return <Navigate to="/profile" replace />
@@ -109,7 +94,9 @@ function App() {
         <Route path="posts" element={<CreatePostPage />} />
         <Route path="create-post" element={<Navigate to="/posts" replace />} />
         <Route path="test" element={<TestPage />} />
+        <Route path="group" element={<GroupPage />} />
         <Route path="administration" element={<AdminRoute><AdministrationPage /></AdminRoute>} />
+        <Route path="about" element={<AboutPage />} />
       </Route>
 
       <Route path="figma-preview" element={<FigmaPreviewPage />} />

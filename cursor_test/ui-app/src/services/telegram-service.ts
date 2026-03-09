@@ -139,4 +139,10 @@ export const telegramService = {
       console.warn('tg-bot reload failed (non-critical):', getErrorMessage(error))
     }
   },
+
+  /** Список доступных клиенту каналов (id, title). Требует авторизации и запущенного tg-bot. */
+  async getAvailableChannels(userId: number): Promise<Array<{ id: number; title: string }>> {
+    const response = await apiClient.get<Array<{ id: number; title: string }>>(`/tg-bot/channels/${userId}`)
+    return response.data
+  },
 }

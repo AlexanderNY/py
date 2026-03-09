@@ -750,11 +750,13 @@ class ProfileService:
                         url, xpath, take_screenshot, to_tg, to_tw, to_vk, to_wp,
                         urls, process_before_publish, process_description,
                         remove_emojis, remove_images, clean_html, process_services,
-                        status_review_after_process, add_static_html, static_html_content
+                        status_review_after_process, add_static_html, static_html_content,
+                        screenshot_only
                     ) VALUES (
                         %s, %s, 'standard', '[]',
                         %s, %s, %s, %s, %s, %s, %s,
-                        %s::jsonb, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s
+                        %s::jsonb, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s,
+                        %s
                     )
                     ON CONFLICT (user_id) DO UPDATE SET
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -775,6 +777,7 @@ class ProfileService:
                         status_review_after_process = EXCLUDED.status_review_after_process,
                         add_static_html = EXCLUDED.add_static_html,
                         static_html_content = EXCLUDED.static_html_content,
+                        screenshot_only = EXCLUDED.screenshot_only,
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING *
                     """,
@@ -798,6 +801,7 @@ class ProfileService:
                         data.get("status_review_after_process", False),
                         data.get("add_static_html", False),
                         (data.get("static_html_content") or "")[:1000],
+                        data.get("screenshot_only", False),
                     )
                 )
                 row = await cur.fetchone()
@@ -843,6 +847,8 @@ class ProfileService:
             settings.pop(key, None)
         if isinstance(settings.get("process_services"), str):
             settings["process_services"] = json.loads(settings["process_services"]) if settings["process_services"] else []
+        # Гарантируем булево значение для screenshot_only
+        settings["screenshot_only"] = bool(settings.get("screenshot_only", False))
         return settings
 
     async def record_curl_one_time_done_batch(self, items: List[Dict[str, Any]]) -> None:

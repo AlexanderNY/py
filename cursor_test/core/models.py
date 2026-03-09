@@ -48,6 +48,11 @@ BEGIN
   ALTER TABLE posts ADD COLUMN to_threads BOOLEAN DEFAULT FALSE;
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
+DO $$
+BEGIN
+  ALTER TABLE posts ADD COLUMN platform_texts JSONB DEFAULT '{}';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 """
 
 # Индексы для posts
@@ -710,6 +715,11 @@ END $$;
 DO $$
 BEGIN
   ALTER TABLE curl_settings ADD COLUMN static_html_content VARCHAR(1000);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE curl_settings ADD COLUMN screenshot_only BOOLEAN DEFAULT FALSE;
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 """

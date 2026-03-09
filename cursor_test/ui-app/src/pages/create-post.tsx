@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { PageHeader, PageContainer } from '@/components/ui'
 import { TipTapEditor } from '@/components/ui/tiptap-editor'
 import { createPostService } from '@/services/create-post-service'
 import { coreService } from '@/services/core-service'
@@ -323,6 +324,8 @@ export function CreatePostPage() {
       .map((s) => s.trim())
       .filter(Boolean)
     const num = (v: number | '') => (v === '' ? undefined : Number(v))
+    const effectiveStatus =
+      editingPostId !== null && status.trim() === 'review' ? 'ready' : status.trim() || undefined
     const basePayload = {
       title: postTitle.trim() || undefined,
       text: plainText,
@@ -339,7 +342,7 @@ export function CreatePostPage() {
       likes: num(likes),
       views: num(views),
       is_ad: isAd,
-      status: status.trim() || undefined,
+      status: effectiveStatus,
       to_tg: socialNetworks.tg,
       to_tw: socialNetworks.tw,
       to_wp: socialNetworks.wp,
@@ -351,7 +354,14 @@ export function CreatePostPage() {
       if (editingPostId !== null) {
         const id = editingPostId
         await createPostService.updatePost(id, basePayload)
-        setSuccess('Post updated successfully')
+        setSuccess(
+          effectiveStatus === 'ready'
+            ? 'Post updated and set to ready for distribution'
+            : 'Post updated successfully'
+        )
+        if (effectiveStatus === 'ready') {
+          setPostsReviewList((prev) => prev.filter((p) => p.id !== id))
+        }
         setPostTitle('')
         setPostContent('')
         setDomain('')
@@ -434,13 +444,8 @@ export function CreatePostPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-bold text-[var(--text-primary)]">Posts</h1>
-        <p className="text-[var(--text-secondary)] mt-1">
-          Create and manage universal posts for social networks
-        </p>
-      </div>
+    <PageContainer maxWidth="wide">
+      <PageHeader title="Posts" description="Create and manage universal posts for social networks" />
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -1019,6 +1024,9 @@ export function CreatePostPage() {
                           {label}
                         </th>
                       ))}
+                      <th className="py-2 px-3 text-right text-sm font-medium text-[var(--text-secondary)] whitespace-nowrap">
+                        Действия
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-color)]">
@@ -1029,6 +1037,16 @@ export function CreatePostPage() {
                             {formatPostCell(post, key)}
                           </td>
                         ))}
+                        <td className="py-2 px-3 text-right">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleEditPost(post.id)}
+                          >
+                            Редактировать
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1096,6 +1114,6 @@ export function CreatePostPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   )
 }

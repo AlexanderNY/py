@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { PageHeader, PageContainer } from '@/components/ui'
 import { twitterService } from '@/services/twitter-service'
 
 function generateId(): string {
@@ -145,11 +146,8 @@ export function TwitterPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-bold text-[var(--text-primary)]">Twitter Integration</h1>
-        <p className="text-[var(--text-secondary)] mt-1">Manage your Twitter posts and settings</p>
-      </div>
+    <PageContainer maxWidth="wide">
+      <PageHeader title="Twitter Integration" description="Manage your Twitter posts and settings" />
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -494,6 +492,6 @@ export function TwitterPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   )
 }

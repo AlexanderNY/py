@@ -6,6 +6,7 @@ from services.auth_service import (
     update_user_role_tariff,
     get_user_role_tariff_history,
 )
+from services import group_service
 from utils.exceptions import UserAlreadyExistsError, UserNotFoundError
 from dependencies import get_current_user, get_admin_user
 from typing import Dict, List
@@ -17,6 +18,7 @@ router = APIRouter(tags=["profile"])
 @router.get("/profile", response_model=UserProfile)
 async def get_profile(current_user: Dict = Depends(get_current_user)) -> UserProfile:
     """Получение профиля текущего пользователя."""
+    membership = await group_service.get_user_group_membership(current_user["id"])
     return UserProfile(
         id=current_user.get("id"),
         username=current_user["username"],
@@ -24,7 +26,10 @@ async def get_profile(current_user: Dict = Depends(get_current_user)) -> UserPro
         role=current_user["role"],
         tariff=current_user.get("tariff", "free"),
         is_email_verified=current_user["is_email_verified"],
-        created_at=current_user["created_at"]
+        created_at=current_user["created_at"],
+        group_id=membership["group_id"] if membership else None,
+        group_name=membership["group_name"] if membership else None,
+        role_in_group=membership["role_in_group"] if membership else None,
     )
 
 
@@ -40,7 +45,7 @@ async def update_profile(
             username=profile_update.username,
             email=profile_update.email
         )
-        
+        membership = await group_service.get_user_group_membership(updated_user["id"])
         return UserProfile(
             id=updated_user.get("id"),
             username=updated_user["username"],
@@ -48,7 +53,10 @@ async def update_profile(
             role=updated_user["role"],
             tariff=updated_user.get("tariff", "free"),
             is_email_verified=updated_user["is_email_verified"],
-            created_at=updated_user["created_at"]
+            created_at=updated_user["created_at"],
+            group_id=membership["group_id"] if membership else None,
+            group_name=membership["group_name"] if membership else None,
+            role_in_group=membership["role_in_group"] if membership else None,
         )
     except UserAlreadyExistsError as e:
         raise HTTPException(

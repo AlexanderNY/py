@@ -268,17 +268,24 @@ async def run_poll_cycle(token: str) -> bool:
     changed = old_h != new_h
     await _store_snapshot(schedules)
 
-    if not settings.NOTIFY_ON_CHANGE_ONLY or changed:
-        by_platform: dict[str, list[dict[str, Any]]] = {p: [] for p in BOT_PLATFORMS}
-        for s in schedules:
-            p = s.get("platform")
-            if p in by_platform:
-                by_platform[p].append(s)
-        for platform in BOT_PLATFORMS:
-            data = await _notify_bot(platform, by_platform[platform], token)
-            if platform == "url" and data and by_platform["url"]:
-                await _persist_url_posts(data, token)
-                await _mark_curl_one_time_done(by_platform["url"], data, token)
+    by_platform: dict[str, list[dict[str, Any]]] = {p: [] for p in BOT_PLATFORMS}
+    for s in schedules:
+        p = s.get("platform")
+        if p in by_platform:
+            by_platform[p].append(s)
+
+    # Для остальных платформ оповещаем только при изменении расписания (если NOTIFY_ON_CHANGE_ONLY).
+    # Для url всегда оповещаем и сохраняем посты при каждом цикле — иначе посты перестают собираться.
+    notify_all = not settings.NOTIFY_ON_CHANGE_ONLY or changed
+    for platform in BOT_PLATFORMS:
+        if platform == "url":
+            if by_platform["url"]:
+                data = await _notify_bot(platform, by_platform[platform], token)
+                if data:
+                    await _persist_url_posts(data, token)
+                    await _mark_curl_one_time_done(by_platform["url"], data, token)
+        elif notify_all:
+            await _notify_bot(platform, by_platform[platform], token)
     _last_poll_at = datetime.utcnow()
     return changed
 

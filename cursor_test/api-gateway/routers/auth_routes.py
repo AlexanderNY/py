@@ -183,3 +183,18 @@ async def get_role_tariff_history(
     return await forward_to_auth(f"/users/{user_id}/role-tariff-history", request)
 
 
+@router.api_route("/groups/{path:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
+async def groups_proxy(
+    request: Request,
+    path: str,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Проксирование запросов к группам на auth сервис.
+
+    GET/POST /api/auth/groups, /api/auth/groups/my, /api/auth/groups/{id}/members и т.д.
+    Требует JWT аутентификации.
+    """
+    target_path = f"/groups/{path}" if path.strip() else "/groups"
+    return await forward_to_auth(target_path, request)
+
+

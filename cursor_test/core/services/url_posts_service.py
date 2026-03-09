@@ -53,7 +53,7 @@ async def save_url_post(item: dict[str, Any]) -> int | None:
     """
     user_id = item.get("user_id")
     url = item.get("url") or ""
-    post_text = item.get("post_text") or ""
+    raw_post_text = item.get("post_text") or ""
     to_tg = item.get("to_tg", False)
     to_tw = item.get("to_tw", False)
     to_wp = item.get("to_wp", False)
@@ -67,13 +67,28 @@ async def save_url_post(item: dict[str, Any]) -> int | None:
         if path:
             images.append(path)
 
-    post_date = datetime.utcnow()
-    status = "collected"
-    images_json = json.dumps(images, ensure_ascii=False)
-
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
+            # Проверяем настройку screenshot_only для пользователя:
+            # если включена, текст поста в url_posts/posts не сохраняем.
+            screenshot_only = False
+            try:
+                await cur.execute(
+                    "SELECT screenshot_only FROM curl_settings WHERE user_id = %s",
+                    (user_id,),
+                )
+                row = await cur.fetchone()
+                if row and row[0]:
+                    screenshot_only = True
+            except Exception as e:
+                logger.warning("Failed to load screenshot_only for user %s: %s", user_id, e)
+
+            post_date = datetime.utcnow()
+            status = "collected"
+            post_text = "" if screenshot_only else raw_post_text
+            images_json = json.dumps(images, ensure_ascii=False)
+
             await cur.execute(
                 """
                 INSERT INTO url_posts (

@@ -2,9 +2,10 @@
 
 import httpx
 from typing import Any, Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from config import settings
+from database import get_db_connection, release_db_connection
 from services.healthcheck_service import healthcheck_service
 
 
@@ -168,6 +169,172 @@ class AdminService:
                 "message": str(e),
                 "count": 0,
             }
+
+    async def run_collect_cycle(self) -> Dict[str, Any]:
+        """Запускает один цикл сбора на collector. Проксирует POST /collect/run."""
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(f"{settings.COLLECTOR_SERVICE_URL}/collect/run")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    result = {
+                        "status": data.get("status", "success"),
+                        "message": data.get("message", ""),
+                        "count": int(data.get("count", 0)),
+                    }
+                    if data.get("errors"):
+                        result["errors"] = data["errors"]
+                    return result
+                return {
+                    "status": "error",
+                    "message": f"Collector returned HTTP {resp.status_code}",
+                    "count": 0,
+                }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": str(e),
+                "count": 0,
+            }
+
+    async def run_distribute_cycle(self) -> Dict[str, Any]:
+        """Запускает один цикл распределения на collector. Проксирует POST /distribute/run."""
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(f"{settings.COLLECTOR_SERVICE_URL}/distribute/run")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return {
+                        "status": data.get("status", "success"),
+                        "message": data.get("message", ""),
+                        "count": int(data.get("count", 0)),
+                    }
+                return {
+                    "status": "error",
+                    "message": f"Collector returned HTTP {resp.status_code}",
+                    "count": 0,
+                }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": str(e),
+                "count": 0,
+            }
+
+    async def run_posting_diagnostics(self) -> Dict[str, Any]:
+        """Запускает цикл диагностики постинга: сводки tg_posts/posts по статусам и подсказки."""
+        result: Dict[str, Any] = {
+            "tg_posts_by_status": [],
+            "posts_by_status": [],
+            "ready_for_telegram": 0,
+            "profiles_with_channel": 0,
+            "hints": [],
+            "collected_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            conn = await get_db_connection()
+            try:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        SELECT status, COUNT(*) AS cnt
+                        FROM tg_posts
+                        GROUP BY status
+                        ORDER BY status
+                        """
+                    )
+                    rows = await cur.fetchall()
+                    result["tg_posts_by_status"] = [
+                        {"status": r[0], "count": r[1]} for r in rows
+                    ]
+
+                    await cur.execute(
+                        """
+                        SELECT status, source_platform, COUNT(*) AS cnt
+                        FROM posts
+                        GROUP BY status, source_platform
+                        ORDER BY status, source_platform
+                        """
+                    )
+                    rows = await cur.fetchall()
+                    result["posts_by_status"] = [
+                        {
+                            "status": r[0],
+                            "source_platform": r[1],
+                            "count": r[2],
+                        }
+                        for r in rows
+                    ]
+
+                    await cur.execute(
+                        """
+                        SELECT COUNT(*) FROM tg_posts p
+                        JOIN tg_profiles pr ON p.user_id = pr.user_id
+                        WHERE p.status = 'ready'
+                          AND pr.channel_to_post IS NOT NULL
+                          AND pr.channel_to_post != ''
+                        """
+                    )
+                    (result["ready_for_telegram"],) = (await cur.fetchone()) or (0,)
+
+                    await cur.execute(
+                        """
+                        SELECT COUNT(*) FROM tg_profiles
+                        WHERE channel_to_post IS NOT NULL AND channel_to_post != ''
+                        """
+                    )
+                    (result["profiles_with_channel"],) = (await cur.fetchone()) or (0,)
+
+            finally:
+                await release_db_connection(conn)
+
+            # Подсказки на основе данных
+            hints: List[str] = []
+            tg_by_status = {r["status"]: r["count"] for r in result["tg_posts_by_status"]}
+            posts_list = result["posts_by_status"]
+
+            collected_tg = tg_by_status.get("collected", 0)
+            if collected_tg > 0:
+                hints.append(
+                    f"В tg_posts {collected_tg} постов со статусом collected. "
+                    "Проверьте, что запущен Collector и цикл collect забирает посты в posts."
+                )
+            processing_tg = tg_by_status.get("processing", 0)
+            ready_tg = tg_by_status.get("ready", 0)
+            if processing_tg > 0 and ready_tg == 0:
+                hints.append(
+                    f"В tg_posts {processing_tg} постов в processing, 0 в ready. "
+                    "После обработки в Processor дистрибьютор должен обновить tg_posts до ready. "
+                    "Проверьте Collector (distribute) и флаг to_tg у постов."
+                )
+            posts_collected = sum(
+                r["count"] for r in posts_list if r.get("status") == "collected"
+            )
+            if posts_collected > 0:
+                hints.append(
+                    f"В posts {posts_collected} постов в статусе collected. "
+                    "Запустите цикл обработки (Processor) или проверьте, что Processor запущен."
+                )
+            posts_ready = sum(
+                r["count"] for r in posts_list if r.get("status") == "ready"
+            )
+            if posts_ready > 0 and result["ready_for_telegram"] == 0:
+                hints.append(
+                    f"В posts {posts_ready} постов в статусе ready, но в tg_posts нет постов ready для публикации. "
+                    "Проверьте Collector (distribute) и что у постов из TG включён to_tg."
+                )
+            if result["ready_for_telegram"] > 0 and result["profiles_with_channel"] == 0:
+                hints.append(
+                    "Есть посты ready в tg_posts, но ни у одного профиля не задан channel_to_post. "
+                    "Задайте канал для публикации в tg_profiles."
+                )
+            if not hints:
+                hints.append("Явных проблем по сводкам не обнаружено. Проверьте логи сервисов при необходимости.")
+            result["hints"] = hints
+
+        except Exception as e:
+            result["hints"] = [f"Ошибка при сборе диагностики: {e!s}"]
+        return result
 
 
 def _parse_loop_status(raw: Any) -> Optional[Dict[str, Any]]:

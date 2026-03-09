@@ -59,11 +59,35 @@ async def _distributor_loop() -> None:
 
 # ── Lifespan ────────────────────────────────────────────────────
 
+async def _check_tables_at_startup() -> None:
+    """Проверяет доступ к таблицам tg_posts и posts при старте. Логирует CRITICAL при ошибке."""
+    try:
+        async with get_db_connection() as conn:
+            async with conn.cursor() as cur:
+                for table in ("tg_posts", "posts"):
+                    try:
+                        await cur.execute(f"SELECT 1 FROM {table} LIMIT 1")
+                    except Exception as e:
+                        logger.critical(
+                            "Collector: таблица %s недоступна (%s). "
+                            "Убедитесь, что Core сервис уже создал схему БД и DATABASE_URL совпадает с Core/tg-bot.",
+                            table,
+                            e,
+                        )
+    except Exception as e:
+        logger.critical(
+            "Collector: не удалось подключиться к БД при старте: %s. "
+            "Проверьте DATABASE_URL и что PostgreSQL запущен.",
+            e,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _collect_task, _distribute_task, _started_at
 
     await init_db()
+    await _check_tables_at_startup()
     _started_at = datetime.utcnow()
     logger.info(
         "Collector started; collect every %ds, distribute every %ds",
@@ -135,11 +159,21 @@ async def get_status():
 async def force_collect():
     """Принудительный запуск одного цикла сбора."""
     try:
-        count = await collect_service.run_collect_cycle()
+        count, errors = await collect_service.run_collect_cycle()
+        if errors and count == 0:
+            status_val = "error"
+            message = f"Collect cycle failed: {'; '.join(errors)}"
+        elif errors:
+            status_val = "partial"
+            message = f"Collected {count} posts; errors: {'; '.join(errors)}"
+        else:
+            status_val = "success"
+            message = f"Collect cycle completed, {count} posts collected"
         return CycleResult(
-            status="success",
-            message=f"Collect cycle completed, {count} posts collected",
+            status=status_val,
+            message=message,
             count=count,
+            errors=errors if errors else None,
         )
     except Exception as e:
         logger.exception("Force collect error")

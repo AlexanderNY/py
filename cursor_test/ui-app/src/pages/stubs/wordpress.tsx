@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { PageHeader, PageContainer } from '@/components/ui'
 import { TipTapEditor } from '@/components/ui/tiptap-editor'
 import { wordpressService } from '@/services/wordpress-service'
 import type { WordPressPost, WordPressPostListItem, PostStatus, PublishScheduleType } from '@/types/wordpress'
@@ -470,11 +471,8 @@ export function WordPressPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-bold text-[var(--text-primary)]">WordPress Integration</h1>
-        <p className="text-[var(--text-secondary)] mt-1">Manage your WordPress sites and content</p>
-      </div>
+    <PageContainer maxWidth="wide">
+      <PageHeader title="WordPress Integration" description="Manage your WordPress sites and content" />
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -1411,6 +1409,6 @@ export function WordPressPage() {
         </Card>
       )}
 
-    </div>
+    </PageContainer>
   )
 }

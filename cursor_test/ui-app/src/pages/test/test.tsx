@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { PageHeader, PageContainer } from '@/components/ui'
 import { testService } from '@/services/test-service'
 import { useAuth } from '@/contexts/auth-context'
 import type { Product } from '@/types/test'
@@ -127,11 +128,8 @@ export function TestPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-bold text-[var(--text-primary)]">Test</h1>
-        <p className="text-[var(--text-secondary)] mt-1">Create and search orders with product selection</p>
-      </div>
+    <PageContainer>
+      <PageHeader title="Test" description="Create and search orders with product selection" />
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -280,6 +278,6 @@ export function TestPage() {
           </Button>
         </CardFooter>
       </Card>
-    </div>
+    </PageContainer>
   )
 }

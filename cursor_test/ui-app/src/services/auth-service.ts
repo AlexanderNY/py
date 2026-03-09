@@ -2,10 +2,12 @@ import { apiClient, getErrorMessage } from './api-client'
 import type { 
   TokenResponse, 
   User, 
+  UserRole,
   LoginCredentials, 
   RegisterCredentials, 
   ProfileUpdate,
   RoleTariffHistoryEntry,
+  GroupResponse,
 } from '@/types'
 
 export const authService = {
@@ -110,7 +112,7 @@ export const authService = {
 
   async updateUser(
     userId: number,
-    data: { role?: 'guest' | 'user' | 'admin'; tariff?: string }
+    data: { role?: UserRole; tariff?: string }
   ): Promise<User> {
     try {
       const response = await apiClient.patch<User>(`/auth/users/${userId}`, data)
@@ -129,6 +131,35 @@ export const authService = {
     } catch (error) {
       throw new Error(getErrorMessage(error))
     }
+  },
+
+  async getMyGroup(): Promise<GroupResponse> {
+    const response = await apiClient.get<GroupResponse>('/auth/groups/my')
+    return response.data
+  },
+
+  async createGroup(name: string): Promise<GroupResponse> {
+    const response = await apiClient.post<GroupResponse>('/auth/groups', { name })
+    return response.data
+  },
+
+  async updateGroup(groupId: number, name: string): Promise<GroupResponse> {
+    const response = await apiClient.patch<GroupResponse>(`/auth/groups/${groupId}`, { name })
+    return response.data
+  },
+
+  async addGroupMember(groupId: number, email: string): Promise<GroupResponse> {
+    await apiClient.post(`/auth/groups/${groupId}/members`, { email })
+    return this.getMyGroup()
+  },
+
+  async removeGroupMember(groupId: number, userId: number): Promise<void> {
+    await apiClient.delete(`/auth/groups/${groupId}/members/${userId}`)
+  },
+
+  async getAllGroups(): Promise<GroupResponse[]> {
+    const response = await apiClient.get<GroupResponse[]>('/auth/groups')
+    return response.data
   },
 }
 

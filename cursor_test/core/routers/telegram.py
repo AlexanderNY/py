@@ -1,6 +1,7 @@
 """Роутер для Telegram профилей и постов."""
 
 from fastapi import APIRouter, HTTPException, Header, File, UploadFile, Form
+from fastapi.responses import FileResponse
 from typing import Optional
 from services.profile_service import profile_service
 from services.post_service import post_service
@@ -10,6 +11,8 @@ from pathlib import Path
 
 
 router = APIRouter(prefix="/tg", tags=["Telegram"])
+
+UPLOADS_TG_DIR = Path("uploads/tg")
 
 
 def get_user_id_from_header(x_user_id: Optional[str] = Header(None)) -> int:
@@ -229,3 +232,14 @@ async def delete_tg_post(
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     return post
+
+
+@router.get("/uploads/{filename}")
+async def get_tg_upload(filename: str):
+    """Отдаёт файл из uploads/tg для превью в UI (например при редактировании поста)."""
+    if "/" in filename or filename.startswith("."):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    file_path = UPLOADS_TG_DIR / filename
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path, filename=filename)

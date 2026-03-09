@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { PageHeader, PageContainer } from '@/components/ui'
+import { EmptyState, DataTable } from '@/components/ui'
 import { coreService } from '@/services/core-service'
 import type { HealthcheckItem, StatisticsItem } from '@/types/core'
 
@@ -42,11 +44,8 @@ export function StatisticsPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-bold text-[var(--text-primary)]">Statistics</h1>
-        <p className="text-[var(--text-secondary)] mt-1">View your service usage analytics and metrics</p>
-      </div>
+    <PageContainer maxWidth="wide">
+      <PageHeader title="Statistics" description="View your service usage analytics and metrics" />
 
       {/* Healthcheck Section */}
       <Card className="animate-slide-up">
@@ -127,9 +126,10 @@ export function StatisticsPage() {
           )}
 
           {healthcheckData.length === 0 && !isLoadingHealthcheck && !healthcheckError && (
-            <p className="text-[var(--text-muted)] text-center py-8">
-              Click "Request Healthcheck" to check service status
-            </p>
+            <EmptyState
+              title="No healthcheck data"
+              description='Click "Request Healthcheck" to check service status.'
+            />
           )}
         </CardContent>
       </Card>
@@ -164,40 +164,29 @@ export function StatisticsPage() {
           )}
 
           {statisticsData.length > 0 && (
-            <div className="overflow-x-auto animate-slide-down">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="border-b border-[var(--border-color)]">
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Service Name</th>
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Collected Posts</th>
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Processed Posts</th>
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Published Posts</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {statisticsData.map((item, index) => (
-                    <tr 
-                      key={index} 
-                      className="border-b border-[var(--border-color)] hover:bg-[var(--bg-secondary)] transition-colors"
-                    >
-                      <td className="py-3 px-4 text-[var(--text-secondary)] font-medium">{item.service_name}</td>
-                      <td className="py-3 px-4 text-[var(--text-secondary)]">{item.collected_posts.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-[var(--text-secondary)]">{item.processed_posts.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-[var(--text-secondary)]">{item.published_posts.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="animate-slide-down">
+              <DataTable<StatisticsItem>
+                columns={[
+                  { key: 'service_name', header: 'Service Name', render: (v) => <span className="font-medium">{String(v)}</span> },
+                  { key: 'collected_posts', header: 'Collected Posts', render: (v) => Number(v).toLocaleString() },
+                  { key: 'processed_posts', header: 'Processed Posts', render: (v) => Number(v).toLocaleString() },
+                  { key: 'published_posts', header: 'Published Posts', render: (v) => Number(v).toLocaleString() },
+                ]}
+                data={statisticsData}
+                keyExtractor={(row) => row.service_name}
+                striped
+              />
             </div>
           )}
 
           {statisticsData.length === 0 && !isLoadingStatistics && !statisticsError && (
-            <p className="text-[var(--text-muted)] text-center py-8">
-              Click "Request Statistics" to view service statistics
-            </p>
+            <EmptyState
+              title="No statistics data"
+              description='Click "Request Statistics" to view service statistics.'
+            />
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   )
 }

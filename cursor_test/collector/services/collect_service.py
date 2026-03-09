@@ -27,7 +27,7 @@ class CollectService:
         self.total_collected: int = 0
         self.last_cycle_collected: int = 0
 
-    async def run_collect_cycle(self) -> int:
+    async def run_collect_cycle(self) -> tuple[int, list[str]]:
         """Выполняет один цикл сбора.
 
         Для каждой таблицы из SOURCE_TABLES:
@@ -36,9 +36,10 @@ class CollectService:
         3. UPDATE source status -> 'processing'
 
         Returns:
-            Количество собранных постов за цикл.
+            (Количество собранных постов за цикл, список ошибок по таблицам).
         """
         cycle_count = 0
+        errors: list[str] = []
 
         for source in SOURCE_TABLES:
             platform = source["platform"]
@@ -50,8 +51,10 @@ class CollectService:
                     logger.info(
                         "Collected %d posts from %s", count, table
                     )
-            except Exception:
-                logger.exception("Error collecting from %s", table)
+            except Exception as e:
+                err_msg = f"{table}: {e!s}"
+                errors.append(err_msg)
+                logger.exception("Error collecting from %s: %s", table, e)
 
         self.last_run_at = datetime.utcnow()
         self.last_cycle_collected = cycle_count
@@ -59,8 +62,10 @@ class CollectService:
 
         if cycle_count > 0:
             logger.info("Collect cycle done: %d posts total", cycle_count)
+        if errors:
+            logger.warning("Collect cycle had %d error(s): %s", len(errors), errors)
 
-        return cycle_count
+        return cycle_count, errors
 
     async def _collect_from_table(self, platform: str, table: str) -> int:
         """Собирает посты из одной платформенной таблицы.
@@ -117,6 +122,11 @@ class CollectService:
                     # Статус в posts — 'collected' (далее processor переведёт в 'processing')
                     status_idx = _POST_COLUMNS.index("status")
                     values[status_idx] = "collected"
+
+                    # В posts.images тип JSONB; в tg_posts/url_posts может быть jsonb или text[] — приводим к JSON-строке
+                    images_idx = _POST_COLUMNS.index("images")
+                    if values[images_idx] is not None and not isinstance(values[images_idx], str):
+                        values[images_idx] = json.dumps(values[images_idx], ensure_ascii=False)
 
                     await cur.execute(
                         f"""

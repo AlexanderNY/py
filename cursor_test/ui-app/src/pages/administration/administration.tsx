@@ -2,12 +2,15 @@ import { useState, FormEvent, Fragment, useEffect, type ReactNode } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { PageHeader, PageContainer } from '@/components/ui'
+import { TableSkeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui'
 import { TipTapEditor } from '@/components/ui/tiptap-editor'
 import { authService } from '@/services/auth-service'
 import { coreService } from '@/services/core-service'
 import { notificationsService } from '@/services/notifications-service'
 import { Input } from '@/components/ui/input'
-import type { User, RoleTariffHistoryEntry } from '@/types/auth'
+import type { User, RoleTariffHistoryEntry, GroupResponse } from '@/types/auth'
 import type {
   UserStatisticsItem,
   ScheduleSnapshot,
@@ -15,9 +18,10 @@ import type {
   ServicesStatusResponse,
   PostsTablesResponse,
   PostRow,
+  PostingDiagnosticsResponse,
 } from '@/types/core'
 
-type AdminTab = 'users' | 'statistics' | 'schedule' | 'notifications' | 'services-status' | 'processor' | 'collector' | 'scheduler' | 'posts-tables'
+type AdminTab = 'users' | 'groups' | 'statistics' | 'schedule' | 'notifications' | 'services-status' | 'processor' | 'collector' | 'scheduler' | 'posts-tables' | 'posting-diagnostics'
 
 export function AdministrationPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('users')
@@ -36,7 +40,7 @@ export function AdministrationPage() {
   const [historyList, setHistoryList] = useState<RoleTariffHistoryEntry[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [historyError, setHistoryError] = useState('')
-  const ROLES = ['guest', 'user', 'admin'] as const
+  const ROLES = ['guest', 'user', 'admin', 'manager', 'author'] as const
   const TARIFFS = ['free', 'basic', 'premium']
   const [statisticsError, setStatisticsError] = useState('')
   const [scheduleError, setScheduleError] = useState('')
@@ -74,6 +78,21 @@ export function AdministrationPage() {
   const [isLoadingPostsList, setIsLoadingPostsList] = useState(false)
   const [postsListError, setPostsListError] = useState('')
 
+  // Posting diagnostics (admin)
+  const [postingDiagnostics, setPostingDiagnostics] = useState<PostingDiagnosticsResponse | null>(null)
+  const [isLoadingPostingDiagnostics, setIsLoadingPostingDiagnostics] = useState(false)
+  const [postingDiagnosticsError, setPostingDiagnosticsError] = useState('')
+  const [isRunningCollect, setIsRunningCollect] = useState(false)
+  const [collectMessage, setCollectMessage] = useState('')
+  const [collectError, setCollectError] = useState('')
+  const [isRunningDistribute, setIsRunningDistribute] = useState(false)
+  const [distributeMessage, setDistributeMessage] = useState('')
+  const [distributeError, setDistributeError] = useState('')
+
+  const [groupsList, setGroupsList] = useState<GroupResponse[]>([])
+  const [isLoadingGroups, setIsLoadingGroups] = useState(false)
+  const [groupsError, setGroupsError] = useState('')
+
   async function handleLoadUsers() {
     setUsersError('')
     setUserUpdateError('')
@@ -86,6 +105,20 @@ export function AdministrationPage() {
       setUsers([])
     } finally {
       setIsLoadingUsers(false)
+    }
+  }
+
+  async function handleLoadGroups() {
+    setGroupsError('')
+    setIsLoadingGroups(true)
+    try {
+      const data = await authService.getAllGroups()
+      setGroupsList(data)
+    } catch (error) {
+      setGroupsError(error instanceof Error ? error.message : 'Failed to fetch groups')
+      setGroupsList([])
+    } finally {
+      setIsLoadingGroups(false)
     }
   }
 
@@ -310,6 +343,64 @@ export function AdministrationPage() {
     }
   }
 
+  async function handleRunPostingDiagnostics() {
+    setPostingDiagnosticsError('')
+    setPostingDiagnostics(null)
+    setIsLoadingPostingDiagnostics(true)
+    try {
+      const data = await coreService.getPostingDiagnostics()
+      setPostingDiagnostics(data)
+    } catch (error) {
+      setPostingDiagnosticsError(error instanceof Error ? error.message : 'Failed to run posting diagnostics')
+      setPostingDiagnostics(null)
+    } finally {
+      setIsLoadingPostingDiagnostics(false)
+    }
+  }
+
+  async function handleRunCollectCycle() {
+    setCollectError('')
+    setCollectMessage('')
+    setIsRunningCollect(true)
+    try {
+      const data = await coreService.runCollectCycle()
+      if (data.status === 'success') {
+        setCollectMessage(`Собрано постов: ${data.count}. ${data.message}`)
+        await handleRunPostingDiagnostics()
+      } else if (data.status === 'partial') {
+        setCollectMessage(`Собрано постов: ${data.count}. ${data.message}`)
+        if (data.errors?.length) setCollectError(data.errors.join('; '))
+        await handleRunPostingDiagnostics()
+      } else {
+        setCollectError(data.message || 'Ошибка цикла сбора')
+        if (data.errors?.length) setCollectError((prev) => prev + '\n' + data.errors!.join('\n'))
+      }
+    } catch (error) {
+      setCollectError(error instanceof Error ? error.message : 'Ошибка запуска сбора')
+    } finally {
+      setIsRunningCollect(false)
+    }
+  }
+
+  async function handleRunDistributeCycle() {
+    setDistributeError('')
+    setDistributeMessage('')
+    setIsRunningDistribute(true)
+    try {
+      const data = await coreService.runDistributeCycle()
+      if (data.status === 'success') {
+        setDistributeMessage(`Распределено постов: ${data.count}. ${data.message}`)
+        await handleRunPostingDiagnostics()
+      } else {
+        setDistributeError(data.message || 'Ошибка цикла распределения')
+      }
+    } catch (error) {
+      setDistributeError(error instanceof Error ? error.message : 'Ошибка запуска распределения')
+    } finally {
+      setIsRunningDistribute(false)
+    }
+  }
+
   async function handleLoadPostsList() {
     setPostsListError('')
     setIsLoadingPostsList(true)
@@ -389,11 +480,8 @@ export function AdministrationPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-bold text-[var(--text-primary)]">Administration</h1>
-        <p className="text-[var(--text-secondary)] mt-1">Manage users and view usage statistics</p>
-      </div>
+    <PageContainer maxWidth="wide">
+      <PageHeader title="Administration" description="Manage users and view usage statistics" />
 
       {/* Tabs */}
       <div className="flex space-x-1 border-b border-[var(--border-color)]">
@@ -406,6 +494,16 @@ export function AdministrationPage() {
           }`}
         >
           Users
+        </button>
+        <button
+          onClick={() => setActiveTab('groups')}
+          className={`px-4 py-2 font-medium text-sm transition-colors ${
+            activeTab === 'groups'
+              ? 'text-primary-400 border-b-2 border-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          Groups
         </button>
         <button
           onClick={() => setActiveTab('statistics')}
@@ -487,6 +585,16 @@ export function AdministrationPage() {
         >
           Posts
         </button>
+        <button
+          onClick={() => setActiveTab('posting-diagnostics')}
+          className={`px-4 py-2 font-medium text-sm transition-colors ${
+            activeTab === 'posting-diagnostics'
+              ? 'text-primary-400 border-b-2 border-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          Диагностика постинга
+        </button>
       </div>
 
       {/* Users Tab */}
@@ -512,6 +620,8 @@ export function AdministrationPage() {
               </svg>
               Load Users
             </Button>
+
+            {isLoadingUsers && <TableSkeleton rows={5} cols={7} className="mt-4" />}
 
             {usersError && (
               <Alert variant="error" className="animate-slide-down">
@@ -678,9 +788,88 @@ export function AdministrationPage() {
             )}
 
             {users.length === 0 && !isLoadingUsers && !usersError && (
-              <p className="text-[var(--text-muted)] text-center py-8">
-                Click "Load Users" to fetch the list of users
-              </p>
+              <EmptyState
+                title="No users loaded"
+                description='Click "Load Users" to fetch the list of users.'
+              />
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Groups Tab */}
+      {activeTab === 'groups' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              Groups
+            </CardTitle>
+            <CardDescription>All groups and their members</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button
+              onClick={handleLoadGroups}
+              isLoading={isLoadingGroups}
+              className="w-full sm:w-auto"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Load Groups
+            </Button>
+            {groupsError && (
+              <Alert variant="error" className="animate-slide-down">
+                {groupsError}
+              </Alert>
+            )}
+            {groupsList.length > 0 && (
+              <div className="space-y-6 animate-slide-down">
+                {groupsList.map((group) => (
+                  <div key={group.id} className="rounded-xl border border-[var(--border-color)] p-4 bg-[var(--bg-secondary)]">
+                    <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">{group.name}</h3>
+                    <p className="text-sm text-[var(--text-muted)] mb-3">ID: {group.id} · Created: {new Date(group.created_at).toLocaleDateString()}</p>
+                    {group.members && group.members.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-[var(--border-color)]">
+                              <th className="text-left py-2 px-3 font-medium text-[var(--text-secondary)]">Username</th>
+                              <th className="text-left py-2 px-3 font-medium text-[var(--text-secondary)]">Email</th>
+                              <th className="text-left py-2 px-3 font-medium text-[var(--text-secondary)]">Tariff</th>
+                              <th className="text-left py-2 px-3 font-medium text-[var(--text-secondary)]">Role in group</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {group.members.map((m) => (
+                              <tr key={m.user_id} className="border-b border-[var(--border-color)] last:border-0">
+                                <td className="py-2 px-3 text-[var(--text-primary)]">{m.username}</td>
+                                <td className="py-2 px-3 text-[var(--text-secondary)]">{m.email}</td>
+                                <td className="py-2 px-3 text-[var(--text-secondary)]">{m.tariff}</td>
+                                <td className="py-2 px-3">
+                                  <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${m.role_in_group === 'manager' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                    {m.role_in_group}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-[var(--text-muted)] text-sm">No members</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {groupsList.length === 0 && !isLoadingGroups && !groupsError && (
+              <EmptyState
+                title="No groups loaded"
+                description='Click "Load Groups" to fetch the list of groups.'
+              />
             )}
           </CardContent>
         </Card>
@@ -742,6 +931,10 @@ export function AdministrationPage() {
                           <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${
                             stat.role === 'admin'
                               ? 'bg-purple-500/20 text-purple-400'
+                              : stat.role === 'manager'
+                              ? 'bg-amber-500/20 text-amber-400'
+                              : stat.role === 'author'
+                              ? 'bg-teal-500/20 text-teal-400'
                               : stat.role === 'user'
                               ? 'bg-blue-500/20 text-blue-400'
                               : 'bg-gray-500/20 text-gray-400'
@@ -1761,6 +1954,171 @@ export function AdministrationPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+
+      {/* Posting diagnostics Tab */}
+      {activeTab === 'posting-diagnostics' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              Диагностика постинга (Telegram)
+            </CardTitle>
+            <CardDescription>
+              Сводки по tg_posts и posts по статусам и подсказки при застревании постов в collected
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <Button
+              onClick={handleRunPostingDiagnostics}
+              isLoading={isLoadingPostingDiagnostics}
+              className="w-full sm:w-auto"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Запустить диагностику
+            </Button>
+
+            <div className="flex flex-wrap gap-3 items-center">
+              <span className="text-sm font-medium text-[var(--text-secondary)]">Быстрые действия:</span>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleRunCollectCycle}
+                isLoading={isRunningCollect}
+              >
+                Запустить сбор (collect)
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleRunDistributeCycle}
+                isLoading={isRunningDistribute}
+              >
+                Запустить распределение (distribute)
+              </Button>
+              <span className="text-xs text-[var(--text-muted)]">
+                Цикл обработки — на вкладке Processor
+              </span>
+            </div>
+            {(collectMessage || collectError) && (
+              <Alert variant={collectError ? 'error' : 'success'} className="animate-slide-down">
+                {collectError || collectMessage}
+              </Alert>
+            )}
+            {(distributeMessage || distributeError) && (
+              <Alert variant={distributeError ? 'error' : 'success'} className="animate-slide-down">
+                {distributeError || distributeMessage}
+              </Alert>
+            )}
+
+            {postingDiagnosticsError && (
+              <Alert variant="error" className="animate-slide-down">
+                {postingDiagnosticsError}
+              </Alert>
+            )}
+
+            {postingDiagnostics && (
+              <div className="space-y-6 animate-slide-down">
+                {postingDiagnostics.collected_at && (
+                  <p className="text-sm text-[var(--text-muted)]">
+                    Собрано: {new Date(postingDiagnostics.collected_at).toLocaleString()}
+                  </p>
+                )}
+
+                <div>
+                  <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">tg_posts по статусам</h3>
+                  <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
+                    <table className="w-full">
+                      <thead className="bg-[var(--bg-tertiary)]">
+                        <tr>
+                          <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Статус</th>
+                          <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Количество</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--border-color)]">
+                        {postingDiagnostics.tg_posts_by_status.length === 0 ? (
+                          <tr>
+                            <td colSpan={2} className="py-3 px-4 text-[var(--text-muted)] text-sm">Нет данных</td>
+                          </tr>
+                        ) : (
+                          postingDiagnostics.tg_posts_by_status.map((row) => (
+                            <tr key={row.status} className="hover:bg-[var(--bg-tertiary)]">
+                              <td className="py-3 px-4 text-[var(--text-primary)] font-medium">{row.status}</td>
+                              <td className="py-3 px-4 text-right text-[var(--text-secondary)]">{row.count.toLocaleString()}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">posts по статусам и платформе</h3>
+                  <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
+                    <table className="w-full">
+                      <thead className="bg-[var(--bg-tertiary)]">
+                        <tr>
+                          <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Статус</th>
+                          <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Платформа</th>
+                          <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Количество</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--border-color)]">
+                        {postingDiagnostics.posts_by_status.length === 0 ? (
+                          <tr>
+                            <td colSpan={3} className="py-3 px-4 text-[var(--text-muted)] text-sm">Нет данных</td>
+                          </tr>
+                        ) : (
+                          postingDiagnostics.posts_by_status.map((row, idx) => (
+                            <tr key={`${row.status}-${row.source_platform ?? ''}-${idx}`} className="hover:bg-[var(--bg-tertiary)]">
+                              <td className="py-3 px-4 text-[var(--text-primary)] font-medium">{row.status}</td>
+                              <td className="py-3 px-4 text-[var(--text-secondary)]">{row.source_platform ?? '—'}</td>
+                              <td className="py-3 px-4 text-right text-[var(--text-secondary)]">{row.count.toLocaleString()}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-4">
+                  <span className="px-3 py-1.5 rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-secondary)] text-sm">
+                    Готовы к публикации в TG: <strong className="text-[var(--text-primary)]">{postingDiagnostics.ready_for_telegram.toLocaleString()}</strong>
+                  </span>
+                  <span className="px-3 py-1.5 rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-secondary)] text-sm">
+                    Профилей с каналом: <strong className="text-[var(--text-primary)]">{postingDiagnostics.profiles_with_channel.toLocaleString()}</strong>
+                  </span>
+                </div>
+
+                {postingDiagnostics.hints.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Рекомендации</h3>
+                    <ul className="space-y-2">
+                      {postingDiagnostics.hints.map((hint, idx) => (
+                        <li key={idx} className="flex gap-2 text-sm text-[var(--text-secondary)]">
+                          <span className="text-amber-400 shrink-0">•</span>
+                          <span>{hint}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!postingDiagnostics && !isLoadingPostingDiagnostics && !postingDiagnosticsError && (
+              <p className="text-[var(--text-muted)] text-center py-8">
+                Нажмите «Запустить диагностику», чтобы получить сводки и подсказки по пайплайну постинга.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </PageContainer>
   )
 }

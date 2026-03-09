@@ -28,6 +28,8 @@ export interface CustomURLSettings {
   status_review_after_process?: boolean
   add_static_html?: boolean
   static_html_content?: string
+   /** Если true — в базу сохраняется только скриншот без текста */
+  screenshot_only?: boolean
 }
 
 /** Элемент списка постов из url_posts (собранные по URL) */

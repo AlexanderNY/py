@@ -29,3 +29,9 @@ class AuthResponse(BaseModel):
     message: Optional[str] = None
     error: Optional[str] = None
     requires_password: bool = False
+
+
+class ChannelItem(BaseModel):
+    """Элемент списка канала (id и название)."""
+    id: int
+    title: str

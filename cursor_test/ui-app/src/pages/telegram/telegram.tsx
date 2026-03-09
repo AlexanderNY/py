@@ -4,6 +4,10 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { PageHeader, PageContainer } from '@/components/ui'
+import { SkeletonCard } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui'
+import { apiClient } from '@/services/api-client'
 import { telegramService, type TgAuthStatus } from '@/services/telegram-service'
 import { useAuth } from '@/contexts/auth-context'
 import type { TelegramConfig, TelegramPostListItem, TimeInterval, PublishScheduleType } from '@/types/telegram'
@@ -78,6 +82,11 @@ export function TelegramPage() {
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
   const [deletingPostId, setDeletingPostId] = useState<number | null>(null)
   
+  // Available channels (check)
+  const [availableChannels, setAvailableChannels] = useState<Array<{ id: number; title: string }>>([])
+  const [isCheckingChannels, setIsCheckingChannels] = useState(false)
+  const [channelsError, setChannelsError] = useState('')
+
   // Loading and error states
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
   const [isSavingProfile, setIsSavingProfile] = useState(false)
@@ -215,12 +224,27 @@ export function TelegramPage() {
 
   async function handleEditPost(postId: number) {
     setError('')
+    if (imagePreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(imagePreview)
+    }
     try {
       const post = await telegramService.getPost(postId)
       setPostText(post.post_text ?? '')
       setEditingPostId(postId)
-      setImagePreview(post.images && post.images.length > 0 ? post.images[0] : null)
       setImageFile(null)
+      const firstImage = post.images?.[0]
+      if (firstImage) {
+        if (typeof firstImage === 'string' && (firstImage.startsWith('/uploads/tg/') || firstImage.startsWith('uploads/tg/'))) {
+          const filename = firstImage.split('/').pop() ?? firstImage
+          const res = await apiClient.get<Blob>(`/tg/uploads/${encodeURIComponent(filename)}`, { responseType: 'blob' })
+          const blobUrl = URL.createObjectURL(res.data)
+          setImagePreview(blobUrl)
+        } else {
+          setImagePreview(typeof firstImage === 'string' ? firstImage : null)
+        }
+      } else {
+        setImagePreview(null)
+      }
       setActiveTab('create')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load post for editing')
@@ -246,6 +270,9 @@ export function TelegramPage() {
         setEditingPostId(null)
         setPostText('')
         setImageFile(null)
+        if (imagePreview?.startsWith('blob:')) {
+          URL.revokeObjectURL(imagePreview)
+        }
         setImagePreview(null)
         loadPosts()
       } else {
@@ -253,6 +280,9 @@ export function TelegramPage() {
         setSuccess('Post created successfully')
         setPostText('')
         setImageFile(null)
+        if (imagePreview?.startsWith('blob:')) {
+          URL.revokeObjectURL(imagePreview)
+        }
         setImagePreview(null)
       }
     } catch (err) {
@@ -367,6 +397,9 @@ export function TelegramPage() {
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (file) {
+      if (imagePreview?.startsWith('blob:')) {
+        URL.revokeObjectURL(imagePreview)
+      }
       setImageFile(file)
       const reader = new FileReader()
       reader.onloadend = () => {
@@ -377,6 +410,9 @@ export function TelegramPage() {
   }
 
   function removeImage() {
+    if (imagePreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(imagePreview)
+    }
     setImageFile(null)
     setImagePreview(null)
   }
@@ -428,11 +464,8 @@ export function TelegramPage() {
     (authStatus.auth_state === 'pending_code' || authStatus.auth_state === 'pending_password' || authStatus.auth_state === 'failed')
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-bold text-[var(--text-primary)]">Telegram Integration</h1>
-        <p className="text-[var(--text-secondary)] mt-1">Manage your Telegram posts and settings</p>
-      </div>
+    <PageContainer maxWidth="wide">
+      <PageHeader title="Telegram Integration" description="Manage your Telegram posts and settings" />
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -458,6 +491,9 @@ export function TelegramPage() {
             setEditingPostId(null)
             setPostText('')
             setImageFile(null)
+            if (imagePreview?.startsWith('blob:')) {
+              URL.revokeObjectURL(imagePreview)
+            }
             setImagePreview(null)
             setActiveTab('create')
           }}
@@ -782,13 +818,15 @@ export function TelegramPage() {
           </CardHeader>
           <CardContent>
             {isLoadingPosts && posts.length === 0 && (
-              <div className="text-center py-8 text-[var(--text-muted)]">Loading posts...</div>
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <SkeletonCard key={i} />
+                ))}
+              </div>
             )}
 
             {!isLoadingPosts && posts.length === 0 && hasLoadedPosts && (
-              <div className="text-center py-8 text-[var(--text-muted)]">
-                No posts found for this account.
-              </div>
+              <EmptyState title="No posts found" description="No posts found for this account." />
             )}
 
             {!isLoadingPosts && posts.length > 0 && (
@@ -873,6 +911,85 @@ export function TelegramPage() {
               <div className="text-center py-8 text-[var(--text-muted)]">Loading profile...</div>
             ) : (
               <form onSubmit={handleSaveProfile} className="space-y-8">
+                {/* Настройки профиля (всегда наверху, без скрытия) */}
+                <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                    Настройки профиля Telegram
+                  </h3>
+                  <Input
+                    label="API ID"
+                    type="text"
+                    value={apiId}
+                    onChange={(e) => setApiId(e.target.value)}
+                    placeholder="e.g., 0157230167"
+                  />
+                  <Input
+                    label="API Hash"
+                    type="text"
+                    value={apiHash}
+                    onChange={(e) => setApiHash(e.target.value)}
+                    placeholder="e.g., afd10c198eaa94bc4fe3f82415eb46ee67"
+                  />
+                  <Input
+                    label="Логин в Telegram"
+                    type="text"
+                    value={telegramUsername}
+                    onChange={(e) => setTelegramUsername(e.target.value)}
+                    placeholder="e.g., @username"
+                  />
+                  <Input
+                    label="Номер телефона для авторизации"
+                    type="text"
+                    value={authPhoneNumber}
+                    onChange={(e) => setAuthPhoneNumber(e.target.value)}
+                    placeholder="e.g., +79001234567"
+                  />
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Получите API credentials на my.telegram.org. Номер телефона нужен для первой авторизации в Telegram.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3 pt-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={async () => {
+                        if (!user?.id) return
+                        setChannelsError('')
+                        setAvailableChannels([])
+                        setIsCheckingChannels(true)
+                        try {
+                          const list = await telegramService.getAvailableChannels(user.id)
+                          setAvailableChannels(list)
+                        } catch (err) {
+                          setChannelsError(err instanceof Error ? err.message : 'Ошибка проверки каналов')
+                        } finally {
+                          setIsCheckingChannels(false)
+                        }
+                      }}
+                      disabled={isCheckingChannels}
+                    >
+                      {isCheckingChannels ? 'Проверка...' : 'Проверить доступные каналы'}
+                    </Button>
+                    {channelsError && (
+                      <span className="text-sm text-red-400">{channelsError}</span>
+                    )}
+                  </div>
+                  {availableChannels.length > 0 && (
+                    <div className="pt-2 border-t border-[var(--border-color)]">
+                      <p className="text-sm font-medium text-[var(--text-secondary)] mb-2">Доступные каналы (id : название):</p>
+                      <ul className="text-sm text-[var(--text-primary)] space-y-1 max-h-48 overflow-y-auto bg-[var(--bg-tertiary)] rounded-lg p-3">
+                        {availableChannels.map((ch) => (
+                          <li key={ch.id} className="font-mono">
+                            {ch.id} : {ch.title}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
                 {/* Post profile (publishing) */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
@@ -899,49 +1016,6 @@ export function TelegramPage() {
 
                   {publishEnabled && (
                     <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 animate-slide-down">
-                      <h4 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                        Telegram Connection
-                      </h4>
-                      
-                      <Input
-                        label="API ID"
-                        type="text"
-                        value={apiId}
-                        onChange={(e) => setApiId(e.target.value)}
-                        placeholder="e.g., 0157230167"
-                      />
-                      
-                      <Input
-                        label="API Hash"
-                        type="text"
-                        value={apiHash}
-                        onChange={(e) => setApiHash(e.target.value)}
-                        placeholder="e.g., afd10c198eaa94bc4fe3f82415eb46ee67"
-                      />
-                      
-                      <Input
-                        label="Логин в Telegram"
-                        type="text"
-                        value={telegramUsername}
-                        onChange={(e) => setTelegramUsername(e.target.value)}
-                        placeholder="e.g., @username"
-                      />
-
-                      <Input
-                        label="Номер телефона для авторизации"
-                        type="text"
-                        value={authPhoneNumber}
-                        onChange={(e) => setAuthPhoneNumber(e.target.value)}
-                        placeholder="e.g., +79001234567"
-                      />
-                      
-                      <p className="text-xs text-[var(--text-muted)]">
-                        Get your API credentials from my.telegram.org. Номер телефона нужен для первой авторизации в Telegram.
-                      </p>
-
                       <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
                         <label className="text-sm font-medium text-[var(--text-secondary)] block">Publish Schedule</label>
                         <div className="space-y-3">
@@ -1323,6 +1397,6 @@ export function TelegramPage() {
         </Card>
       )}
 
-    </div>
+    </PageContainer>
   )
 }

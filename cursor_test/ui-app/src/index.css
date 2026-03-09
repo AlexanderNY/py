@@ -76,7 +76,8 @@
     @apply flex items-center gap-3 px-4 py-3 rounded-xl
            text-[var(--text-secondary)] hover:text-[var(--text-primary)]
            hover:bg-[var(--bg-tertiary)] hover:bg-opacity-50
-           transition-all duration-200;
+           transition-all duration-200
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)];
   }
 
   .nav-link-active {
@@ -222,6 +223,23 @@
 
   .notification-content s {
     text-decoration: line-through;
+  }
+
+  /* Respect prefers-reduced-motion: reduce decorative animations only */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fade-in,
+    .animate-slide-up,
+    .animate-slide-down,
+    .animate-pulse-subtle {
+      animation: none !important;
+    }
+    .animate-stagger-1,
+    .animate-stagger-2,
+    .animate-stagger-3,
+    .animate-stagger-4,
+    .animate-stagger-5 {
+      animation-delay: 0s !important;
+    }
   }
 }
 

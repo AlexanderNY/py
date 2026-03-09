@@ -25,6 +25,7 @@ class CycleResult(BaseModel):
     status: str
     message: str
     count: int
+    errors: Optional[List[str]] = None
 
 
 class LoopStatus(BaseModel):

@@ -136,6 +136,7 @@ export interface ProcessorRunResponse {
   status: string
   message: string
   count: number
+  errors?: string[] | null
 }
 
 export interface ServicesStatusResponse {
@@ -195,4 +196,14 @@ export interface PostRow {
 
 export interface PostsListResponse {
   posts: PostRow[]
+}
+
+/** Результат цикла диагностики постинга (Telegram и пайплайн). */
+export interface PostingDiagnosticsResponse {
+  tg_posts_by_status: Array<{ status: string; count: number }>
+  posts_by_status: Array<{ status: string; source_platform: string | null; count: number }>
+  ready_for_telegram: number
+  profiles_with_channel: number
+  hints: string[]
+  collected_at: string | null
 }

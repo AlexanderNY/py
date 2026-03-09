@@ -5,6 +5,9 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { PageHeader, PageContainer } from '@/components/ui'
+import { SkeletonCard } from '@/components/ui/skeleton'
+import { useToast } from '@/contexts/toast-context'
 import { authService } from '@/services/auth-service'
 import { decodeJwt, formatTokenDate, getTimeUntilExpiry } from '@/utils/jwt-utils'
 
@@ -91,6 +94,7 @@ function TokenDisplay({
 
 export function ProfilePage() {
   const { user, accessToken, refreshToken, updateProfile, logout, logoutAll, refreshUserData } = useAuth()
+  const { addToast } = useToast()
   
   const [isEditing, setIsEditing] = useState(false)
   const [email, setEmail] = useState(user?.email || '')
@@ -131,6 +135,7 @@ export function ProfilePage() {
       
       await updateProfile(updateData)
       setSuccess('Profile updated successfully')
+      addToast('Profile updated successfully')
       setIsEditing(false)
       setPassword('')
       await refreshUserData()
@@ -150,6 +155,7 @@ export function ProfilePage() {
     try {
       await authService.verifyEmail(verificationCode)
       setSuccess('Email verified successfully')
+      addToast('Email verified successfully')
       setVerificationCode('')
       await refreshUserData()
     } catch (err) {
@@ -165,12 +171,21 @@ export function ProfilePage() {
     }
   }
 
+  if (!user) {
+    return (
+      <PageContainer>
+        <PageHeader title="Profile" description="Manage your account settings and preferences" />
+        <div className="grid gap-6 md:grid-cols-2">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      </PageContainer>
+    )
+  }
+
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-bold text-[var(--text-primary)]">Profile</h1>
-        <p className="text-[var(--text-secondary)] mt-1">Manage your account settings and preferences</p>
-      </div>
+    <PageContainer>
+      <PageHeader title="Profile" description="Manage your account settings and preferences" />
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -248,6 +263,33 @@ export function ProfilePage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Working group */}
+        {(user?.group_name ?? user?.group_id) && (
+          <Card className="animate-slide-up animate-stagger-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                Рабочая группа
+              </CardTitle>
+              <CardDescription>Ваша группа и роль в ней</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex justify-between items-center py-3 border-b border-[var(--border-color)]">
+                <span className="text-[var(--text-secondary)]">Группа</span>
+                <Link to="/group" className="font-medium text-primary-400 hover:text-primary-300 hover:underline">
+                  {user?.group_name ?? `ID ${user?.group_id}`}
+                </Link>
+              </div>
+              <div className="flex justify-between items-center py-3">
+                <span className="text-[var(--text-secondary)]">Роль в группе</span>
+                <span className="font-medium">{user?.role_in_group === 'manager' ? 'Менеджер' : user?.role_in_group === 'author' ? 'Автор' : '—'}</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Tokens Card */}
         <Card className="animate-slide-up animate-stagger-2">
@@ -368,7 +410,7 @@ export function ProfilePage() {
           </p>
         </CardFooter>
       </Card>
-    </div>
+    </PageContainer>
   )
 }
 

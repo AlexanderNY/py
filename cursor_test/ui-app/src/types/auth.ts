@@ -1,13 +1,36 @@
+export type UserRole = 'guest' | 'user' | 'admin' | 'manager' | 'author'
+
 export interface User {
   id?: number
   username: string
   email: string
-  role: 'guest' | 'user' | 'admin'
+  role: UserRole
   tariff?: string
   is_email_verified: boolean
   created_at: string
   access_token?: string
   refresh_token?: string
+  group_id?: number | null
+  group_name?: string | null
+  role_in_group?: 'manager' | 'author' | null
+}
+
+export interface GroupMemberResponse {
+  user_id: number
+  username: string
+  email: string
+  tariff: string
+  role_in_group: 'manager' | 'author'
+  joined_at: string
+}
+
+export interface GroupResponse {
+  id: number
+  name: string
+  created_at: string
+  created_by_user_id?: number | null
+  role_in_group?: 'manager' | 'author' | null
+  members?: GroupMemberResponse[] | null
 }
 
 export interface TokenResponse {

@@ -8,6 +8,7 @@ import type {
   PostsTablesResponse,
   PostsListResponse,
   ProcessorRunResponse,
+  PostingDiagnosticsResponse,
 } from '@/types/core'
 
 export const coreService = {
@@ -32,6 +33,15 @@ export const coreService = {
   async getUsersStatistics(): Promise<UserStatisticsResponse> {
     try {
       const response = await apiClient.get<UserStatisticsResponse>('/core/users-statistics')
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getGroupStatistics(): Promise<UserStatisticsResponse> {
+    try {
+      const response = await apiClient.get<UserStatisticsResponse>('/core/group-statistics')
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))
@@ -97,6 +107,33 @@ export const coreService = {
   async runProcessorCycle(): Promise<ProcessorRunResponse> {
     try {
       const response = await apiClient.post<ProcessorRunResponse>('/core/admin/processor/run')
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async runCollectCycle(): Promise<ProcessorRunResponse> {
+    try {
+      const response = await apiClient.post<ProcessorRunResponse>('/core/admin/collect/run')
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async runDistributeCycle(): Promise<ProcessorRunResponse> {
+    try {
+      const response = await apiClient.post<ProcessorRunResponse>('/core/admin/distribute/run')
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getPostingDiagnostics(): Promise<PostingDiagnosticsResponse> {
+    try {
+      const response = await apiClient.get<PostingDiagnosticsResponse>('/core/admin/posting-diagnostics')
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))

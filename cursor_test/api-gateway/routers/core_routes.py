@@ -95,6 +95,32 @@ async def run_processor_cycle(
     return await forward_to_core("/admin/processor/run", request)
 
 
+@router.post("/admin/collect/run")
+async def run_collect_cycle(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Принудительный запуск одного цикла сбора на collector (tg_posts → posts).
+    
+    POST /core/admin/collect/run -> POST /admin/collect/run на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core("/admin/collect/run", request)
+
+
+@router.post("/admin/distribute/run")
+async def run_distribute_cycle(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Принудительный запуск одного цикла распределения на collector (posts ready → tg_posts ready).
+    
+    POST /core/admin/distribute/run -> POST /admin/distribute/run на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core("/admin/distribute/run", request)
+
+
 @router.get("/admin/posts-tables")
 async def get_admin_posts_tables(
     request: Request,
@@ -121,6 +147,19 @@ async def get_admin_posts(
     return await forward_to_core("/admin/posts", request)
 
 
+@router.get("/admin/posting-diagnostics")
+async def get_posting_diagnostics(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Запускает цикл диагностики постинга (tg_posts/posts по статусам и подсказки).
+    
+    GET /core/admin/posting-diagnostics -> GET /admin/posting-diagnostics на core сервисе
+    Требует JWT аутентификации и роли admin.
+    """
+    return await forward_to_core("/admin/posting-diagnostics", request)
+
+
 @router.get("/schedules")
 async def get_schedules(
     request: Request,
@@ -145,6 +184,19 @@ async def get_users_statistics(
     Требует JWT аутентификации и роли admin.
     """
     return await forward_to_core("/users-statistics", request)
+
+
+@router.get("/group-statistics")
+async def get_group_statistics(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Получает статистику по пользователям своей группы из core сервиса.
+    
+    GET /core/group-statistics -> GET /group-statistics на core сервисе
+    Требует JWT аутентификации и роли manager или admin.
+    """
+    return await forward_to_core("/group-statistics", request)
 
 
 @router.get("/schedule")

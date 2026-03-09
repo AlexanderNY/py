@@ -164,7 +164,19 @@ class ProcessingService:
 
         # Определить финальный статус
         is_review = proc_settings.get("status_review_after_process", False)
-        final_status = "review" if is_review else "ready"
+        has_any_target = any(
+            post.get(flag)
+            for flag in ("to_tg", "to_tw", "to_wp", "to_vk", "to_threads")
+        )
+        if is_review or not has_any_target:
+            final_status = "review"
+            if not has_any_target:
+                logger.debug(
+                    "Post id=%s: no target platform (to_tg/to_wp/to_vk/to_tw/to_threads) -> status=review",
+                    post_id,
+                )
+        else:
+            final_status = "ready"
 
         # Сохранить результат
         await self._save_processed_post(

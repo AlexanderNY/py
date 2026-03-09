@@ -21,6 +21,9 @@ _POST_COLUMNS = [
 # Все флаги to_* для проверки
 _TARGET_FLAGS = list(TARGET_TABLES.keys())
 
+# Ключи в platform_texts (из processor) для каждой целевой платформы
+_PLATFORM_TEXT_KEYS = {"tg": "telegram", "wp": "wordpress", "vk": "vkontakte"}
+
 
 class DistributeService:
     """Сервис распределения постов из posts -> *_posts."""
@@ -48,9 +51,9 @@ class DistributeService:
             try:
                 await cur.execute("BEGIN")
 
-                # 1. Выбрать готовые посты
+                # 1. Выбрать готовые посты (включая platform_texts для обновления той же платформы)
                 select_cols = (
-                    ["id", "source_platform", "source_id"] + _POST_COLUMNS
+                    ["id", "source_platform", "source_id"] + _POST_COLUMNS + ["platform_texts"]
                 )
                 col_str = ", ".join(select_cols)
 
@@ -91,12 +94,14 @@ class DistributeService:
                         if not record.get(flag):
                             continue
 
-                        # Пропустить, если целевая платформа = исходная
-                        # (пост пришёл из tg_posts, не надо класть обратно в tg_posts)
+                        # Одна и та же платформа: пост из tg_posts обработан — обновить запись в tg_posts до ready
                         if target_platform == source_platform:
+                            await self._update_same_platform_target(
+                                cur, target_table, record, target_platform
+                            )
                             continue
 
-                        # 3. Вставить в целевую таблицу
+                        # 3. Вставить в целевую таблицу (пост уходит в другую платформу)
                         await self._insert_into_target(
                             cur, target_table, record
                         )
@@ -133,6 +138,92 @@ class DistributeService:
             finally:
                 cur.close()
 
+    async def _update_same_platform_target(
+        self,
+        cur: Any,
+        target_table: str,
+        record: dict[str, Any],
+        target_platform: str,
+    ) -> None:
+        """Обновляет существующую запись в платформенной таблице до status='ready'.
+
+        Используется, когда пост собран из tg_posts и после обработки снова
+        публикуется в Telegram: обновляем ту же строку tg_posts (id=source_id).
+        """
+        source_id = record.get("source_id")
+        user_id = record.get("user_id")
+        if source_id is None or user_id is None:
+            logger.warning(
+                "Cannot update same-platform: source_id=%s user_id=%s",
+                source_id,
+                user_id,
+            )
+            return
+
+        # Текст для платформы из platform_texts (ключи: telegram, wordpress, vkontakte)
+        post_text = record.get("post_text") or ""
+        platform_key = _PLATFORM_TEXT_KEYS.get(target_platform, target_platform)
+        platform_texts_raw = record.get("platform_texts")
+        if platform_texts_raw:
+            try:
+                texts = (
+                    json.loads(platform_texts_raw)
+                    if isinstance(platform_texts_raw, str)
+                    else platform_texts_raw
+                )
+                if isinstance(texts, dict) and platform_key in texts:
+                    post_text = texts[platform_key] or post_text
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        images_raw = record.get("images")
+        if isinstance(images_raw, str):
+            images_decoded = images_raw
+        else:
+            images_decoded = json.dumps(images_raw, ensure_ascii=False) if images_raw else "[]"
+        # Не перезаписывать images пустым значением: в tg_posts уже могли быть пути к файлам
+        # (процессор мог очистить images через remove_images), иначе пост уйдёт без картинки
+        has_images = bool(images_raw)
+        if isinstance(images_raw, str):
+            try:
+                parsed = json.loads(images_raw)
+                has_images = bool(parsed) if isinstance(parsed, list) else bool(parsed)
+            except (json.JSONDecodeError, TypeError):
+                has_images = bool(images_raw.strip() and images_raw.strip() != "[]")
+        elif isinstance(images_raw, list):
+            has_images = len(images_raw) > 0
+
+        if has_images:
+            await cur.execute(
+                f"""
+                UPDATE {target_table}
+                SET status = 'ready',
+                    post_text = %s,
+                    images = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND user_id = %s
+                """,
+                (post_text, images_decoded, source_id, user_id),
+            )
+        else:
+            await cur.execute(
+                f"""
+                UPDATE {target_table}
+                SET status = 'ready',
+                    post_text = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND user_id = %s
+                """,
+                (post_text, source_id, user_id),
+            )
+        logger.debug(
+            "Updated %s id=%s (user_id=%s) to ready, images=%s",
+            target_table,
+            source_id,
+            user_id,
+            "set" if has_images else "preserved",
+        )
+
     async def _insert_into_target(
         self,
         cur: Any,
@@ -149,6 +240,11 @@ class DistributeService:
         # Статус в целевой таблице — 'ready' (для бота-публикатора)
         status_idx = _POST_COLUMNS.index("status")
         values[status_idx] = "ready"
+
+        # В целевых таблицах images — JSONB; из posts приходит list/dict (десериализованный JSONB) — приводим к JSON-строке
+        images_idx = _POST_COLUMNS.index("images")
+        if values[images_idx] is not None and not isinstance(values[images_idx], str):
+            values[images_idx] = json.dumps(values[images_idx], ensure_ascii=False)
 
         await cur.execute(
             f"""

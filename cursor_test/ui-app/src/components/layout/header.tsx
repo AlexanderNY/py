@@ -15,7 +15,7 @@ export function Header() {
   const notificationRef = useRef<HTMLDivElement>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [currentNotificationIndex, setCurrentNotificationIndex] = useState(0)
-  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false)
+  const [_isLoadingNotifications, setIsLoadingNotifications] = useState(false)
 
   const loadNotifications = useCallback(async () => {
     setIsLoadingNotifications(true)
@@ -75,15 +75,21 @@ export function Header() {
       <div className="flex items-center gap-4 flex-1">
         {/* Notifications Block */}
         {notifications.length > 0 && (
-          <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border max-w-md ${
-            isAuthNotification
-              ? 'bg-amber-500/10 border-amber-500/50'
-              : 'bg-[var(--bg-tertiary)] border-[var(--border-color)]'
-          }`}>
+          <div
+            role="region"
+            aria-label="Notifications"
+            aria-live="polite"
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl border max-w-md ${
+              isAuthNotification
+                ? 'bg-amber-500/10 border-amber-500/50'
+                : 'bg-[var(--bg-tertiary)] border-[var(--border-color)]'
+            }`}
+          >
             <button
+              type="button"
               onClick={handlePrevNotification}
               disabled={notifications.length <= 1}
-              className="p-1 rounded hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1 rounded hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50"
               aria-label="Previous notification"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -99,9 +105,10 @@ export function Header() {
             />
             
             <button
+              type="button"
               onClick={handleNextNotification}
               disabled={notifications.length <= 1}
-              className="p-1 rounded hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1 rounded hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50"
               aria-label="Next notification"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -114,9 +121,10 @@ export function Header() {
       
       <div className="flex items-center gap-3">
         <button
+          type="button"
           onClick={toggleTheme}
-          className="p-2 rounded-xl hover:bg-[var(--bg-tertiary)] transition-colors text-[var(--text-secondary)]"
-          aria-label="Toggle theme"
+          className="p-2 rounded-xl hover:bg-[var(--bg-tertiary)] transition-colors text-[var(--text-secondary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50"
+          aria-label={isDarkMode ? 'Switch to light theme' : 'Switch to dark theme'}
         >
           {isDarkMode ? (
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

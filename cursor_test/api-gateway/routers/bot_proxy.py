@@ -47,6 +47,16 @@ async def tg_bot_auth_status(
     return await _forward_to_bot(settings.TG_BOT_SERVICE_URL, f"/tg/auth/status/{user_id}", request)
 
 
+@router.get("/tg-bot/channels/{user_id}")
+async def tg_bot_channels(
+    user_id: int,
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    """GET /tg-bot/channels/{user_id} -> tg-bot /tg/channels/{user_id}. Требует JWT."""
+    return await _forward_to_bot(settings.TG_BOT_SERVICE_URL, f"/tg/channels/{user_id}", request)
+
+
 @router.post("/tg-bot/reload")
 async def tg_bot_reload(
     request: Request,

@@ -1,6 +1,6 @@
 """Сервис для сбора статистики постов."""
 
-from typing import List, Dict
+from typing import List, Dict, Optional
 from database import get_db_connection, release_db_connection
 
 
@@ -99,8 +99,11 @@ class StatisticsService:
             "published_posts": published
         }
     
-    async def get_users_statistics(self) -> List[Dict]:
+    async def get_users_statistics(self, user_ids: Optional[List[int]] = None) -> List[Dict]:
         """Собирает статистику использования по пользователям.
+        
+        Args:
+            user_ids: если задан, возвращает статистику только по этим user_id; иначе по всем.
         
         Returns:
             Список статистики по пользователям
@@ -108,20 +111,38 @@ class StatisticsService:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                # Получаем статистику по каждому пользователю
-                await cur.execute("""
-                    SELECT 
-                        user_id,
-                        COUNT(*) as total_posts,
-                        COUNT(*) FILTER (WHERE status = 'collected') as collected_posts,
-                        COUNT(*) FILTER (WHERE status = 'processed') as processed_posts,
-                        COUNT(*) FILTER (WHERE status = 'published') as published_posts
-                    FROM posts
-                    GROUP BY user_id
-                    ORDER BY total_posts DESC
-                """)
+                if user_ids is not None and len(user_ids) == 0:
+                    return []
+                if user_ids is not None:
+                    placeholders = ",".join(["%s"] * len(user_ids))
+                    await cur.execute(
+                        f"""
+                        SELECT 
+                            user_id,
+                            COUNT(*) as total_posts,
+                            COUNT(*) FILTER (WHERE status = 'collected') as collected_posts,
+                            COUNT(*) FILTER (WHERE status = 'processed') as processed_posts,
+                            COUNT(*) FILTER (WHERE status = 'published') as published_posts
+                        FROM posts
+                        WHERE user_id IN ({placeholders})
+                        GROUP BY user_id
+                        ORDER BY total_posts DESC
+                        """,
+                        tuple(user_ids),
+                    )
+                else:
+                    await cur.execute("""
+                        SELECT 
+                            user_id,
+                            COUNT(*) as total_posts,
+                            COUNT(*) FILTER (WHERE status = 'collected') as collected_posts,
+                            COUNT(*) FILTER (WHERE status = 'processed') as processed_posts,
+                            COUNT(*) FILTER (WHERE status = 'published') as published_posts
+                        FROM posts
+                        GROUP BY user_id
+                        ORDER BY total_posts DESC
+                    """)
                 rows = await cur.fetchall()
-                
                 return [
                     {
                         "user_id": row[0],

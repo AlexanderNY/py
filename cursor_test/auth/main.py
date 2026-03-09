@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from database import init_db, close_db
-from routers import profile, auth, security
+from routers import profile, auth, security, groups
 
 
 @asynccontextmanager
@@ -36,6 +36,7 @@ app.add_middleware(
 # Подключение роутеров
 app.include_router(auth.router)
 app.include_router(profile.router)
+app.include_router(groups.router)
 app.include_router(security.router)
 
 

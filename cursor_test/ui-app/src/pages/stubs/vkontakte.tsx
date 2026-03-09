@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { PageHeader, PageContainer } from '@/components/ui'
 import { vkontakteService } from '@/services/vkontakte-service'
 import type { VKontakteProfile, VKontaktePostListItem, ScheduleType } from '@/types/vkontakte'
 
@@ -309,11 +310,8 @@ export function VKontaktePage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-bold text-[var(--text-primary)]">VKontakte Integration</h1>
-        <p className="text-[var(--text-secondary)] mt-1">Configure your VKontakte account settings and post management</p>
-      </div>
+    <PageContainer maxWidth="wide">
+      <PageHeader title="VKontakte Integration" description="Configure your VKontakte account settings and post management" />
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -723,6 +721,6 @@ export function VKontaktePage() {
         </Card>
       )}
 
-    </div>
+    </PageContainer>
   )
 }
