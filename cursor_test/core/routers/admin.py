@@ -1,10 +1,12 @@
 """Роутер админ-эндпоинтов: статус сервисов и обзор таблиц постов."""
 
-from typing import Optional
-from fastapi import APIRouter, Query, Request
+from typing import Any, Dict, Optional
+from fastapi import APIRouter, Depends, Query, Request
 
+from dependencies import get_admin_user
 from services.admin_service import admin_service
 from services.post_service import post_service
+from storage_client import get_storage
 from schemas import (
     ServicesStatusResponse,
     PostsTablesResponse,
@@ -12,6 +14,8 @@ from schemas import (
     PostRow,
     ProcessorRunResponse,
     PostingDiagnosticsResponse,
+    StorageFileItem,
+    StorageFilesResponse,
 )
 
 
@@ -78,3 +82,28 @@ async def get_posting_diagnostics():
     """Цикл диагностики постинга: сводки tg_posts/posts по статусам и подсказки для администратора."""
     data = await admin_service.run_posting_diagnostics()
     return PostingDiagnosticsResponse(**data)
+
+
+@router.get("/storage/files", response_model=StorageFilesResponse)
+async def get_storage_files(
+    prefix: Optional[str] = Query(None, description="Фильтр по префиксу ключа (например vk/, uploads/)"),
+    limit: int = Query(500, ge=1, le=2000, description="Максимум объектов в ответе"),
+    continuation_token: Optional[str] = Query(None, description="Токен для следующей страницы"),
+    admin_user: Dict[str, Any] = Depends(get_admin_user),
+):
+    """Список файлов в едином S3-хранилище. Только admin. Если S3 не настроен — enabled=False."""
+    del admin_user  # ensure admin role (checked by dependency)
+    storage = get_storage()
+    if not storage:
+        return StorageFilesResponse(enabled=False, objects=[])
+    result = await storage.list_objects(
+        prefix=prefix or "",
+        max_keys=limit,
+        continuation_token=continuation_token,
+    )
+    items = [StorageFileItem(**obj) for obj in result["objects"]]
+    return StorageFilesResponse(
+        enabled=True,
+        objects=items,
+        next_continuation_token=result.get("next_continuation_token"),
+    )

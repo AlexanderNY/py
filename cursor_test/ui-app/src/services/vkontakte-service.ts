@@ -41,7 +41,10 @@ export const vkontakteService = {
     return response.data
   },
 
-  async updatePost(id: number, data: { text?: string; status?: string }): Promise<VKontaktePostFull> {
+  async updatePost(
+    id: number,
+    data: { text?: string; images?: string[]; attachments?: unknown[]; status?: string }
+  ): Promise<VKontaktePostFull> {
     const response = await apiClient.put<VKontaktePostFull>(`/vk/post/${id}`, data)
     return response.data
   },
@@ -49,5 +52,19 @@ export const vkontakteService = {
   async deletePost(id: number): Promise<VKontaktePostFull> {
     const response = await apiClient.delete<VKontaktePostFull>(`/vk/post/${id}`)
     return response.data
+  },
+
+  /**
+   * Загружает изображение с ПК. Возвращает относительный путь (/vk/uploads/xxx) для сохранения в посте.
+   * vk-bot скачивает файл по CORE_SERVICE_URL + путь. Превью в UI строится из origin + baseURL + путь.
+   */
+  async uploadImage(file: File): Promise<string> {
+    const formData = new FormData()
+    formData.append('image', file)
+    const response = await apiClient.post<{ url: string }>('/vk/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    const path = response.data.url
+    return path.startsWith('/') ? path : `/${path}`
   },
 }

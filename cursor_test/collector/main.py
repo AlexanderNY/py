@@ -12,6 +12,7 @@ from config import settings, SOURCE_TABLES, TARGET_TABLES, COLLECTOR_FUNCTIONS_F
 from database import init_db, close_db, get_db_connection
 from services.collect_service import collect_service
 from services.distribute_service import distribute_service
+from services.dzen_rss_reader_service import dzen_rss_reader_service
 from schemas import (
     HealthResponse,
     CycleResult,
@@ -32,10 +33,22 @@ logger = logging.getLogger(__name__)
 
 _collect_task: asyncio.Task | None = None
 _distribute_task: asyncio.Task | None = None
+_dzen_rss_task: asyncio.Task | None = None
 _started_at: datetime | None = None
 
 
 # ── Фоновые циклы ──────────────────────────────────────────────
+
+async def _dzen_rss_loop() -> None:
+    """Фоновый цикл вычитки RSS из channels_to_read в dzen_posts."""
+    interval = getattr(settings, "DZEN_RSS_READ_INTERVAL_SEC", 300)
+    while True:
+        try:
+            await dzen_rss_reader_service.run_dzen_rss_cycle()
+        except Exception:
+            logger.exception("Error in Dzen RSS reader loop")
+        await asyncio.sleep(interval)
+
 
 async def _collector_loop() -> None:
     """Фоновый цикл сбора постов из *_posts -> posts."""
@@ -84,7 +97,7 @@ async def _check_tables_at_startup() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _collect_task, _distribute_task, _started_at
+    global _collect_task, _distribute_task, _dzen_rss_task, _started_at
 
     await init_db()
     await _check_tables_at_startup()
@@ -97,10 +110,11 @@ async def lifespan(app: FastAPI):
 
     _collect_task = asyncio.create_task(_collector_loop())
     _distribute_task = asyncio.create_task(_distributor_loop())
+    _dzen_rss_task = asyncio.create_task(_dzen_rss_loop())
 
     yield
 
-    for task in (_collect_task, _distribute_task):
+    for task in (_collect_task, _distribute_task, _dzen_rss_task):
         if task:
             task.cancel()
             try:
@@ -198,6 +212,24 @@ async def force_distribute():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Distribute cycle failed: {e}",
+        )
+
+
+@app.post("/dzen-rss/run", response_model=CycleResult)
+async def force_dzen_rss():
+    """Принудительный запуск одного цикла вычитки RSS Дзен (channels_to_read -> dzen_posts)."""
+    try:
+        count = await dzen_rss_reader_service.run_dzen_rss_cycle()
+        return CycleResult(
+            status="success",
+            message=f"Dzen RSS read cycle completed, {count} posts collected",
+            count=count,
+        )
+    except Exception as e:
+        logger.exception("Force Dzen RSS error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Dzen RSS cycle failed: {e}",
         )
 
 

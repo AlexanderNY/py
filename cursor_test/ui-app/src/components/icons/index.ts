@@ -26,4 +26,5 @@ export {
   XCircleIcon,
   ExclamationIcon,
   DocumentTextIcon,
+  InstagramIcon,
 } from './icons'

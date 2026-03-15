@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     TWITTER_MAX_LENGTH: int = 280
     VKONTAKTE_MAX_LENGTH: int = 15985
     THREADS_MAX_LENGTH: int = 500
+    DZEN_MAX_LENGTH: int = 1500
+    INSTAGRAM_MAX_LENGTH: int = 2200
 
     class Config:
         env_file = ".env"
@@ -63,6 +65,11 @@ PROFILE_TABLE_MAP = {
         "process_flag": "process_enabled",
         "process_description_field": "processing_description",
     },
+    "instagram": {
+        "table": "instagram_profiles",
+        "process_flag": "process_enabled",
+        "process_description_field": "processing_description",
+    },
 }
 
 # Общие поля настроек обработки, которые читаем из профиля
@@ -82,6 +89,8 @@ PLATFORM_LIMITS = {
     "telegram": "TELEGRAM_MAX_LENGTH",
     "twitter": "TWITTER_MAX_LENGTH",
     "vkontakte": "VKONTAKTE_MAX_LENGTH",
+    "dzen": "DZEN_MAX_LENGTH",
+    "instagram": "INSTAGRAM_MAX_LENGTH",
 }
 
 # Описания функций обработки для админки (id, name_ru, description)
@@ -120,4 +129,6 @@ PLATFORM_FLAGS = {
     "to_tw": "twitter",
     "to_vk": "vkontakte",
     "to_threads": "threads",
+    "to_dzen": "dzen",
+    "to_instagram": "instagram",
 }

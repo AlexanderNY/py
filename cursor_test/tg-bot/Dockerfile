@@ -2,13 +2,13 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY tg-bot/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY shared_storage /app/shared_storage
+COPY tg-bot/ .
 
-# Директории для сессий Telethon и загрузок
-RUN mkdir -p sessions uploads/tg
+RUN mkdir -p sessions
 
 EXPOSE 8004
 

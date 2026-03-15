@@ -37,7 +37,7 @@
 |-------|------|------|--------|----------|
 | GET | `/wp/profile` | — | wordpress-service | Получить профиль WP |
 | POST | `/wp/profile` | `WordPressProfile` | wordpress-service | Сохранить профиль WP |
-| POST | `/wp/post` | `WordPressPost` | wordpress-service | Создать пост |
+| POST | `/wp/post` | `WordPressPost` (+ файлы изображений) | wordpress-service | Создать пост с возможностью загрузки изображений в контент и caption |
 | GET | `/wp/posts` | — | wordpress-service | Список постов |
 
 ---
@@ -59,6 +59,35 @@
 | GET | `/vk/profile` | — | vkontakte-service | Получить профиль VK (404 → null) |
 | POST | `/vk/profile` | `VKontakteProfile` | vkontakte-service | Сохранить профиль |
 | POST | `/vk/post` | `VKontaktePost` | vkontakte-service | Опубликовать пост |
+
+---
+
+## Instagram (`/instagram/*`)
+
+| Метод | Путь | Тело | Сервис | Описание |
+|-------|------|------|--------|----------|
+| GET | `/instagram/profile` | — | instagram-service | Получить профиль Instagram (404 → null) |
+| POST | `/instagram/profile` | `InstagramProfile` | instagram-service | Сохранить профиль |
+| GET | `/instagram/posts` | — | instagram-service | Список постов (params: limit, offset) |
+| GET | `/instagram/post/{id}` | — | instagram-service | Один пост |
+| POST | `/instagram/post` | `InstagramPost` или FormData (caption, images[]) | instagram-service | Создать пост (caption до 2200 символов) |
+| PUT | `/instagram/post/{id}` | `InstagramPostUpdate` | instagram-service | Обновить пост |
+| DELETE | `/instagram/post/{id}` | — | instagram-service | Удалить пост (status=deleted) |
+
+---
+
+## Дзен (`/dzen/*`)
+
+| Метод | Путь | Тело | Сервис | Описание |
+|-------|------|------|--------|----------|
+| GET | `/dzen/profile` | — | dzen-service | Получить профиль Дзен (404 → null) |
+| POST | `/dzen/profile` | `DzenProfile` | dzen-service | Сохранить профиль |
+| GET | `/dzen/posts` | — | dzen-service | Список постов (params: limit, offset) |
+| GET | `/dzen/post/{id}` | — | dzen-service | Один пост |
+| POST | `/dzen/post` | `DzenPost` или FormData (text, title, images[], videos[]) | dzen-service | Создать пост (до 1500 символов, картинки и видео) |
+| PUT | `/dzen/post/{id}` | `DzenPostUpdate` | dzen-service | Обновить пост |
+| DELETE | `/dzen/post/{id}` | — | dzen-service | Удалить пост (status=deleted) |
+| GET | `/dzen/rss/{user_id}` | — | dzen-service | Публичная RSS-лента (опционально ?token=) |
 
 ---
 
@@ -103,10 +132,10 @@
 
 ## Сводка по методам
 
-- **GET:** 12 эндпоинтов  
-- **POST:** 20 эндпоинтов  
+- **GET:** 8 эндпоинтов  
+- **POST:** 14 эндпоинтов  
 
-**Всего:** 32 исходящих запроса (включая `/auth/refresh` в interceptor).
+**Всего:** 22 исходящих запроса (включая `/auth/refresh` в interceptor).
 
 ## Где вызываются
 

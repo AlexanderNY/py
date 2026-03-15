@@ -21,22 +21,24 @@ def _log_action(msg: str, *args, **kwargs) -> None:
 
 
 class PostCollector:
-    """Сбор постов из groups_to_read и сохранение в vk_posts."""
+    """Сбор постов из groups_to_read и users_to_read (стены групп и пользователей) и сохранение в vk_posts."""
 
     async def get_profiles_for_collect(self) -> List[Dict]:
-        """Профили с collect_enabled, access_token и непустым groups_to_read."""
+        """Профили с collect_enabled, access_token и непустым groups_to_read или users_to_read."""
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT user_id, access_token, groups_to_read
+                    SELECT user_id, access_token, groups_to_read, users_to_read
                     FROM vk_profiles
                     WHERE collect_enabled = TRUE
                       AND access_token IS NOT NULL
                       AND access_token != ''
-                      AND groups_to_read IS NOT NULL
-                      AND jsonb_array_length(groups_to_read) > 0
+                      AND (
+                        (groups_to_read IS NOT NULL AND jsonb_array_length(COALESCE(groups_to_read, '[]'::jsonb)) > 0)
+                        OR (users_to_read IS NOT NULL AND jsonb_array_length(COALESCE(users_to_read, '[]'::jsonb)) > 0)
+                      )
                     """
                 )
                 rows = await cur.fetchall()
@@ -49,7 +51,16 @@ class PostCollector:
                             rec["groups_to_read"] = json.loads(rec["groups_to_read"])
                         except (json.JSONDecodeError, TypeError):
                             rec["groups_to_read"] = []
-                    if rec.get("groups_to_read"):
+                    if rec.get("groups_to_read") is None:
+                        rec["groups_to_read"] = []
+                    if isinstance(rec.get("users_to_read"), str):
+                        try:
+                            rec["users_to_read"] = json.loads(rec["users_to_read"])
+                        except (json.JSONDecodeError, TypeError):
+                            rec["users_to_read"] = []
+                    if rec.get("users_to_read") is None:
+                        rec["users_to_read"] = []
+                    if rec.get("groups_to_read") or rec.get("users_to_read"):
                         result.append(rec)
                 return result
         finally:
@@ -73,7 +84,7 @@ class PostCollector:
         finally:
             await release_db_connection(conn)
 
-    def _parse_owner_id(self, group_id: Any) -> Optional[int]:
+    def _parse_group_owner_id(self, group_id: Any) -> Optional[int]:
         """Преобразует ID группы в owner_id для API (отрицательное число)."""
         if group_id is None:
             return None
@@ -82,6 +93,18 @@ class PostCollector:
             if g == 0:
                 return None
             return -abs(g)
+        except (ValueError, TypeError):
+            return None
+
+    def _parse_user_owner_id(self, user_id: Any) -> Optional[int]:
+        """Преобразует ID пользователя в owner_id для API (положительное число)."""
+        if user_id is None:
+            return None
+        try:
+            u = int(user_id)
+            if u <= 0:
+                return None
+            return u
         except (ValueError, TypeError):
             return None
 
@@ -192,7 +215,7 @@ class PostCollector:
             await release_db_connection(conn)
 
     async def run_collect(self) -> int:
-        """Опрашивает стены групп по всем профилям и сохраняет новые посты. Возвращает число сохранённых."""
+        """Опрашивает стены групп и пользователей по всем профилям и сохраняет новые посты. Возвращает число сохранённых."""
         profiles = await self.get_profiles_for_collect()
         if not profiles:
             return 0
@@ -203,9 +226,54 @@ class PostCollector:
             if not token:
                 continue
             groups = profile.get("groups_to_read") or []
+            users = profile.get("users_to_read") or []
             client = VkClient(token)
+            # Стены групп (owner_id < 0)
             for g in groups:
-                owner_id = self._parse_owner_id(g)
+                owner_id = self._parse_group_owner_id(g)
+                if owner_id is None:
+                    continue
+                domain = str(owner_id)
+                max_id = await self.get_max_source_id(user_id, domain)
+                items = await client.wall_get(owner_id=owner_id, count=20)
+                for item in items:
+                    post_id = item.get("id")
+                    if post_id is None or post_id <= max_id:
+                        continue
+                    row = self._item_to_row(user_id, owner_id, item)
+                    if not row:
+                        continue
+                    (
+                        uid,
+                        vk_source_id,
+                        dom,
+                        post_text,
+                        post_date,
+                        author,
+                        images_json,
+                        comments,
+                        reposts,
+                        likes,
+                        views,
+                    ) = row
+                    ok = await self.save_post(
+                        uid,
+                        vk_source_id,
+                        dom,
+                        post_text,
+                        post_date,
+                        author,
+                        images_json,
+                        comments,
+                        reposts,
+                        likes,
+                        views,
+                    )
+                    if ok:
+                        saved += 1
+            # Стены пользователей (owner_id > 0)
+            for u in users:
+                owner_id = self._parse_user_owner_id(u)
                 if owner_id is None:
                     continue
                 domain = str(owner_id)

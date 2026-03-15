@@ -4,8 +4,23 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
+import { TipTapEditor } from '@/components/ui/tiptap-editor'
+import { apiClient } from '@/services/api-client'
 import { vkontakteService } from '@/services/vkontakte-service'
 import type { VKontakteProfile, VKontaktePostListItem, ScheduleType } from '@/types/vkontakte'
+
+function htmlToPlainText(html: string): string {
+  const div = document.createElement('div')
+  div.innerHTML = html
+  return (div.textContent ?? div.innerText ?? '').trim()
+}
+
+function imagePreviewUrl(url: string): string {
+  if (url.startsWith('http')) return url
+  const base = apiClient.defaults.baseURL ?? '/api'
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  return `${origin}${base}${url.startsWith('/') ? '' : '/'}${url}`
+}
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
@@ -51,8 +66,9 @@ export function VKontaktePage() {
   const [addStaticHtml, setAddStaticHtml] = useState(false)
   const [staticHtmlContent, setStaticHtmlContent] = useState('')
 
-  // Create post state
-  const [postText, setPostText] = useState('')
+  // Create post state (editor content is HTML; we send plain text to API)
+  const [postContent, setPostContent] = useState('')
+  const [postImages, setPostImages] = useState<string[]>([''])
   const [toTg, setToTg] = useState(false)
   const [toTw, setToTw] = useState(false)
   const [toWp, setToWp] = useState(false)
@@ -68,6 +84,7 @@ export function VKontaktePage() {
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [isCreatingPost, setIsCreatingPost] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -155,28 +172,36 @@ export function VKontaktePage() {
     setError('')
     setSuccess('')
     setIsCreatingPost(true)
-    if (postText.length > VK_MAX_LENGTH) {
+    const text = htmlToPlainText(postContent)
+    if (text.length > VK_MAX_LENGTH) {
       setError(`Post text cannot exceed ${VK_MAX_LENGTH} characters`)
       setIsCreatingPost(false)
       return
     }
+    const imagesList = postImages.filter(Boolean)
     try {
       if (editingPostId !== null) {
-        await vkontakteService.updatePost(editingPostId, { text: postText })
+        await vkontakteService.updatePost(editingPostId, {
+          text,
+          images: imagesList.length ? imagesList : undefined,
+        })
         setSuccess('Post updated successfully')
         setEditingPostId(null)
-        setPostText('')
+        setPostContent('')
+        setPostImages([])
         if (hasLoadedPosts) loadPosts()
       } else {
         await vkontakteService.createPost({
-          text: postText,
+          text,
           to_tg: toTg,
           to_tw: toTw,
           to_wp: toWp,
           to_vk: toVk,
+          images: imagesList.length ? imagesList : undefined,
         })
         setSuccess('Post created successfully')
-        setPostText('')
+        setPostContent('')
+        setPostImages([])
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save post')
@@ -189,7 +214,9 @@ export function VKontaktePage() {
     setError('')
     try {
       const post = await vkontakteService.getPost(id)
-      setPostText(post.post_text ?? '')
+      setPostContent(post.post_text ?? '')
+      const imgs = post.images
+      setPostImages(Array.isArray(imgs) && imgs.length > 0 ? [...imgs] : [])
       setEditingPostId(id)
       setActiveTab('create')
     } catch (err) {
@@ -335,6 +362,7 @@ export function VKontaktePage() {
           ] as const
         ).map(({ key, label }) => (
           <button
+            type="button"
             key={key}
             className={`px-6 py-3 text-sm font-medium transition-all relative ${
               activeTab === key ? 'text-primary-400' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -342,7 +370,7 @@ export function VKontaktePage() {
             onClick={() => {
               if (key === 'create') {
                 setEditingPostId(null)
-                setPostText('')
+                setPostContent('')
               }
               setActiveTab(key)
             }}
@@ -365,19 +393,121 @@ export function VKontaktePage() {
           <CardContent>
             <form onSubmit={handleCreatePost} className="space-y-6">
               <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">Post Text</label>
-                <textarea
-                  value={postText}
-                  onChange={(e) => setPostText(e.target.value)}
-                  maxLength={VK_MAX_LENGTH}
-                  rows={10}
-                  className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
-                  placeholder="Enter your post text..."
+                <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">
+                  Post text (HTML)
+                </label>
+                <TipTapEditor
+                  content={postContent}
+                  onChange={setPostContent}
+                  placeholder="Enter your post text (HTML supported)"
+                  toolbarButtons={[
+                    'bold',
+                    'italic',
+                    'underline',
+                    'strike',
+                    'heading',
+                    'bulletList',
+                    'orderedList',
+                    'blockquote',
+                    'code',
+                    'codeBlock',
+                    'horizontalRule',
+                    'undo',
+                    'redo',
+                  ]}
                 />
                 <p className="text-xs text-[var(--text-muted)] mt-2">
-                  {postText.length} / {VK_MAX_LENGTH} characters
+                  Plain text length: {htmlToPlainText(postContent).length} / {VK_MAX_LENGTH} characters
                 </p>
               </div>
+
+              <div>
+                <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">
+                  Изображения
+                </label>
+                <p className="text-xs text-[var(--text-muted)] mb-2">
+                  Загрузите фото с компьютера (JPG, PNG, GIF, WebP). Они будут прикреплены к посту.
+                </p>
+                {postImages.length > 0 && (
+                  <ul className="space-y-2 mb-3">
+                    {postImages.map((url, index) => (
+                      <li
+                        key={`${url}-${index}`}
+                        className="flex items-center gap-3 p-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]"
+                      >
+                        <img
+                          src={imagePreviewUrl(url)}
+                          alt=""
+                          className="h-14 w-14 shrink-0 object-cover rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)]"
+                          onError={(e) => {
+                            const el = e.target as HTMLImageElement
+                            el.src = ''
+                            el.style.display = 'none'
+                          }}
+                        />
+                        <a
+                          href={imagePreviewUrl(url)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 min-w-0 text-sm text-primary-400 hover:underline truncate"
+                          title={url}
+                        >
+                          {url}
+                        </a>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setPostImages((prev) => prev.filter((_, i) => i !== index))}
+                          className="shrink-0 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                          title="Удалить фото"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          Удалить
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="border-2 border-dashed border-[var(--border-color)] rounded-xl p-6 text-center">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif,image/webp"
+                    multiple
+                    className="hidden"
+                    id="vk-image-upload"
+                    disabled={uploadingImage}
+                    onChange={async (e) => {
+                      const files = e.target.files
+                      if (!files?.length) return
+                      setError('')
+                      setUploadingImage(true)
+                      try {
+                        for (let i = 0; i < files.length; i++) {
+                          const url = await vkontakteService.uploadImage(files[i])
+                          setPostImages((prev) => [...prev, url])
+                        }
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+                      } finally {
+                        setUploadingImage(false)
+                        e.target.value = ''
+                      }
+                    }}
+                  />
+                  <label htmlFor="vk-image-upload" className="cursor-pointer">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-[var(--text-muted)] mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      {uploadingImage ? 'Загрузка…' : 'Нажмите или перетащите файлы сюда'}
+                    </p>
+                  </label>
+                </div>
+              </div>
+
               {!editingPostId && (
                 <div className="space-y-2">
                   <span className="text-sm font-medium text-[var(--text-secondary)] block">Publish to</span>
@@ -519,7 +649,19 @@ export function VKontaktePage() {
                     </div>
                     <span className="text-[var(--text-primary)]">From group</span>
                   </label>
-                  <Input label="Access token (VK)" type="password" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} placeholder="Leave empty to keep current" />
+                  <div>
+                    <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">Access token (VK)</label>
+                    <input
+                      type="password"
+                      value={accessToken === '***' ? '' : accessToken}
+                      onChange={(e) => setAccessToken(e.target.value)}
+                      placeholder={accessToken === '***' ? 'Токен сохранён (скрыт)' : 'Оставьте пустым, чтобы не менять'}
+                      className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
+                    />
+                    {accessToken === '***' && (
+                      <p className="text-xs text-[var(--text-muted)] mt-1.5">Токен сохранён и скрыт из соображений безопасности. Введите новый токен, чтобы заменить.</p>
+                    )}
+                  </div>
                   <Input label="Group to post (ID or short name)" value={groupToPost} onChange={(e) => setGroupToPost(e.target.value)} placeholder="e.g. 123456 or club123456" />
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-[var(--text-secondary)] block">Publish schedule</label>

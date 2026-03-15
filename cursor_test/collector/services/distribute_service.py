@@ -10,19 +10,19 @@ from config import settings, TARGET_TABLES
 
 logger = logging.getLogger(__name__)
 
-# Колонки для вставки в целевую *_posts таблицу
+# Колонки для вставки в целевую *_posts таблицу (posts.to_dzen, to_instagram и posts.videos — в миграциях)
 _POST_COLUMNS = [
     "user_id", "domain", "url", "title", "author", "avatar",
     "post_date", "post_text", "screenshot", "images", "image_over_text",
     "comments", "reposts", "likes", "views", "is_ad", "status",
-    "post_type", "to_tg", "to_tw", "to_wp", "to_vk",
+    "post_type", "to_tg", "to_tw", "to_wp", "to_vk", "to_dzen", "to_instagram",
 ]
 
 # Все флаги to_* для проверки
 _TARGET_FLAGS = list(TARGET_TABLES.keys())
 
 # Ключи в platform_texts (из processor) для каждой целевой платформы
-_PLATFORM_TEXT_KEYS = {"tg": "telegram", "wp": "wordpress", "vk": "vkontakte"}
+_PLATFORM_TEXT_KEYS = {"tg": "telegram", "wp": "wordpress", "vk": "vkontakte", "dzen": "dzen", "instagram": "instagram"}
 
 
 class DistributeService:
@@ -51,9 +51,9 @@ class DistributeService:
             try:
                 await cur.execute("BEGIN")
 
-                # 1. Выбрать готовые посты (включая platform_texts для обновления той же платформы)
+                # 1. Выбрать готовые посты (включая platform_texts и videos для dzen)
                 select_cols = (
-                    ["id", "source_platform", "source_id"] + _POST_COLUMNS + ["platform_texts"]
+                    ["id", "source_platform", "source_id"] + _POST_COLUMNS + ["platform_texts", "videos"]
                 )
                 col_str = ", ".join(select_cols)
 
@@ -232,6 +232,10 @@ class DistributeService:
     ) -> None:
         """Вставляет пост в целевую платформенную таблицу со статусом 'ready'."""
         insert_cols = list(_POST_COLUMNS)
+        if target_table == "dzen_posts":
+            insert_cols = list(_POST_COLUMNS) + ["videos"]
+        elif target_table == "instagram_posts":
+            insert_cols = list(_POST_COLUMNS) + ["videos"]
         placeholders = ", ".join(["%s"] * len(insert_cols))
         col_str = ", ".join(insert_cols)
 
@@ -241,10 +245,25 @@ class DistributeService:
         status_idx = _POST_COLUMNS.index("status")
         values[status_idx] = "ready"
 
-        # В целевых таблицах images — JSONB; из posts приходит list/dict (десериализованный JSONB) — приводим к JSON-строке
+        # В целевых таблицах images — JSONB; из posts приходит list/dict — приводим к JSON-строке
         images_idx = _POST_COLUMNS.index("images")
         if values[images_idx] is not None and not isinstance(values[images_idx], str):
             values[images_idx] = json.dumps(values[images_idx], ensure_ascii=False)
+
+        if target_table == "dzen_posts":
+            videos_val = record.get("videos")
+            if videos_val is not None and not isinstance(videos_val, str):
+                videos_val = json.dumps(videos_val, ensure_ascii=False)
+            else:
+                videos_val = "[]" if not videos_val else videos_val
+            values.append(videos_val)
+        elif target_table == "instagram_posts":
+            videos_val = record.get("videos")
+            if videos_val is not None and not isinstance(videos_val, str):
+                videos_val = json.dumps(videos_val, ensure_ascii=False)
+            else:
+                videos_val = "[]" if not videos_val else videos_val
+            values.append(videos_val)
 
         await cur.execute(
             f"""

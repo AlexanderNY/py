@@ -53,6 +53,21 @@ BEGIN
   ALTER TABLE posts ADD COLUMN platform_texts JSONB DEFAULT '{}';
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
+DO $$
+BEGIN
+  ALTER TABLE posts ADD COLUMN to_dzen BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE posts ADD COLUMN videos JSONB DEFAULT '[]';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE posts ADD COLUMN to_instagram BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 """
 
 # Индексы для posts
@@ -463,6 +478,16 @@ BEGIN
   ALTER TABLE vk_profiles ADD COLUMN static_html_content TEXT;
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN post_to_own_wall BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN users_to_read JSONB DEFAULT '[]';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 """
 
 # Таблица vk_posts - посты VKontakte (структура аналогична tg_posts)
@@ -506,11 +531,16 @@ CREATE INDEX IF NOT EXISTS idx_vk_posts_status_created ON vk_posts(status, creat
 CREATE INDEX IF NOT EXISTS idx_vk_posts_user_domain ON vk_posts(user_id, domain);
 """
 
-# Миграция: vk_source_id для дедупликации постов из VK API
+# Миграция: vk_source_id для дедупликации постов из VK API; attachments для расширенных вложений
 VK_POSTS_MIGRATION = """
 DO $$
 BEGIN
   ALTER TABLE vk_posts ADD COLUMN vk_source_id INTEGER;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_posts ADD COLUMN attachments JSONB DEFAULT '[]';
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 """
@@ -641,6 +671,200 @@ END $$;
 DO $$
 BEGIN
   ALTER TABLE url_posts ADD COLUMN to_threads BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+"""
+
+# Таблица dzen_profiles - настройки Яндекс Дзен
+DZEN_PROFILES_TABLE = """
+CREATE TABLE IF NOT EXISTS dzen_profiles (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER UNIQUE NOT NULL,
+    publish_enabled BOOLEAN DEFAULT FALSE,
+    collect_enabled BOOLEAN DEFAULT FALSE,
+    schedule_type VARCHAR(20) DEFAULT 'immediate',
+    time_intervals JSONB DEFAULT '[]',
+    rss_feed_url TEXT,
+    channel_name VARCHAR(255),
+    channels_to_read JSONB DEFAULT '[]',
+    rss_token VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+# Миграция: rss_token для dzen_profiles (если таблица создана без него)
+DZEN_PROFILES_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE dzen_profiles ADD COLUMN rss_token VARCHAR(255);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+"""
+
+# Таблица dzen_posts - посты Дзен (структура как vk_posts + videos)
+DZEN_POSTS_TABLE = """
+CREATE TABLE IF NOT EXISTS dzen_posts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    domain VARCHAR(255),
+    url TEXT,
+    title VARCHAR(500),
+    author VARCHAR(255),
+    avatar TEXT,
+    post_date TIMESTAMP,
+    post_text TEXT,
+    screenshot TEXT,
+    images JSONB DEFAULT '[]',
+    image_over_text TEXT,
+    videos JSONB DEFAULT '[]',
+    comments INTEGER DEFAULT 0,
+    reposts INTEGER DEFAULT 0,
+    likes INTEGER DEFAULT 0,
+    views INTEGER DEFAULT 0,
+    is_ad BOOLEAN DEFAULT FALSE,
+    status VARCHAR(50) DEFAULT 'collected',
+    post_type VARCHAR(50),
+    to_tg BOOLEAN DEFAULT FALSE,
+    to_tw BOOLEAN DEFAULT FALSE,
+    to_wp BOOLEAN DEFAULT FALSE,
+    to_vk BOOLEAN DEFAULT FALSE,
+    to_dzen BOOLEAN DEFAULT TRUE,
+    to_threads BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+# Индексы для dzen_posts
+DZEN_POSTS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_dzen_posts_user_id ON dzen_posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_dzen_posts_status ON dzen_posts(status);
+CREATE INDEX IF NOT EXISTS idx_dzen_posts_created_at ON dzen_posts(created_at);
+CREATE INDEX IF NOT EXISTS idx_dzen_posts_status_created ON dzen_posts(status, created_at);
+"""
+
+# Миграция: to_dzen для существующих таблиц постов (posts.to_dzen уже в POSTS_MIGRATION)
+TO_DZEN_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE tg_posts ADD COLUMN to_dzen BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE wp_posts ADD COLUMN to_dzen BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_posts ADD COLUMN to_dzen BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE url_posts ADD COLUMN to_dzen BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+"""
+
+# Таблица instagram_profiles - настройки Instagram (instagrapi)
+INSTAGRAM_PROFILES_TABLE = """
+CREATE TABLE IF NOT EXISTS instagram_profiles (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER UNIQUE NOT NULL,
+    publish_enabled BOOLEAN DEFAULT FALSE,
+    collect_enabled BOOLEAN DEFAULT FALSE,
+    schedule_type VARCHAR(20) DEFAULT 'immediate',
+    time_intervals JSONB DEFAULT '[]',
+    username VARCHAR(255),
+    password VARCHAR(512),
+    usernames_to_read JSONB DEFAULT '[]',
+    process_enabled BOOLEAN DEFAULT FALSE,
+    processing_description TEXT,
+    remove_emojis BOOLEAN DEFAULT FALSE,
+    remove_images BOOLEAN DEFAULT FALSE,
+    clean_html BOOLEAN DEFAULT FALSE,
+    process_services JSONB,
+    status_review_after_process BOOLEAN DEFAULT FALSE,
+    add_static_html BOOLEAN DEFAULT FALSE,
+    static_html_content TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+# Таблица instagram_posts - посты Instagram (структура как vk_posts + instagram_source_id, to_instagram, videos)
+INSTAGRAM_POSTS_TABLE = """
+CREATE TABLE IF NOT EXISTS instagram_posts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    instagram_source_id VARCHAR(100),
+    domain VARCHAR(255),
+    url TEXT,
+    title VARCHAR(500),
+    author VARCHAR(255),
+    avatar TEXT,
+    post_date TIMESTAMP,
+    post_text TEXT,
+    screenshot TEXT,
+    images JSONB DEFAULT '[]',
+    image_over_text TEXT,
+    videos JSONB DEFAULT '[]',
+    comments INTEGER DEFAULT 0,
+    reposts INTEGER DEFAULT 0,
+    likes INTEGER DEFAULT 0,
+    views INTEGER DEFAULT 0,
+    is_ad BOOLEAN DEFAULT FALSE,
+    status VARCHAR(50) DEFAULT 'collected',
+    post_type VARCHAR(50),
+    to_tg BOOLEAN DEFAULT FALSE,
+    to_tw BOOLEAN DEFAULT FALSE,
+    to_wp BOOLEAN DEFAULT FALSE,
+    to_vk BOOLEAN DEFAULT FALSE,
+    to_dzen BOOLEAN DEFAULT FALSE,
+    to_threads BOOLEAN DEFAULT FALSE,
+    to_instagram BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+# Индексы для instagram_posts
+INSTAGRAM_POSTS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_instagram_posts_user_id ON instagram_posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_instagram_posts_status ON instagram_posts(status);
+CREATE INDEX IF NOT EXISTS idx_instagram_posts_created_at ON instagram_posts(created_at);
+CREATE INDEX IF NOT EXISTS idx_instagram_posts_status_created ON instagram_posts(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_instagram_posts_user_domain ON instagram_posts(user_id, domain);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_instagram_posts_source ON instagram_posts(user_id, instagram_source_id) WHERE instagram_source_id IS NOT NULL;
+"""
+
+# Миграция: to_instagram для существующих таблиц постов
+TO_INSTAGRAM_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE tg_posts ADD COLUMN to_instagram BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE wp_posts ADD COLUMN to_instagram BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_posts ADD COLUMN to_instagram BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE url_posts ADD COLUMN to_instagram BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE dzen_posts ADD COLUMN to_instagram BOOLEAN DEFAULT FALSE;
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 """
@@ -809,6 +1033,15 @@ ALL_TABLES = [
     THREADS_POSTS_TABLE,
     THREADS_POSTS_INDEXES,
     TO_THREADS_MIGRATION,
+    DZEN_PROFILES_TABLE,
+    DZEN_PROFILES_MIGRATION,
+    DZEN_POSTS_TABLE,
+    DZEN_POSTS_INDEXES,
+    TO_DZEN_MIGRATION,
+    INSTAGRAM_PROFILES_TABLE,
+    INSTAGRAM_POSTS_TABLE,
+    INSTAGRAM_POSTS_INDEXES,
+    TO_INSTAGRAM_MIGRATION,
     CURL_SETTINGS_TABLE,
     CURL_SETTINGS_MIGRATION,
     CURL_ONE_TIME_DONE_TABLE,

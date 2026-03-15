@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     # Интервалы выполнения (секунды)
     COLLECT_INTERVAL_SEC: int = 60
     DISTRIBUTE_INTERVAL_SEC: int = 60
+    DZEN_RSS_READ_INTERVAL_SEC: int = 300  # вычитка RSS из channels_to_read
 
     # Размер батча за один цикл
     COLLECT_BATCH_SIZE: int = 100
@@ -40,6 +41,7 @@ SOURCE_TABLES = [
     {"platform": "wp", "table": "wp_posts"},
     {"platform": "url", "table": "url_posts"},
     {"platform": "vk", "table": "vk_posts"},
+    {"platform": "instagram", "table": "instagram_posts"},
     # {"platform": "tw", "table": "tw_posts"},
 ]
 
@@ -62,5 +64,7 @@ TARGET_TABLES = {
     "to_tg": {"platform": "tg", "table": "tg_posts"},
     "to_wp": {"platform": "wp", "table": "wp_posts"},
     "to_vk": {"platform": "vk", "table": "vk_posts"},
+    "to_dzen": {"platform": "dzen", "table": "dzen_posts"},
+    "to_instagram": {"platform": "instagram", "table": "instagram_posts"},
     # "to_tw": {"platform": "tw", "table": "tw_posts"},
 }

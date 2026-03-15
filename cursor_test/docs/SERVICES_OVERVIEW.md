@@ -1,5 +1,66 @@
 # Обзор сервисов: UI, API Gateway, эндпоинты и доступ к БД
 
+## 0. Диаграмма взаимодействия сервисов
+
+Ниже упрощённая схема основных потоков:
+
+```mermaid
+flowchart LR
+  UI[UI (frontend)] -->|/api| APIGW[API Gateway (8000)]
+
+  subgraph CoreStack[Core & Auth]
+    AUTH[Auth (8001)]
+    CORE[Core (8002)]
+    SCHED[Scheduler (8003)]
+  end
+
+  subgraph Bots[Боты]
+    TGBOT[TG Bot (8004)]
+    VKBOT[VK Bot (8005)]
+    WPBOT[WP Bot (8006)]
+    URLBOT[URL Bot (8007)]
+    IGBOT[Instagram Bot (8012)]
+  end
+
+  subgraph External[Внешние сервисы]
+    WP[WordPress]
+    TG[Telegram]
+    VK[VK]
+    TW[Twitter]
+    DZEN[Яндекс Дзен RSS]
+    Instagram[Instagram]
+    Websites[Сайты для скрапинга]
+  end
+
+  subgraph DBCluster[PostgreSQL db_bot]
+    DBAUTH[(users, tokens...)]
+    DBCORE[(posts, profiles, notifications...)]
+    DBSCHED[(schedule_snapshots...)]
+    DBTEST[(products, orders...)]
+  end
+
+  APIGW --> AUTH
+  APIGW --> CORE
+  APIGW --> SCHED
+  APIGW --> URLBOT
+  APIGW -->|/test/*| TEST[SelectCB/Test (8008)]
+
+  CORE --> DBAUTH
+  CORE --> DBCORE
+  SCHED --> DBSCHED
+  TGBOT --> DBCORE
+  TEST --> DBTEST
+
+  CORE -->|постинг| WP
+  CORE -->|постинг| TG
+  CORE -->|постинг| VK
+  CORE -->|постинг| TW
+  CORE -->|RSS-лента| DZEN
+  IGBOT -->|сбор/публикация| Instagram
+
+  URLBOT --> Websites
+```
+
 ## 1. Запросы с UI
 
 UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перенаправляет `/api` на API Gateway и убирает префикс `/api`, поэтому фактические запросы идут на Gateway по путям без `/api`.
@@ -18,7 +79,6 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 | POST | `/auth/reset-password/confirm` | Подтверждение сброса пароля |
 | POST | `/auth/refresh` | Обновление пары токенов |
 | POST | `/auth/verify` | Верификация email (код) |
-| GET | `/auth/users` | Список пользователей (admin) |
 
 ### 1.2 Core (core-service.ts)
 
@@ -26,10 +86,6 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 |-------|------|----------|
 | GET | `/core/healthchecks` | Healthcheck всех сервисов |
 | GET | `/core/statistics` | Статистика |
-| GET | `/core/users-statistics` | Статистика по пользователям (admin) |
-| GET | `/core/schedule` | Расписания из schedule_snapshots (admin) |
-| POST | `/core/start-discovery` | Запуск цикла сбора расписаний (admin) |
-| POST | `/core/start-bot` | Запуск ботов по платформам (admin) |
 
 ### 1.3 Create Post (create-post-service.ts)
 
@@ -37,11 +93,7 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 |-------|------|----------|
 | GET | `/cpost/profile` | Профиль ручных постов (default_platforms) |
 | POST | `/cpost/profile` | Сохранение профиля |
-| GET | `/cpost/posts` | Список ручных постов |
-| GET | `/cpost/post/{id}` | Один пост |
 | POST | `/cpost/post` | Создание поста |
-| PUT | `/cpost/post/{id}` | Обновление поста |
-| DELETE | `/cpost/post/{id}` | Удаление поста |
 
 ### 1.4 Custom URL (custom-url-service.ts)
 
@@ -50,27 +102,15 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 | GET | `/curl/settings` | Настройки cURL/скрапинга по URL |
 | POST | `/curl/settings` | Сохранение настроек |
 
-### 1.5 Notifications (notifications-service.ts)
-
-| Метод | Путь | Описание |
-|-------|------|----------|
-| GET | `/core/notifications` | Список уведомлений |
-| POST | `/core/notifications` | Создание уведомления (admin) |
-| DELETE | `/core/notifications/{id}` | Удаление уведомления (admin) |
-
-### 1.6 Telegram (telegram-service.ts)
+### 1.5 Telegram (telegram-service.ts)
 
 | Метод | Путь | Описание |
 |-------|------|----------|
 | GET | `/tg/profile` | Профиль Telegram |
 | POST | `/tg/profile` | Сохранение профиля |
-| GET | `/tg/posts` | Список постов TG |
-| GET | `/tg/post/{id}` | Один пост |
 | POST | `/tg/post` | Создание поста (multipart: text, image) |
-| PUT | `/tg/post/{id}` | Обновление поста |
-| DELETE | `/tg/post/{id}` | Удаление поста |
 
-### 1.7 Twitter (twitter-service.ts)
+### 1.6 Twitter (twitter-service.ts)
 
 | Метод | Путь | Описание |
 |-------|------|----------|
@@ -78,7 +118,7 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 | POST | `/tw/profile` | Сохранение профиля |
 | POST | `/tw/post` | Создание поста |
 
-### 1.8 VKontakte (vkontakte-service.ts)
+### 1.7 VKontakte (vkontakte-service.ts)
 
 | Метод | Путь | Описание |
 |-------|------|----------|
@@ -86,21 +126,41 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 | POST | `/vk/profile` | Сохранение профиля |
 | POST | `/vk/post` | Создание поста |
 
-### 1.9 WordPress (wordpress-service.ts)
+### 1.8 Instagram (instagram-service.ts)
 
 | Метод | Путь | Описание |
 |-------|------|----------|
-| GET/POST | `/wp/profile` | Профиль WordPress |
-| GET/POST | `/wp/publish-profile` | Профиль публикации |
-| GET/POST | `/wp/collect-profile` | Профиль сбора |
-| GET | `/wp/profiles` | Все профили WP |
-| GET | `/wp/posts` | Список постов WP |
-| GET | `/wp/post/{id}` | Один пост |
-| POST | `/wp/post` | Создание поста |
-| PUT | `/wp/post/{id}` | Обновление поста |
-| DELETE | `/wp/post/{id}` | Удаление поста |
+| GET | `/instagram/profile` | Профиль Instagram |
+| POST | `/instagram/profile` | Сохранение профиля |
+| GET | `/instagram/posts` | Список постов Instagram |
+| GET | `/instagram/post/{id}` | Один пост |
+| POST | `/instagram/post` | Создание поста (JSON или multipart: caption, images[]) |
+| PUT | `/instagram/post/{id}` | Обновление поста |
+| DELETE | `/instagram/post/{id}` | Удаление поста (status=deleted) |
 
-### 1.10 Test / SelectCB (test-service.ts)
+### 1.9 Дзен (dzen-service.ts)
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| GET | `/dzen/profile` | Профиль Дзен |
+| POST | `/dzen/profile` | Сохранение профиля |
+| GET | `/dzen/posts` | Список постов Дзен |
+| GET | `/dzen/post/{id}` | Один пост |
+| POST | `/dzen/post` | Создание поста (JSON или multipart: text, title, images, videos) |
+| PUT | `/dzen/post/{id}` | Обновление поста |
+| DELETE | `/dzen/post/{id}` | Удаление поста (status=deleted) |
+| GET | `/dzen/rss/{user_id}` | Публичная RSS-лента для робота Дзена (опционально ?token=...) |
+
+### 1.10 WordPress (wordpress-service.ts)
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| GET | `/wp/profile` | Профиль WordPress |
+| POST | `/wp/profile` | Сохранение профиля |
+| POST | `/wp/post` | Создание поста (поддерживает загрузку изображений в контент и caption) |
+| GET | `/wp/posts` | Список постов WP |
+
+### 1.11 Test / SelectCB (test-service.ts)
 
 | Метод | Путь | Описание |
 |-------|------|----------|
@@ -128,6 +188,8 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 | `/tg` | Core | Telegram профили и посты |
 | `/tw` | Core | Twitter профили и посты |
 | `/vk` | Core | VK профили и посты |
+| `/dzen` | Core | Дзен профили, посты; GET `/dzen/rss/{user_id}` — публичная RSS-лента |
+| `/instagram` | Core | Instagram профили, посты |
 | `/curl` | Core | Настройки cURL/скрапинга |
 | `/cpost` | Core | Ручные посты (профиль, CRUD постов) |
 | `/tg-bot/schedule` | TG Bot (8004) | POST → `/schedule` |
@@ -181,6 +243,9 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 | `/tg` | GET/POST | `/post`, `/posts`, `/post/{id}` | CRUD постов TG |
 | `/tw` | GET/POST | `/profile`, `/profiles`, `/post` | Twitter |
 | `/vk` | GET/POST | `/profile`, `/profiles`, `/post` | VK |
+| `/dzen` | GET/POST | `/profile`, `/profiles`, `/posts`, `/post`, `/post/{id}` | Дзен |
+| `/dzen` | GET | `/rss/{user_id}` | Публичная RSS-лента (для робота Дзена, опционально ?token=) |
+| `/instagram` | GET/POST | `/profile`, `/profiles`, `/posts`, `/post`, `/post/{id}` | Instagram |
 | `/wp` | GET/POST | `/profile`, `/publish-profile`, `/collect-profile`, `/profiles` | Профили WP |
 | `/wp` | GET/POST/PUT/DELETE | `/post`, `/posts`, `/post/{id}` | Посты WP |
 | `/curl` | GET/POST | `/settings` | Настройки cURL |
@@ -211,7 +276,16 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 
 Через Gateway вызывается только `POST /tg-bot/schedule` → `POST /schedule` на боте. В текущем коде tg-bot зарегистрирован только роутер `auth` (prefix `/tg`, эндпоинты `/tg/auth/code`, `/tg/auth/password`, `/tg/auth/status/{user_id}`). Эндпоинт `POST /schedule` для приёма команд от scheduler в репозитории не реализован (возможен в другой ветке или по плану).
 
-### 3.5 URL Bot (порт 8007)
+### 3.5 Instagram Bot (порт 8012)
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| GET | `/health` | Health |
+| POST | `/instagram/reload` | Запуск одного цикла сбора постов (в фоне) |
+
+Сервис использует instagrapi для сбора постов (свои + usernames_to_read) и публикации постов из `instagram_posts` со статусом `ready`. БД: `db_bot` (чтение/запись `instagram_profiles`, `instagram_posts`).
+
+### 3.6 URL Bot (порт 8007)
 
 | Метод | Путь | Описание |
 |-------|------|----------|
@@ -219,7 +293,7 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 | POST | `/run` | Тестовый запуск скрапинга (url, xpath, take_screenshot) |
 | POST | `/schedule` | Обработка расписаний от scheduler (platform=url) |
 
-### 3.6 SelectCB / Test (порт 8008)
+### 3.7 SelectCB / Test (порт 8008)
 
 | Метод | Путь | Описание |
 |-------|------|----------|
@@ -249,7 +323,7 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 
 - **БД:** `db_bot` (из `core/config.py`).
 - **Таблицы:**  
-  `posts`, `tg_profiles`, `tg_posts`, `tw_profiles`, `wp_profiles`, `wp_publish_profile`, `wp_collect_profile`, `wp_collect_sites`, `wp_posts`, `vk_profiles`, `curl_settings`, `cpost_profiles`, `notifications`.  
+  `posts`, `tg_profiles`, `tg_posts`, `tw_profiles`, `wp_profiles`, `wp_publish_profile`, `wp_collect_profile`, `wp_collect_sites`, `wp_posts`, `vk_profiles`, `dzen_profiles`, `dzen_posts`, `instagram_profiles`, `instagram_posts`, `curl_settings`, `cpost_profiles`, `notifications`. В `posts` и платформенных таблицах постов есть флаги `to_dzen`, `to_instagram`.  
 - **Чтение:** также читает таблицу **`schedule_snapshots`**, которая создаётся и заполняется сервисом **scheduler** в той же БД.
 
 ### 4.4 Scheduler
@@ -279,9 +353,10 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 | Сервис    | База данных | Таблицы (создание/использование) |
 |-----------|-------------|-----------------------------------|
 | Auth      | db_bot      | users, refresh_tokens, blacklisted_tokens, password_reset_tokens, email_verification_tokens |
-| Core      | db_bot      | posts, tg_profiles, tg_posts, tw_profiles, wp_*, vk_profiles, curl_settings, cpost_profiles, notifications; чтение: schedule_snapshots |
+| Core      | db_bot      | posts, tg_profiles, tg_posts, tw_profiles, wp_*, vk_profiles, dzen_profiles, dzen_posts, instagram_profiles, instagram_posts, curl_settings, cpost_profiles, notifications; чтение: schedule_snapshots |
 | Scheduler | db_bot      | schedule_snapshots, schedule_snapshots_wp |
 | TG Bot    | db_bot      | чтение/запись tg_profiles (и др. при необходимости) |
+| Instagram Bot | db_bot  | чтение/запись instagram_profiles, instagram_posts |
 | URL Bot   | —           | нет |
 | SelectCB  | db_bot*     | products, orders, orderdetails |
 

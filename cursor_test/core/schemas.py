@@ -412,7 +412,9 @@ class VKontakteProfileBase(BaseModel):
     # Сбор и публикация (vk-bot)
     access_token: Optional[str] = None
     groups_to_read: List[int] = []  # ID групп для чтения стены, например [-123456] -> 123456
+    users_to_read: List[int] = []  # ID пользователей для чтения стены
     group_to_post: Optional[str] = None  # ID или short_name группы для публикации
+    post_to_own_wall: bool = False  # публиковать на личную стену пользователя
 
 
 class VKontakteProfileCreate(VKontakteProfileBase):
@@ -438,6 +440,117 @@ class VKontaktePost(BaseModel):
     to_tw: bool = False
     to_wp: bool = False
     to_vk: bool = True
+    images: Optional[List[str]] = None
+
+
+# ==================== Dzen ====================
+
+class DzenProfileBase(BaseModel):
+    """Базовая модель профиля Яндекс Дзен."""
+    publish_enabled: bool = False
+    collect_enabled: bool = False
+    schedule_type: Optional[str] = "immediate"
+    time_intervals: List[TimeInterval] = []
+    rss_feed_url: Optional[str] = None
+    channel_name: Optional[str] = None
+    channels_to_read: List[str] = []  # RSS URL чужих каналов для вычитки
+    rss_token: Optional[str] = None  # опционально: защита RSS по ?token=...
+
+
+class DzenProfileCreate(DzenProfileBase):
+    """Модель для создания/обновления профиля Дзен."""
+    pass
+
+
+class DzenProfile(DzenProfileBase):
+    """Модель профиля Дзен с ID."""
+    id: int
+    user_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DzenPost(BaseModel):
+    """Модель поста для Дзен (max 1500 символов)."""
+    text: str = Field(..., max_length=1500)
+    title: Optional[str] = None
+    images: Optional[List[str]] = []
+    videos: Optional[List[str]] = []  # URL видео или путей после загрузки
+    to_tg: bool = False
+    to_tw: bool = False
+    to_wp: bool = False
+    to_vk: bool = False
+    to_dzen: bool = True
+
+
+class DzenPostUpdate(BaseModel):
+    """Тело запроса для обновления поста Дзен."""
+    text: Optional[str] = Field(None, max_length=1500)
+    title: Optional[str] = None
+    images: Optional[List[str]] = None
+    videos: Optional[List[str]] = None
+    status: Optional[str] = None
+
+
+# ==================== Instagram ====================
+
+class InstagramProfileBase(BaseModel):
+    """Базовая модель профиля Instagram."""
+    publish_enabled: bool = False
+    collect_enabled: bool = False
+    schedule_type: Optional[str] = "immediate"
+    time_intervals: List[TimeInterval] = []
+    username: Optional[str] = None
+    password: Optional[str] = None
+    usernames_to_read: List[str] = []
+    process_enabled: bool = False
+    processing_description: Optional[str] = None
+    remove_emojis: bool = False
+    remove_images: bool = False
+    clean_html: bool = False
+    process_services: Optional[List[str]] = None
+    status_review_after_process: bool = False
+    add_static_html: bool = False
+    static_html_content: Optional[str] = None
+
+
+class InstagramProfileCreate(InstagramProfileBase):
+    """Модель для создания/обновления профиля Instagram."""
+    pass
+
+
+class InstagramProfile(InstagramProfileBase):
+    """Модель профиля Instagram с ID."""
+    id: int
+    user_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class InstagramPost(BaseModel):
+    """Модель поста для Instagram (caption max 2200 символов)."""
+    caption: str = Field(..., max_length=2200)
+    images: Optional[List[str]] = []
+    to_tg: bool = False
+    to_tw: bool = False
+    to_wp: bool = False
+    to_vk: bool = False
+    to_dzen: bool = False
+    to_threads: bool = False
+    to_instagram: bool = True
+
+
+class InstagramPostUpdate(BaseModel):
+    """Тело запроса для обновления поста Instagram."""
+    caption: Optional[str] = Field(None, max_length=2200)
+    images: Optional[List[str]] = None
+    status: Optional[str] = None
 
 
 # ==================== cURL ====================
@@ -532,6 +645,7 @@ class DefaultPlatforms(BaseModel):
     wp: bool = False
     vk: bool = False
     threads: bool = False
+    dzen: bool = False
 
 
 class CpostProfileBase(BaseModel):
@@ -578,6 +692,7 @@ class CpostPost(BaseModel):
     to_wp: bool = False
     to_vk: bool = False
     to_threads: bool = False
+    to_dzen: bool = False
 
 
 class CpostPostUpdate(BaseModel):
@@ -603,6 +718,7 @@ class CpostPostUpdate(BaseModel):
     to_wp: Optional[bool] = None
     to_vk: Optional[bool] = None
     to_threads: Optional[bool] = None
+    to_dzen: Optional[bool] = None
 
 
 # ==================== Post (общая модель) ====================
@@ -630,6 +746,7 @@ class PostBase(BaseModel):
     to_tw: bool = False
     to_wp: bool = False
     to_vk: bool = False
+    to_dzen: bool = False
 
 
 class PostCreate(PostBase):
@@ -802,6 +919,7 @@ class PostRow(BaseModel):
     to_tw: bool = False
     to_wp: bool = False
     to_vk: bool = False
+    to_dzen: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     source_platform: Optional[str] = None
@@ -814,3 +932,20 @@ class PostRow(BaseModel):
 class PostsListResponse(BaseModel):
     """Ответ со списком постов (админ)."""
     posts: List[PostRow] = []
+
+
+class StorageFileItem(BaseModel):
+    """Один объект в S3 (админ: список файлов хранилища)."""
+    key: str
+    size: int
+    last_modified: Optional[str] = None
+
+
+class StorageFilesResponse(BaseModel):
+    """Список файлов в едином хранилище (S3). enabled=False если S3 не настроен."""
+    enabled: bool = False
+    objects: List[StorageFileItem] = Field(default_factory=list, alias="objects")
+    next_continuation_token: Optional[str] = None
+
+    class Config:
+        populate_by_name = True

@@ -1,11 +1,16 @@
-"""Публикация постов из vk_posts со статусом ready в group_to_post."""
+"""Публикация постов из vk_posts со статусом ready на личную стену и/или в группу VK с вложениями."""
 
 import asyncio
+import json
 import logging
-from typing import Dict, List, Optional
+import os
+import tempfile
+from typing import Any, Dict, List, Optional
 
+import httpx
 from database import get_db_connection, release_db_connection
 from config import settings
+from storage_helper import get_storage
 from .vk_client import VkClient
 
 
@@ -22,36 +27,118 @@ def _log_action(msg: str, *args, **kwargs) -> None:
 
 
 def _parse_group_to_post(value: Optional[str]) -> Optional[int]:
-    """Преобразует group_to_post в owner_id (отрицательное число)."""
-    if not value or not str(value).strip():
+    """Преобразует group_to_post в owner_id (отрицательное число). Поддерживает числовой id и формат club123456."""
+    if value is None:
         return None
     s = str(value).strip()
+    if not s:
+        return None
+    # Формат "club236672543" или "236672543"
+    if s.lower().startswith("club"):
+        s = s[4:].strip()
     try:
         n = int(s)
-        return -abs(n)
+        if n <= 0:
+            return None
+        return -n
     except ValueError:
         return None
 
 
+def _parse_attachments_raw(raw: Any) -> List[Dict[str, str]]:
+    """Разбирает attachments (JSONB) или images (JSONB) в список элементов с type и path/url."""
+    if raw is None:
+        return []
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    result = []
+    for item in data:
+        if isinstance(item, str):
+            result.append({"type": "photo", "path": item.strip()})
+        elif isinstance(item, dict):
+            t = (item.get("type") or "photo").lower()
+            path = item.get("path") or item.get("url") or ""
+            if path:
+                result.append({"type": t, "path": path.strip()})
+    return result
+
+
+def _resolve_path(path_or_url: str, base_dir: str) -> Optional[str]:
+    """Преобразует относительный путь в абсолютный (локальный файл). Для URL возвращает None."""
+    if not path_or_url or not isinstance(path_or_url, str):
+        return None
+    path_or_url = path_or_url.strip()
+    if path_or_url.lower().startswith(("http://", "https://")):
+        return None
+    if os.path.isabs(path_or_url) and os.path.exists(path_or_url):
+        return os.path.abspath(path_or_url)
+    path = path_or_url.lstrip("/")
+    base = (base_dir or os.getcwd()).rstrip("/")
+    full = os.path.join(base, path) if path else os.path.join(base, path_or_url)
+    if os.path.exists(full):
+        return os.path.abspath(full)
+    if os.path.exists(path_or_url):
+        return os.path.abspath(path_or_url)
+    return None
+
+
+def _resolve_image_url(path_or_url: str) -> str:
+    """Если путь относительный (/vk/uploads/...), возвращает полный URL через CORE_SERVICE_URL."""
+    s = (path_or_url or "").strip()
+    if not s:
+        return ""
+    if s.lower().startswith(("http://", "https://")):
+        return s
+    base = (settings.CORE_SERVICE_URL or "").rstrip("/")
+    if not base:
+        return s
+    return f"{base}{s}" if s.startswith("/") else f"{base}/{s}"
+
+
+async def _download_to_temp(url: str, suffix: str = "") -> Optional[str]:
+    """Скачивает файл по URL во временный файл. Возвращает путь или None."""
+    if not url or not url.strip().lower().startswith(("http://", "https://")):
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            ext = suffix or ".bin"
+            f = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+            f.write(resp.content)
+            f.close()
+            return f.name
+    except Exception as e:
+        logger.warning("Download failed %s: %s", url[:80], e)
+        return None
+
+
 class PostPublisher:
-    """Публикация постов из vk_posts в группу VK."""
+    """Публикация постов из vk_posts на личную стену и/или в группу VK с вложениями (фото, документы)."""
 
     async def get_ready_posts(self) -> List[Dict]:
-        """Посты со статусом ready и непустым group_to_post, access_token."""
+        """Посты со статусом ready и (group_to_post не пусто или post_to_own_wall = true), access_token."""
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT p.id, p.user_id, p.post_text, p.images,
-                           pr.group_to_post, pr.access_token, pr.from_group
+                    SELECT p.id, p.user_id, p.post_text, p.images, p.attachments,
+                           pr.group_to_post, pr.access_token, pr.from_group,
+                           pr.post_to_own_wall
                     FROM vk_posts p
                     JOIN vk_profiles pr ON p.user_id = pr.user_id
                     WHERE p.status = 'ready'
-                      AND pr.group_to_post IS NOT NULL
-                      AND pr.group_to_post != ''
                       AND pr.access_token IS NOT NULL
                       AND pr.access_token != ''
+                      AND (
+                        (pr.group_to_post IS NOT NULL AND pr.group_to_post != '')
+                        OR pr.post_to_own_wall = TRUE
+                      )
                     ORDER BY p.created_at ASC
                     """
                 )
@@ -61,31 +148,148 @@ class PostPublisher:
         finally:
             await release_db_connection(conn)
 
+    def _get_owner_ids(self, post: Dict, vk_user_id: Optional[int]) -> List[int]:
+        """Формирует список owner_id для публикации: личная стена (если post_to_own_wall) и/или группа."""
+        owner_ids: List[int] = []
+        if post.get("post_to_own_wall") and vk_user_id is not None:
+            owner_ids.append(vk_user_id)
+        group_owner = _parse_group_to_post(post.get("group_to_post"))
+        if group_owner is not None:
+            owner_ids.append(group_owner)
+        return owner_ids
+
+    async def _resolve_file_path(self, item: Dict[str, str], post_id: int) -> Optional[str]:
+        """Возвращает локальный путь к файлу: S3, URL или локальный диск."""
+        path_or_url = item.get("path") or item.get("url") or ""
+        if not path_or_url:
+            return None
+        s = path_or_url.strip()
+        if s.lower().startswith(("http://", "https://")):
+            suffix = ".jpg"
+            if item.get("type") == "doc":
+                suffix = ""
+            return await _download_to_temp(path_or_url, suffix)
+        # Единое хранилище (S3): ключ = путь без ведущего /
+        storage = get_storage()
+        if storage:
+            key = s.lstrip("/")
+            if key:
+                body = await storage.get_bytes(key)
+                if body:
+                    suffix = ".jpg"
+                    if item.get("type") == "doc":
+                        suffix = ""
+                    f = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                    f.write(body)
+                    f.close()
+                    return f.name
+        url = _resolve_image_url(path_or_url)
+        if url:
+            suffix = ".jpg"
+            if item.get("type") == "doc":
+                suffix = ""
+            return await _download_to_temp(url, suffix)
+        base = (settings.PATH_TO_VK_IMAGE or settings.UPLOADS_DIR or os.getcwd()).rstrip("/")
+        return _resolve_path(path_or_url, base)
+
+    async def _build_attachments_string(
+        self, client: VkClient, owner_id: int, post: Dict
+    ) -> Optional[str]:
+        """Загружает вложения поста для заданного owner_id и возвращает строку вложений для wall.post."""
+        attachments_list: List[Dict] = []
+        raw_attachments = post.get("attachments")
+        raw_images = post.get("images")
+        if raw_attachments:
+            try:
+                att = json.loads(raw_attachments) if isinstance(raw_attachments, str) else raw_attachments
+                if isinstance(att, list):
+                    attachments_list = _parse_attachments_raw(att)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        if not attachments_list and raw_images is not None:
+            attachments_list = _parse_attachments_raw(raw_images)
+        if not attachments_list:
+            return None
+        parts: List[str] = []
+        temp_paths: List[str] = []
+        for item in attachments_list:
+            local_path = await self._resolve_file_path(item, post.get("id"))
+            if not local_path:
+                continue
+            if local_path.startswith(tempfile.gettempdir()):
+                temp_paths.append(local_path)
+            atype = (item.get("type") or "photo").lower()
+            if atype == "photo":
+                astr = await client.upload_photo_wall(local_path, owner_id)
+            elif atype in ("doc", "document", "video", "audio"):
+                astr = await client.upload_document_wall(local_path, owner_id)
+            else:
+                astr = await client.upload_photo_wall(local_path, owner_id)
+            if astr:
+                parts.append(astr)
+        for p in temp_paths:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+        return ",".join(parts) if parts else None
+
     async def publish_post(self, post: Dict) -> bool:
-        """Публикует один пост в группу. post: id, user_id, post_text, images, group_to_post, access_token, from_group."""
+        """Публикует один пост на личную стену и/или в группу с вложениями."""
         post_id = post.get("id")
         user_id = post.get("user_id")
         text = (post.get("post_text") or "")[:VK_MESSAGE_LIMIT]
-        owner_id = _parse_group_to_post(post.get("group_to_post"))
         token = post.get("access_token")
         from_group = bool(post.get("from_group", True))
 
-        if not owner_id or not token:
-            logger.warning("Post %s: missing group_to_post or access_token", post_id)
+        if not token:
+            logger.warning("Post %s: missing access_token", post_id)
             return False
 
         client = VkClient(token)
-        new_post_id = await client.wall_post(
-            owner_id=owner_id,
-            message=text,
-            from_group=from_group,
-            attachments=None,
-        )
-        if new_post_id is None:
+        vk_user_id: Optional[int] = None
+        if post.get("post_to_own_wall"):
+            vk_user_id = await client.get_current_user_id()
+            if vk_user_id is None:
+                logger.warning(
+                    "Post %s: post_to_own_wall is set but get_current_user_id() failed "
+                    "(use user token with users.get scope, not group token)",
+                    post_id,
+                )
+
+        owner_ids = self._get_owner_ids(post, vk_user_id)
+        if not owner_ids:
+            logger.warning(
+                "Post %s: no destination — post_to_own_wall=%s (vk_user_id=%s), group_to_post=%r; "
+                "set group_to_post to numeric group id and/or use user token for own wall",
+                post_id,
+                post.get("post_to_own_wall"),
+                vk_user_id,
+                post.get("group_to_post"),
+            )
             return False
-        await self._update_post_status(post_id, "published")
-        _log_action("Published vk post %s to group %s for user %s", post_id, owner_id, user_id)
-        return True
+
+        published_any = False
+        for owner_id in owner_ids:
+            attachments_str = await self._build_attachments_string(client, owner_id, post)
+            new_post_id = await client.wall_post(
+                owner_id=owner_id,
+                message=text,
+                from_group=from_group and owner_id < 0,
+                attachments=attachments_str,
+            )
+            if new_post_id is not None:
+                published_any = True
+                _log_action(
+                    "Published vk post %s to owner_id=%s for user %s",
+                    post_id,
+                    owner_id,
+                    user_id,
+                )
+            await asyncio.sleep(1)
+        if published_any:
+            await self._update_post_status(post_id, "published")
+        return published_any
 
     async def _update_post_status(self, post_id: int, status: str) -> None:
         conn = await get_db_connection()

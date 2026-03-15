@@ -9,6 +9,7 @@ import type {
   PostsListResponse,
   ProcessorRunResponse,
   PostingDiagnosticsResponse,
+  StorageFilesResponse,
 } from '@/types/core'
 
 export const coreService = {
@@ -134,6 +135,17 @@ export const coreService = {
   async getPostingDiagnostics(): Promise<PostingDiagnosticsResponse> {
     try {
       const response = await apiClient.get<PostingDiagnosticsResponse>('/core/admin/posting-diagnostics')
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getStorageFiles(params?: { prefix?: string; limit?: number; continuation_token?: string }): Promise<StorageFilesResponse> {
+    try {
+      const response = await apiClient.get<StorageFilesResponse>('/core/admin/storage/files', {
+        params: params ?? {},
+      })
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))

@@ -19,9 +19,11 @@ import type {
   PostsTablesResponse,
   PostRow,
   PostingDiagnosticsResponse,
+  StorageFileItem,
+  StorageFilesResponse,
 } from '@/types/core'
 
-type AdminTab = 'users' | 'groups' | 'statistics' | 'schedule' | 'notifications' | 'services-status' | 'processor' | 'collector' | 'scheduler' | 'posts-tables' | 'posting-diagnostics'
+type AdminTab = 'users' | 'groups' | 'statistics' | 'schedule' | 'notifications' | 'services-status' | 'processor' | 'collector' | 'scheduler' | 'posts-tables' | 'posting-diagnostics' | 'storage'
 
 export function AdministrationPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('users')
@@ -88,6 +90,12 @@ export function AdministrationPage() {
   const [isRunningDistribute, setIsRunningDistribute] = useState(false)
   const [distributeMessage, setDistributeMessage] = useState('')
   const [distributeError, setDistributeError] = useState('')
+
+  // S3 storage files (admin)
+  const [storageFiles, setStorageFiles] = useState<StorageFilesResponse | null>(null)
+  const [storagePrefix, setStoragePrefix] = useState('')
+  const [isLoadingStorageFiles, setIsLoadingStorageFiles] = useState(false)
+  const [storageFilesError, setStorageFilesError] = useState('')
 
   const [groupsList, setGroupsList] = useState<GroupResponse[]>([])
   const [isLoadingGroups, setIsLoadingGroups] = useState(false)
@@ -401,6 +409,23 @@ export function AdministrationPage() {
     }
   }
 
+  async function handleLoadStorageFiles() {
+    setStorageFilesError('')
+    setIsLoadingStorageFiles(true)
+    try {
+      const data = await coreService.getStorageFiles({
+        prefix: storagePrefix.trim() || undefined,
+        limit: 500,
+      })
+      setStorageFiles(data)
+    } catch (error) {
+      setStorageFilesError(error instanceof Error ? error.message : 'Failed to fetch storage files')
+      setStorageFiles(null)
+    } finally {
+      setIsLoadingStorageFiles(false)
+    }
+  }
+
   async function handleLoadPostsList() {
     setPostsListError('')
     setIsLoadingPostsList(true)
@@ -594,6 +619,16 @@ export function AdministrationPage() {
           }`}
         >
           Диагностика постинга
+        </button>
+        <button
+          onClick={() => setActiveTab('storage')}
+          className={`px-4 py-2 font-medium text-sm transition-colors ${
+            activeTab === 'storage'
+              ? 'text-primary-400 border-b-2 border-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          S3 Storage
         </button>
       </div>
 
@@ -2114,6 +2149,87 @@ export function AdministrationPage() {
             {!postingDiagnostics && !isLoadingPostingDiagnostics && !postingDiagnosticsError && (
               <p className="text-[var(--text-muted)] text-center py-8">
                 Нажмите «Запустить диагностику», чтобы получить сводки и подсказки по пайплайну постинга.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* S3 Storage Tab */}
+      {activeTab === 'storage' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
+              S3 Storage (файлы хранилища)
+            </CardTitle>
+            <CardDescription>
+              Список файлов в едином S3-хранилище (MinIO / AWS S3). Префикс — фильтр по ключу (например vk/, uploads/tg).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2 items-center">
+              <Input
+                placeholder="Префикс (например vk/ или uploads/)"
+                value={storagePrefix}
+                onChange={(e) => setStoragePrefix(e.target.value)}
+                className="max-w-xs"
+              />
+              <Button onClick={handleLoadStorageFiles} isLoading={isLoadingStorageFiles}>
+                Загрузить список файлов
+              </Button>
+            </div>
+
+            {storageFilesError && (
+              <Alert variant="error">{storageFilesError}</Alert>
+            )}
+
+            {storageFiles && !storageFiles.enabled && (
+              <Alert variant="default">
+                S3-хранилище не настроено (переменные S3_* не заданы или пусты).
+              </Alert>
+            )}
+
+            {storageFiles?.enabled && (
+              <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
+                <table className="w-full">
+                  <thead className="bg-[var(--bg-tertiary)]">
+                    <tr>
+                      <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Ключ</th>
+                      <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Размер</th>
+                      <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Изменён</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border-color)]">
+                    {storageFiles.objects.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="py-3 px-4 text-[var(--text-muted)] text-sm">
+                          Файлов нет{storagePrefix ? ` по префиксу «${storagePrefix}»` : ''}.
+                        </td>
+                      </tr>
+                    ) : (
+                      storageFiles.objects.map((obj: StorageFileItem) => (
+                        <tr key={obj.key} className="hover:bg-[var(--bg-tertiary)]">
+                          <td className="py-3 px-4 text-[var(--text-primary)] font-mono text-sm break-all">{obj.key}</td>
+                          <td className="py-3 px-4 text-right text-[var(--text-secondary)] text-sm">
+                            {obj.size >= 1024 ? `${(obj.size / 1024).toFixed(1)} KB` : `${obj.size} B`}
+                          </td>
+                          <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">
+                            {obj.last_modified ? new Date(obj.last_modified).toLocaleString() : '—'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {!storageFiles && !isLoadingStorageFiles && !storageFilesError && (
+              <p className="text-[var(--text-muted)] text-center py-8">
+                Нажмите «Загрузить список файлов», чтобы проверить содержимое S3.
               </p>
             )}
           </CardContent>

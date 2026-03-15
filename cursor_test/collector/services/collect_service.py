@@ -15,7 +15,7 @@ _POST_COLUMNS = [
     "user_id", "domain", "url", "title", "author", "avatar",
     "post_date", "post_text", "screenshot", "images", "image_over_text",
     "comments", "reposts", "likes", "views", "is_ad", "status",
-    "post_type", "to_tg", "to_tw", "to_wp", "to_vk",
+    "post_type", "to_tg", "to_tw", "to_wp", "to_vk", "to_dzen", "to_instagram",
 ]
 
 
@@ -80,10 +80,14 @@ class CollectService:
             try:
                 await cur.execute("BEGIN")
 
+                # Таблицы с колонкой videos (для копирования в posts)
+                tables_with_videos = ("dzen_posts", "instagram_posts")
+                select_cols = list(_POST_COLUMNS) + (["videos"] if table in tables_with_videos else [])
+
                 # 1. Выбрать посты со статусом 'collected'
                 await cur.execute(
                     f"""
-                    SELECT id, {", ".join(_POST_COLUMNS)}
+                    SELECT id, {", ".join(select_cols)}
                     FROM {table}
                     WHERE status = 'collected'
                     ORDER BY created_at
@@ -99,7 +103,7 @@ class CollectService:
                     return 0
 
                 # Получаем описание колонок
-                col_names = ["id"] + list(_POST_COLUMNS)
+                col_names = ["id"] + list(select_cols)
 
                 for row in rows:
                     record = dict(zip(col_names, row))
@@ -111,11 +115,18 @@ class CollectService:
                         "source_platform",
                         "source_id",
                     ]
+                    if table in tables_with_videos:
+                        insert_cols = list(_POST_COLUMNS) + ["videos", "source_platform", "source_id"]
                     placeholders = ", ".join(["%s"] * len(insert_cols))
                     col_str = ", ".join(insert_cols)
 
                     # Подготовка значений
                     values = [record[c] for c in _POST_COLUMNS]
+                    if table in tables_with_videos:
+                        videos_val = record.get("videos")
+                        if videos_val is not None and not isinstance(videos_val, str):
+                            videos_val = json.dumps(videos_val, ensure_ascii=False)
+                        values = values + [videos_val or "[]"]
                     values.append(platform)  # source_platform
                     values.append(source_id)  # source_id
 

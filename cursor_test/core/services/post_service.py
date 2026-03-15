@@ -17,6 +17,8 @@ class PostService:
         "vk": 15985,
         "cpost": 150000,
         "threads": 500,
+        "dzen": 1500,
+        "instagram": 2200,
     }
     
     async def create_post(
@@ -30,6 +32,8 @@ class PostService:
         to_wp: bool = False,
         to_vk: bool = False,
         to_threads: bool = False,
+        to_dzen: bool = False,
+        to_instagram: bool = False,
         **kwargs
     ) -> Dict:
         """Создает новый пост.
@@ -65,12 +69,12 @@ class PostService:
                         user_id, post_text, title, domain, url, author, avatar,
                         post_date, screenshot, images, image_over_text,
                         comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads
+                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s,
                         %s, %s, %s, %s,
                         %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     RETURNING *
                     """,
@@ -98,6 +102,8 @@ class PostService:
                         to_wp,
                         to_vk,
                         to_threads,
+                        to_dzen,
+                        to_instagram,
                     )
                 )
                 row = await cur.fetchone()
@@ -874,6 +880,7 @@ class PostService:
         post_id: int,
         text: Optional[str] = None,
         images: Optional[List] = None,
+        attachments: Optional[List] = None,
         status: Optional[str] = None,
     ) -> Optional[Dict]:
         """Обновляет пост VKontakte."""
@@ -891,6 +898,9 @@ class PostService:
                 if images is not None:
                     updates.append("images = %s")
                     params.append(json.dumps(images))
+                if attachments is not None:
+                    updates.append("attachments = %s")
+                    params.append(json.dumps(attachments))
                 if status is not None:
                     updates.append("status = %s")
                     params.append(status)
@@ -984,8 +994,317 @@ class PostService:
         columns = [col.name for col in description]
         post = dict(zip(columns, row))
         if isinstance(post.get("images"), str):
-            post["images"] = json.loads(post["images"])
+            try:
+                post["images"] = json.loads(post["images"])
+            except (json.JSONDecodeError, TypeError):
+                post["images"] = []
+        if isinstance(post.get("videos"), str):
+            try:
+                post["videos"] = json.loads(post["videos"])
+            except (json.JSONDecodeError, TypeError):
+                post["videos"] = []
+        if isinstance(post.get("attachments"), str):
+            try:
+                post["attachments"] = json.loads(post["attachments"])
+            except (json.JSONDecodeError, TypeError):
+                post["attachments"] = []
         return post
+
+    # ==================== Dzen ====================
+
+    async def create_dzen_post_record(
+        self,
+        user_id: int,
+        text: str,
+        title: Optional[str] = None,
+        images: Optional[List[str]] = None,
+        videos: Optional[List[str]] = None,
+        to_tg: bool = False,
+        to_tw: bool = False,
+        to_wp: bool = False,
+        to_vk: bool = False,
+    ) -> Dict:
+        """Создает пост Дзен в таблице dzen_posts."""
+        limit = self.PLATFORM_LIMITS.get("dzen", 1500)
+        if len(text) > limit:
+            raise ValueError(f"Text exceeds dzen limit of {limit} characters")
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO dzen_posts (
+                        user_id, post_text, title, domain, url, author, avatar,
+                        post_date, screenshot, images, image_over_text, videos,
+                        comments, reposts, likes, views, is_ad, status,
+                        post_type, to_tg, to_tw, to_wp, to_vk, to_dzen, to_threads
+                    ) VALUES (
+                        %s, %s, %s, NULL, NULL, NULL, NULL,
+                        NULL, NULL, %s, NULL, %s,
+                        0, 0, 0, 0, FALSE, 'collected',
+                        'dzen', %s, %s, %s, %s, TRUE, FALSE
+                    )
+                    RETURNING *
+                    """,
+                    (
+                        user_id,
+                        text,
+                        title,
+                        json.dumps(images or []),
+                        json.dumps(videos or []),
+                        to_tg,
+                        to_tw,
+                        to_wp,
+                        to_vk,
+                    ),
+                )
+                row = await cur.fetchone()
+                return self._row_to_post(row, cur.description)
+        finally:
+            await release_db_connection(conn)
+
+    async def get_dzen_posts(
+        self,
+        user_id: int,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """Получает посты Дзен пользователя из таблицы dzen_posts."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT *
+                    FROM dzen_posts
+                    WHERE user_id = %s AND (status IS NULL OR status != 'deleted')
+                    ORDER BY created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (user_id, limit, offset),
+                )
+                rows = await cur.fetchall()
+                return [self._row_to_post(row, cur.description) for row in rows]
+        finally:
+            await release_db_connection(conn)
+
+    async def get_dzen_post(self, user_id: int, post_id: int) -> Optional[Dict]:
+        """Получает один пост Дзен по id."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT * FROM dzen_posts WHERE user_id = %s AND id = %s",
+                    (user_id, post_id),
+                )
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_post(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+
+    async def update_dzen_post(
+        self,
+        user_id: int,
+        post_id: int,
+        text: Optional[str] = None,
+        title: Optional[str] = None,
+        images: Optional[List[str]] = None,
+        videos: Optional[List[str]] = None,
+        status: Optional[str] = None,
+    ) -> Optional[Dict]:
+        """Обновляет пост Дзен."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                updates = []
+                params = []
+                if text is not None:
+                    limit = self.PLATFORM_LIMITS.get("dzen", 1500)
+                    if len(text) > limit:
+                        raise ValueError(f"Text exceeds dzen limit of {limit} characters")
+                    updates.append("post_text = %s")
+                    params.append(text)
+                if title is not None:
+                    updates.append("title = %s")
+                    params.append(title)
+                if images is not None:
+                    updates.append("images = %s")
+                    params.append(json.dumps(images))
+                if videos is not None:
+                    updates.append("videos = %s")
+                    params.append(json.dumps(videos))
+                if status is not None:
+                    updates.append("status = %s")
+                    params.append(status)
+                if not updates:
+                    return await self.get_dzen_post(user_id, post_id)
+                params.extend([user_id, post_id])
+                await cur.execute(
+                    f"""
+                    UPDATE dzen_posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s AND id = %s
+                    RETURNING *
+                    """,
+                    params,
+                )
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_post(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+
+    async def delete_dzen_post(self, user_id: int, post_id: int) -> Optional[Dict]:
+        """Помечает пост Дзен как удаленный (status = 'deleted')."""
+        return await self.update_dzen_post(user_id, post_id, status="deleted")
+
+    # ==================== Instagram ====================
+
+    async def create_instagram_post_record(
+        self,
+        user_id: int,
+        caption: str,
+        images: Optional[List[str]] = None,
+        videos: Optional[List[str]] = None,
+        to_tg: bool = False,
+        to_tw: bool = False,
+        to_wp: bool = False,
+        to_vk: bool = False,
+        to_dzen: bool = False,
+        to_threads: bool = False,
+        to_instagram: bool = True,
+    ) -> Dict:
+        """Создает пост Instagram в таблице instagram_posts (status=ready для ручной публикации)."""
+        limit = self.PLATFORM_LIMITS.get("instagram", 2200)
+        if len(caption) > limit:
+            raise ValueError(f"Caption exceeds instagram limit of {limit} characters")
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO instagram_posts (
+                        user_id, post_text, domain, url, author, avatar,
+                        post_date, screenshot, images, image_over_text, videos,
+                        comments, reposts, likes, views, is_ad, status,
+                        post_type, to_tg, to_tw, to_wp, to_vk, to_dzen, to_threads, to_instagram
+                    ) VALUES (
+                        %s, %s, NULL, NULL, NULL, NULL,
+                        NULL, NULL, %s, NULL, %s,
+                        0, 0, 0, 0, FALSE, 'ready',
+                        'instagram', %s, %s, %s, %s, %s, %s, %s
+                    )
+                    RETURNING *
+                    """,
+                    (
+                        user_id,
+                        caption,
+                        json.dumps(images or []),
+                        json.dumps(videos or []),
+                        to_tg,
+                        to_tw,
+                        to_wp,
+                        to_vk,
+                        to_dzen,
+                        to_threads,
+                        to_instagram,
+                    ),
+                )
+                row = await cur.fetchone()
+                return self._row_to_post(row, cur.description)
+        finally:
+            await release_db_connection(conn)
+
+    async def get_instagram_posts(
+        self,
+        user_id: int,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """Получает посты Instagram пользователя из таблицы instagram_posts."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT *
+                    FROM instagram_posts
+                    WHERE user_id = %s AND (status IS NULL OR status != 'deleted')
+                    ORDER BY created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (user_id, limit, offset),
+                )
+                rows = await cur.fetchall()
+                return [self._row_to_post(row, cur.description) for row in rows]
+        finally:
+            await release_db_connection(conn)
+
+    async def get_instagram_post(self, user_id: int, post_id: int) -> Optional[Dict]:
+        """Получает один пост Instagram по id."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT * FROM instagram_posts WHERE user_id = %s AND id = %s",
+                    (user_id, post_id),
+                )
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_post(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+
+    async def update_instagram_post(
+        self,
+        user_id: int,
+        post_id: int,
+        caption: Optional[str] = None,
+        images: Optional[List[str]] = None,
+        status: Optional[str] = None,
+    ) -> Optional[Dict]:
+        """Обновляет пост Instagram."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                updates = []
+                params = []
+                if caption is not None:
+                    limit = self.PLATFORM_LIMITS.get("instagram", 2200)
+                    if len(caption) > limit:
+                        raise ValueError(f"Caption exceeds instagram limit of {limit} characters")
+                    updates.append("post_text = %s")
+                    params.append(caption)
+                if images is not None:
+                    updates.append("images = %s")
+                    params.append(json.dumps(images))
+                if status is not None:
+                    updates.append("status = %s")
+                    params.append(status)
+                if not updates:
+                    return await self.get_instagram_post(user_id, post_id)
+                params.extend([user_id, post_id])
+                await cur.execute(
+                    f"""
+                    UPDATE instagram_posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s AND id = %s
+                    RETURNING *
+                    """,
+                    params,
+                )
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_post(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+
+    async def delete_instagram_post(self, user_id: int, post_id: int) -> Optional[Dict]:
+        """Помечает пост Instagram как удаленный (status = 'deleted')."""
+        return await self.update_instagram_post(user_id, post_id, status="deleted")
 
 
 post_service = PostService()

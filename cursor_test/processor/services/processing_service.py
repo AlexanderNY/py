@@ -56,7 +56,7 @@ class ProcessingService:
                 await cur.execute(
                     """
                     SELECT id, user_id, source_platform, post_text, images,
-                           to_tg, to_tw, to_wp, to_vk
+                           to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram
                     FROM posts
                     WHERE status = 'collected'
                     ORDER BY created_at
@@ -75,7 +75,7 @@ class ProcessingService:
 
                 col_names = [
                     "id", "user_id", "source_platform", "post_text", "images",
-                    "to_tg", "to_tw", "to_wp", "to_vk",
+                    "to_tg", "to_tw", "to_wp", "to_vk", "to_threads", "to_dzen", "to_instagram",
                 ]
 
                 # 2. Собрать ID и сразу выставить статус 'processing'
@@ -154,6 +154,9 @@ class ProcessingService:
             "to_tw": post.get("to_tw", False),
             "to_wp": post.get("to_wp", False),
             "to_vk": post.get("to_vk", False),
+            "to_threads": post.get("to_threads", False),
+            "to_dzen": post.get("to_dzen", False),
+            "to_instagram": post.get("to_instagram", False),
         }
         platform_texts = await prepare_platform_texts(
             text=text,
@@ -166,13 +169,13 @@ class ProcessingService:
         is_review = proc_settings.get("status_review_after_process", False)
         has_any_target = any(
             post.get(flag)
-            for flag in ("to_tg", "to_tw", "to_wp", "to_vk", "to_threads")
+            for flag in ("to_tg", "to_tw", "to_wp", "to_vk", "to_threads", "to_dzen", "to_instagram")
         )
         if is_review or not has_any_target:
             final_status = "review"
             if not has_any_target:
                 logger.debug(
-                    "Post id=%s: no target platform (to_tg/to_wp/to_vk/to_tw/to_threads) -> status=review",
+                    "Post id=%s: no target platform (to_tg/to_wp/to_vk/to_tw/to_threads/to_dzen/to_instagram) -> status=review",
                     post_id,
                 )
         else:

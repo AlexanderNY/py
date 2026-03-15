@@ -40,6 +40,8 @@ export interface VKontaktePost {
   to_tw?: boolean
   to_wp?: boolean
   to_vk?: boolean
+  /** URLs or paths of images to attach */
+  images?: string[]
 }
 
 export interface VKontaktePostListItem {
@@ -51,6 +53,12 @@ export interface VKontaktePostListItem {
   updated_at: string
   domain?: string
   author?: string
+}
+
+export interface VKontakteAttachmentItem {
+  type?: string
+  path?: string
+  url?: string
 }
 
 export interface VKontaktePostFull {
@@ -65,6 +73,7 @@ export interface VKontaktePostFull {
   post_text: string
   screenshot?: string
   images?: string[]
+  attachments?: VKontakteAttachmentItem[]
   image_over_text?: string
   comments: number
   reposts: number

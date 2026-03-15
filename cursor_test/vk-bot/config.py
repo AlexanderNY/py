@@ -25,6 +25,13 @@ class Settings(BaseSettings):
 
     PATH_TO_VK_IMAGE: str = ""
 
+    # S3-совместимое хранилище (единое с core). Пустые — только HTTP/local.
+    S3_ENDPOINT_URL: str = ""
+    S3_BUCKET: str = "uploads"
+    S3_ACCESS_KEY: str = ""
+    S3_SECRET_KEY: str = ""
+    S3_USE_SSL: bool = False
+
     class Config:
         env_file = ".env"
         case_sensitive = True

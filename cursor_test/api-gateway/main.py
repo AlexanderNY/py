@@ -16,6 +16,8 @@ from routers import (
     tg_router,
     tw_router,
     vk_router,
+    dzen_router,
+    instagram_router,
     curl_router,
     cpost_router,
     bot_proxy_router,
@@ -86,6 +88,8 @@ def register_routers(application: FastAPI) -> None:
     application.include_router(tg_router)
     application.include_router(tw_router)
     application.include_router(vk_router)
+    application.include_router(dzen_router)
+    application.include_router(instagram_router)
     application.include_router(curl_router)
     application.include_router(cpost_router)
     application.include_router(bot_proxy_router)

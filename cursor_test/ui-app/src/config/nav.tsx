@@ -8,11 +8,13 @@ import {
   WordPressIcon,
   TwitterIcon,
   VKontakteIcon,
+  InstagramIcon,
   LinkIcon,
   PlusIcon,
   ClipboardListIcon,
   SettingsIcon,
   UserGroupIcon,
+  DocumentTextIcon,
 } from '@/components/icons'
 
 export interface NavItem {
@@ -30,6 +32,8 @@ export const navItems: NavItem[] = [
   { path: '/wordpress', label: 'WordPress', Icon: WordPressIcon },
   { path: '/twitter', label: 'Twitter', Icon: TwitterIcon },
   { path: '/vkontakte', label: 'VKontakte', Icon: VKontakteIcon },
+  { path: '/instagram', label: 'Instagram', Icon: InstagramIcon },
+  { path: '/dzen', label: 'Дзен', Icon: DocumentTextIcon },
   { path: '/custom-url', label: 'Custom URL', Icon: LinkIcon },
   { path: '/posts', label: 'Posts', Icon: PlusIcon },
   { path: '/test', label: 'Test', Icon: ClipboardListIcon },

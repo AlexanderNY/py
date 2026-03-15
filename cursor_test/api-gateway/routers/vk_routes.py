@@ -121,3 +121,22 @@ async def create_vk_post(
     Требует JWT аутентификации.
     """
     return await forward_to_core("/vk/post", request)
+
+
+@router.post("/upload")
+async def upload_vk_image(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Загружает изображение для поста VK (multipart). Проксируется в core."""
+    return await forward_to_core("/vk/upload", request)
+
+
+@router.get("/uploads/{filename}")
+async def get_vk_upload(
+    filename: str,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Отдаёт загруженный файл из uploads/vk (превью и скачивание)."""
+    return await forward_to_core(f"/vk/uploads/{filename}", request)

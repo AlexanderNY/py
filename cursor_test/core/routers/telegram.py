@@ -1,18 +1,22 @@
 """Роутер для Telegram профилей и постов."""
 
-from fastapi import APIRouter, HTTPException, Header, File, UploadFile, Form
-from fastapi.responses import FileResponse
+import uuid
+from pathlib import Path
 from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Header, File, UploadFile, Form
+from fastapi.responses import FileResponse, RedirectResponse
+
 from services.profile_service import profile_service
 from services.post_service import post_service
 from schemas import TelegramProfileCreate
-import uuid
-from pathlib import Path
+from storage_client import get_storage
 
 
 router = APIRouter(prefix="/tg", tags=["Telegram"])
 
 UPLOADS_TG_DIR = Path("uploads/tg")
+S3_KEY_PREFIX = "uploads/tg"
 
 
 def get_user_id_from_header(x_user_id: Optional[str] = Header(None)) -> int:
@@ -119,19 +123,15 @@ async def create_tg_post(
     try:
         images = []
         if image:
-            # Сохраняем изображение
-            upload_dir = Path("uploads/tg")
-            upload_dir.mkdir(parents=True, exist_ok=True)
-            
+            content = await image.read()
             file_extension = Path(image.filename).suffix if image.filename else ".jpg"
             file_name = f"{uuid.uuid4()}{file_extension}"
-            file_path = upload_dir / file_name
-            
-            with open(file_path, "wb") as f:
-                content = await image.read()
-                f.write(content)
-            
-            # Сохраняем URL изображения
+            storage = get_storage()
+            if storage:
+                await storage.put(f"{S3_KEY_PREFIX}/{file_name}", content)
+            else:
+                UPLOADS_TG_DIR.mkdir(parents=True, exist_ok=True)
+                (UPLOADS_TG_DIR / file_name).write_bytes(content)
             image_url = f"/uploads/tg/{file_name}"
             images.append(image_url)
         
@@ -192,19 +192,15 @@ async def update_tg_post(
     try:
         images = None
         if image:
-            # Сохраняем изображение
-            upload_dir = Path("uploads/tg")
-            upload_dir.mkdir(parents=True, exist_ok=True)
-            
+            content = await image.read()
             file_extension = Path(image.filename).suffix if image.filename else ".jpg"
             file_name = f"{uuid.uuid4()}{file_extension}"
-            file_path = upload_dir / file_name
-            
-            with open(file_path, "wb") as f:
-                content = await image.read()
-                f.write(content)
-            
-            # Сохраняем URL изображения
+            storage = get_storage()
+            if storage:
+                await storage.put(f"{S3_KEY_PREFIX}/{file_name}", content)
+            else:
+                UPLOADS_TG_DIR.mkdir(parents=True, exist_ok=True)
+                (UPLOADS_TG_DIR / file_name).write_bytes(content)
             image_url = f"/uploads/tg/{file_name}"
             images = [image_url]
         
@@ -236,9 +232,16 @@ async def delete_tg_post(
 
 @router.get("/uploads/{filename}")
 async def get_tg_upload(filename: str):
-    """Отдаёт файл из uploads/tg для превью в UI (например при редактировании поста)."""
+    """Отдаёт файл: редирект на presigned URL (S3) или FileResponse с локального диска."""
     if "/" in filename or filename.startswith("."):
         raise HTTPException(status_code=400, detail="Invalid filename")
+    storage = get_storage()
+    if storage:
+        key = f"{S3_KEY_PREFIX}/{filename}"
+        url = await storage.get_presigned_url(key, expires_in=3600)
+        if url:
+            return RedirectResponse(url=url, status_code=302)
+        raise HTTPException(status_code=404, detail="File not found")
     file_path = UPLOADS_TG_DIR / filename
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")

@@ -1,7 +1,11 @@
 # docker-compose.yml
 services:
   core:
-    build: ./core
+    build:
+      context: .
+      dockerfile: core/Dockerfile
+    depends_on:
+      - minio
     ports:
       - "8002:8002"
     environment:
@@ -10,6 +14,11 @@ services:
       - DB_NAME=core_db
       - DB_USER=postgres
       - DB_PASSWORD=postgres
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_BUCKET=uploads
+      - S3_ACCESS_KEY=admin
+      - S3_SECRET_KEY=password123
+      - S3_USE_SSL=false
       - API_GATEWAY_URL=http://gateway:8000
       - AUTH_SERVICE_URL=http://auth:8001
       - TG_BOT_SERVICE_URL=http://tg-bot:8004
@@ -19,10 +28,6 @@ services:
       - SCHEDULER_SERVICE_URL=http://scheduler:8003
       - COLLECTOR_SERVICE_URL=http://collector:8009
       - PROCESSOR_SERVICE_URL=http://processor:8010
-    volumes:
-      # Общий с tg-bot том: изображения из раздела Telegram Integration сохраняются сюда,
-      # tg-bot при публикации читает из того же каталога
-      - tg-bot-uploads:/app/uploads
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.2
@@ -117,6 +122,29 @@ services:
       monitoring_network:
         ipv4_address: 172.20.10.7
 
+  instagram-bot:
+    build:
+      context: .
+      dockerfile: instagram-bot/Dockerfile
+    depends_on:
+      - minio
+    ports:
+      - "8012:8012"
+    environment:
+      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      - API_PORT=8012
+      - LOG_LEVEL=INFO
+      - INSTAGRAM_COLLECT_INTERVAL_SEC=300
+      - PUBLISH_INTERVAL_SEC=60
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_BUCKET=uploads
+      - S3_ACCESS_KEY=admin
+      - S3_SECRET_KEY=password123
+      - S3_USE_SSL=false
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.12
+
   collector:
     build: ./collector
     ports:
@@ -161,13 +189,22 @@ services:
         ipv4_address: 172.20.10.11
 
   tg-bot:
-    build: ./tg-bot
+    build:
+      context: .
+      dockerfile: tg-bot/Dockerfile
+    depends_on:
+      - minio
     ports:
       - "8004:8004"
     environment:
       - CORE_SERVICE_URL=http://core:8002
       - API_GATEWAY_URL=http://gateway:8000
       - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_BUCKET=uploads
+      - S3_ACCESS_KEY=admin
+      - S3_SECRET_KEY=password123
+      - S3_USE_SSL=false
       - LOG_BOT_ACTIONS=false
       - RELOAD_PROFILES_INTERVAL_SEC=300
       - MAX_CONCURRENT_CLIENTS=20
@@ -175,15 +212,59 @@ services:
       - CHROMEDRIVER_PATH=/usr/bin/chromedriver
     volumes:
       - tg-bot-sessions:/app/sessions
-      - tg-bot-uploads:/app/uploads
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.4
+
+  vk-bot:
+    build:
+      context: .
+      dockerfile: vk-bot/Dockerfile
+    depends_on:
+      - minio
+    ports:
+      - "8005:8005"
+    environment:
+      - CORE_SERVICE_URL=http://core:8002
+      - API_GATEWAY_URL=http://gateway:8000
+      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_BUCKET=uploads
+      - S3_ACCESS_KEY=admin
+      - S3_SECRET_KEY=password123
+      - S3_USE_SSL=false
+      - LOG_BOT_ACTIONS=false
+      - RELOAD_PROFILES_INTERVAL_SEC=300
+      - MAX_CONCURRENT_CLIENTS=20
+      - CHROME_BIN=/usr/bin/chromium
+      - CHROMEDRIVER_PATH=/usr/bin/chromedriver
+    volumes:
+      - tg-bot-sessions:/app/sessions
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.5
+
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"  # api
+      - "9001:9001"  # web UI
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123
+    volumes:
+      - ./minio_data:/data  # папка на вашем диске для хранения файлов
+    command: server /data --console-address ":9001"
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.200
+
 
 volumes:
   postgres_data:
   tg-bot-sessions:
   tg-bot-uploads:
+  instagram-bot-uploads:
 
 networks:
   monitoring_network:

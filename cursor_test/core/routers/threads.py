@@ -3,17 +3,21 @@
 from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Header, File, UploadFile, Form
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse
 import uuid
 import httpx
 
 from services.profile_service import profile_service
 from services.post_service import post_service
 from schemas import ThreadsProfileCreate
+from storage_client import get_storage
 from config import settings
 
 
 router = APIRouter(prefix="/threads", tags=["Threads"])
+
+UPLOADS_THREADS_DIR = Path("uploads/threads")
+S3_KEY_PREFIX = "uploads/threads"
 
 
 def get_user_id_from_header(x_user_id: Optional[str] = Header(None)) -> int:
@@ -76,19 +80,23 @@ async def create_threads_post(
     image: Optional[UploadFile] = File(None),
     x_user_id: Optional[str] = Header(None),
 ):
-    """Создает пост для Threads (max 500 символов) с поддержкой изображений."""
+    """Создает пост для Threads (max 500 символов) с поддержкой изображений. Файлы — в S3 или локально."""
     user_id = get_user_id_from_header(x_user_id)
     try:
         images = []
         if image:
-            upload_dir = Path("uploads/threads")
-            upload_dir.mkdir(parents=True, exist_ok=True)
+            content = await image.read()
             file_extension = Path(image.filename).suffix if image.filename else ".jpg"
             file_name = f"{uuid.uuid4()}{file_extension}"
-            file_path = upload_dir / file_name
-            content = await image.read()
-            file_path.write_bytes(content)
-            image_url = f"/uploads/threads/{file_name}"
+            storage = get_storage()
+            if storage:
+                key = f"{S3_KEY_PREFIX}/{file_name}"
+                await storage.put(key, content)
+                image_url = f"/uploads/threads/{file_name}"
+            else:
+                UPLOADS_THREADS_DIR.mkdir(parents=True, exist_ok=True)
+                (UPLOADS_THREADS_DIR / file_name).write_bytes(content)
+                image_url = f"/uploads/threads/{file_name}"
             images.append(image_url)
         post = await post_service.create_threads_post_record(
             user_id=user_id,
@@ -137,13 +145,16 @@ async def update_threads_post(
     try:
         images = None
         if image:
-            upload_dir = Path("uploads/threads")
-            upload_dir.mkdir(parents=True, exist_ok=True)
+            content = await image.read()
             file_extension = Path(image.filename).suffix if image.filename else ".jpg"
             file_name = f"{uuid.uuid4()}{file_extension}"
-            file_path = upload_dir / file_name
-            content = await image.read()
-            file_path.write_bytes(content)
+            storage = get_storage()
+            if storage:
+                key = f"{S3_KEY_PREFIX}/{file_name}"
+                await storage.put(key, content)
+            else:
+                UPLOADS_THREADS_DIR.mkdir(parents=True, exist_ok=True)
+                (UPLOADS_THREADS_DIR / file_name).write_bytes(content)
             images = [f"/uploads/threads/{file_name}"]
         post = await post_service.update_threads_post(
             user_id=user_id,

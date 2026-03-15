@@ -1,14 +1,24 @@
 """Роутер для VKontakte профилей и постов."""
 
-from fastapi import APIRouter, HTTPException, Header
+import uuid
+from pathlib import Path
 from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Header, File, UploadFile
+from fastapi.responses import FileResponse, Response
+
 from services.profile_service import profile_service
 from services.post_service import post_service
 from schemas import VKontakteProfileCreate, VKontaktePost
+from storage_client import get_storage
 from pydantic import BaseModel
 
 
 router = APIRouter(prefix="/vk", tags=["VKontakte"])
+
+UPLOADS_VK_DIR = Path("uploads/vk")
+ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+S3_KEY_PREFIX = "vk/uploads"
 
 
 def get_user_id_from_header(x_user_id: Optional[str] = Header(None)) -> int:
@@ -46,7 +56,9 @@ async def get_vk_profile(x_user_id: Optional[str] = Header(None)):
         "mark_as_ads": False,
         "access_token": None,
         "groups_to_read": [],
+        "users_to_read": [],
         "group_to_post": None,
+        "post_to_own_wall": False,
     }
 
 
@@ -77,6 +89,68 @@ async def get_all_vk_profiles():
     """
     profiles = await profile_service.get_all_vk_profiles()
     return {"profiles": profiles}
+
+
+@router.post("/upload")
+async def upload_vk_image(
+    image: UploadFile = File(...),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Загружает изображение в единое хранилище (S3) или локально. Возвращает путь для вложения в пост."""
+    get_user_id_from_header(x_user_id)
+    if not image.filename:
+        raise HTTPException(status_code=400, detail="No file name")
+    ext = Path(image.filename).suffix.lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Allowed formats: {', '.join(ALLOWED_IMAGE_EXTENSIONS)}",
+        )
+    name = f"{uuid.uuid4().hex}{ext}"
+    content = await image.read()
+    storage = get_storage()
+    if storage:
+        key = f"{S3_KEY_PREFIX}/{name}"
+        await storage.put(key, content)
+        return {"url": f"/vk/uploads/{name}"}
+    UPLOADS_VK_DIR.mkdir(parents=True, exist_ok=True)
+    path = UPLOADS_VK_DIR / name
+    path.write_bytes(content)
+    return {"url": f"/vk/uploads/{name}"}
+
+
+def _media_type_for_filename(filename: str) -> str:
+    """Возвращает media type по расширению файла."""
+    ext = (Path(filename).suffix or "").lower()
+    return {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+    }.get(ext, "application/octet-stream")
+
+
+@router.get("/uploads/{filename}")
+async def get_vk_upload(filename: str):
+    """Отдаёт загруженный файл: из S3 потоком через Core (для доступа из браузера) или FileResponse с локального диска."""
+    if "/" in filename or filename.startswith("."):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    storage = get_storage()
+    if storage:
+        key = f"{S3_KEY_PREFIX}/{filename}"
+        content = await storage.get_bytes(key)
+        if content is None:
+            raise HTTPException(status_code=404, detail="File not found")
+        return Response(
+            content=content,
+            media_type=_media_type_for_filename(filename),
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+    file_path = UPLOADS_VK_DIR / filename
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path, filename=filename, media_type=_media_type_for_filename(filename))
 
 
 @router.get("/posts")
@@ -114,7 +188,8 @@ async def create_vk_post(
             to_tg=data.to_tg,
             to_tw=data.to_tw,
             to_wp=data.to_wp,
-            to_vk=data.to_vk
+            to_vk=data.to_vk,
+            images=data.images or [],
         )
         return post
     except ValueError as e:
@@ -124,6 +199,8 @@ async def create_vk_post(
 class VKontaktePostUpdate(BaseModel):
     """Тело запроса для обновления поста VK."""
     text: Optional[str] = None
+    images: Optional[list] = None
+    attachments: Optional[list] = None
     status: Optional[str] = None
 
 
@@ -153,6 +230,8 @@ async def update_vk_post(
             user_id=user_id,
             post_id=post_id,
             text=data.text,
+            images=data.images,
+            attachments=data.attachments,
             status=data.status,
         )
         if not post:

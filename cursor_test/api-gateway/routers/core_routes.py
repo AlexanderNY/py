@@ -160,6 +160,18 @@ async def get_posting_diagnostics(
     return await forward_to_core("/admin/posting-diagnostics", request)
 
 
+@router.get("/admin/storage/files")
+async def get_storage_files(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Список файлов в S3-хранилище. Только admin.
+    
+    GET /core/admin/storage/files -> GET /admin/storage/files на core сервисе.
+    """
+    return await forward_to_core("/admin/storage/files", request)
+
+
 @router.get("/schedules")
 async def get_schedules(
     request: Request,

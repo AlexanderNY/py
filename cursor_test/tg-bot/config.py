@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     # Базовый путь для изображений (для send_message file=)
     PATH_TO_TG_IMAGE: str = ""
 
+    # S3-совместимое хранилище (единое с core).
+    S3_ENDPOINT_URL: str = ""
+    S3_BUCKET: str = "uploads"
+    S3_ACCESS_KEY: str = ""
+    S3_SECRET_KEY: str = ""
+    S3_USE_SSL: bool = False
+
     class Config:
         env_file = ".env"
         case_sensitive = True

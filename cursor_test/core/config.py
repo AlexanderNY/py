@@ -42,7 +42,18 @@ class Settings(BaseSettings):
     META_APP_SECRET: str = ""
     THREADS_OAUTH_REDIRECT_URI: str = ""
     FRONTEND_URL: str = "http://localhost:5173"
-    
+
+    # Базовый URL для ссылок в RSS Дзен (item link)
+    RSS_BASE_URL: str = "http://localhost:8002"
+
+    # S3-совместимое хранилище (MinIO по умолчанию на 172.20.10.200). Пустые ACCESS_KEY/SECRET_KEY — хранилище отключено (fallback на локальный диск).
+    S3_ENDPOINT_URL: str = "http://172.20.10.200:9000"
+    S3_BUCKET: str = "uploads"
+    S3_ACCESS_KEY: str = ""
+    S3_SECRET_KEY: str = ""
+    S3_REGION: str = "us-east-1"
+    S3_USE_SSL: bool = False
+
     class Config:
         env_file = ".env"
         case_sensitive = True

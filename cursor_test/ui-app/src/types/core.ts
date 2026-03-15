@@ -199,6 +199,18 @@ export interface PostsListResponse {
 }
 
 /** Результат цикла диагностики постинга (Telegram и пайплайн). */
+export interface StorageFileItem {
+  key: string
+  size: number
+  last_modified: string | null
+}
+
+export interface StorageFilesResponse {
+  enabled: boolean
+  objects: StorageFileItem[]
+  next_continuation_token?: string | null
+}
+
 export interface PostingDiagnosticsResponse {
   tg_posts_by_status: Array<{ status: string; count: number }>
   posts_by_status: Array<{ status: string; source_platform: string | null; count: number }>

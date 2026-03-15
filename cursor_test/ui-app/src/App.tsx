@@ -12,6 +12,8 @@ import { StatisticsPage } from '@/pages/stubs/statistics'
 import { WordPressPage } from '@/pages/stubs/wordpress'
 import { TwitterPage } from '@/pages/twitter'
 import { VKontaktePage } from '@/pages/stubs/vkontakte'
+import { DzenPage } from '@/pages/stubs/dzen'
+import { InstagramPage } from '@/pages/stubs/instagram'
 import { CustomURLPage } from '@/pages/stubs/custom-url'
 import { CreatePostPage } from '@/pages/create-post'
 import { TestPage } from '@/pages/test'
@@ -90,6 +92,8 @@ function App() {
         <Route path="wordpress" element={<WordPressPage />} />
         <Route path="twitter" element={<TwitterPage />} />
         <Route path="vkontakte" element={<VKontaktePage />} />
+        <Route path="dzen" element={<DzenPage />} />
+        <Route path="instagram" element={<InstagramPage />} />
         <Route path="custom-url" element={<CustomURLPage />} />
         <Route path="posts" element={<CreatePostPage />} />
         <Route path="create-post" element={<Navigate to="/posts" replace />} />

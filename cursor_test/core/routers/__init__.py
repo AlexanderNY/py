@@ -5,6 +5,8 @@ from . import telegram
 from . import twitter
 from . import wordpress
 from . import vkontakte
+from . import dzen
+from . import instagram
 from . import curl
 from . import cpost
 from . import notifications
@@ -19,6 +21,8 @@ __all__ = [
     "twitter",
     "wordpress",
     "vkontakte",
+    "dzen",
+    "instagram",
     "curl",
     "cpost",
     "notifications",

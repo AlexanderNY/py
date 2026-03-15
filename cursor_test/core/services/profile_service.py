@@ -648,7 +648,11 @@ class ProfileService:
         groups_to_read = data.get("groups_to_read", [])
         if not isinstance(groups_to_read, list):
             groups_to_read = []
+        users_to_read = data.get("users_to_read", [])
+        if not isinstance(users_to_read, list):
+            users_to_read = []
         group_to_post = data.get("group_to_post")
+        post_to_own_wall = data.get("post_to_own_wall", False)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -658,8 +662,9 @@ class ProfileService:
                         user_id, publish_enabled, collect_enabled, schedule_type,
                         time_intervals, owner_id, friends_only, from_group,
                         message, attachments, signed, mark_as_ads,
-                        access_token, groups_to_read, group_to_post
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        access_token, groups_to_read, group_to_post,
+                        post_to_own_wall, users_to_read
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -674,7 +679,9 @@ class ProfileService:
                         mark_as_ads = EXCLUDED.mark_as_ads,
                         access_token = COALESCE(NULLIF(EXCLUDED.access_token, ''), vk_profiles.access_token),
                         groups_to_read = COALESCE(EXCLUDED.groups_to_read, vk_profiles.groups_to_read),
-                        group_to_post = EXCLUDED.group_to_post,
+                        group_to_post = COALESCE(EXCLUDED.group_to_post, vk_profiles.group_to_post),
+                        post_to_own_wall = COALESCE(EXCLUDED.post_to_own_wall, vk_profiles.post_to_own_wall),
+                        users_to_read = COALESCE(EXCLUDED.users_to_read, vk_profiles.users_to_read),
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING *
                     """,
@@ -694,6 +701,8 @@ class ProfileService:
                         access_token,
                         json.dumps(groups_to_read),
                         group_to_post,
+                        post_to_own_wall,
+                        json.dumps(users_to_read),
                     )
                 )
                 row = await cur.fetchone()
@@ -712,6 +721,11 @@ class ProfileService:
                 profile["groups_to_read"] = json.loads(profile["groups_to_read"])
             except (json.JSONDecodeError, TypeError):
                 profile["groups_to_read"] = []
+        if isinstance(profile.get("users_to_read"), str):
+            try:
+                profile["users_to_read"] = json.loads(profile["users_to_read"])
+            except (json.JSONDecodeError, TypeError):
+                profile["users_to_read"] = []
         if profile.get("access_token"):
             profile["access_token"] = "***"
         return profile
@@ -1003,6 +1017,208 @@ class ProfileService:
                 await cur.execute("SELECT * FROM vk_profiles")
                 rows = await cur.fetchall()
                 return [self._row_to_vk_profile(row, cur.description) for row in rows]
+        finally:
+            await release_db_connection(conn)
+
+    # ==================== Dzen ====================
+
+    async def get_dzen_profile(self, user_id: int) -> Optional[Dict]:
+        """Получает профиль Дзен пользователя."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT * FROM dzen_profiles WHERE user_id = %s",
+                    (user_id,)
+                )
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_dzen_profile(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+
+    async def save_dzen_profile(self, user_id: int, data: Dict) -> Dict:
+        """Сохраняет или обновляет профиль Дзен."""
+        channels_to_read = data.get("channels_to_read", [])
+        if not isinstance(channels_to_read, list):
+            channels_to_read = []
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO dzen_profiles (
+                        user_id, publish_enabled, collect_enabled, schedule_type,
+                        time_intervals, rss_feed_url, channel_name, channels_to_read, rss_token
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        publish_enabled = EXCLUDED.publish_enabled,
+                        collect_enabled = EXCLUDED.collect_enabled,
+                        schedule_type = EXCLUDED.schedule_type,
+                        time_intervals = EXCLUDED.time_intervals,
+                        rss_feed_url = EXCLUDED.rss_feed_url,
+                        channel_name = EXCLUDED.channel_name,
+                        channels_to_read = EXCLUDED.channels_to_read,
+                        rss_token = EXCLUDED.rss_token,
+                        updated_at = CURRENT_TIMESTAMP
+                    RETURNING *
+                    """,
+                    (
+                        user_id,
+                        data.get("publish_enabled", False),
+                        data.get("collect_enabled", False),
+                        data.get("schedule_type", "immediate"),
+                        json.dumps(data.get("time_intervals", [])),
+                        data.get("rss_feed_url"),
+                        data.get("channel_name"),
+                        json.dumps(channels_to_read),
+                        data.get("rss_token"),
+                    )
+                )
+                row = await cur.fetchone()
+                return self._row_to_dzen_profile(row, cur.description)
+        finally:
+            await release_db_connection(conn)
+
+    def _row_to_dzen_profile(self, row, description) -> Dict:
+        """Преобразует строку БД в словарь профиля Дзен."""
+        columns = [col.name for col in description]
+        profile = dict(zip(columns, row))
+        if isinstance(profile.get("time_intervals"), str):
+            try:
+                profile["time_intervals"] = json.loads(profile["time_intervals"])
+            except (json.JSONDecodeError, TypeError):
+                profile["time_intervals"] = []
+        if isinstance(profile.get("channels_to_read"), str):
+            try:
+                profile["channels_to_read"] = json.loads(profile["channels_to_read"])
+            except (json.JSONDecodeError, TypeError):
+                profile["channels_to_read"] = []
+        return profile
+
+    async def get_all_dzen_profiles(self) -> list[Dict]:
+        """Получает все профили Дзен."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT * FROM dzen_profiles")
+                rows = await cur.fetchall()
+                return [self._row_to_dzen_profile(row, cur.description) for row in rows]
+        finally:
+            await release_db_connection(conn)
+
+    # ==================== Instagram ====================
+
+    async def get_instagram_profile(self, user_id: int) -> Optional[Dict]:
+        """Получает профиль Instagram пользователя."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT * FROM instagram_profiles WHERE user_id = %s",
+                    (user_id,)
+                )
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_instagram_profile(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+
+    async def save_instagram_profile(self, user_id: int, data: Dict) -> Dict:
+        """Сохраняет или обновляет профиль Instagram."""
+        password = data.get("password")
+        if password in (None, "", "***"):
+            password = None
+        usernames_to_read = data.get("usernames_to_read", [])
+        if not isinstance(usernames_to_read, list):
+            usernames_to_read = []
+        process_services = data.get("process_services")
+        process_services_json = json.dumps(process_services) if isinstance(process_services, list) else None
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO instagram_profiles (
+                        user_id, publish_enabled, collect_enabled, schedule_type,
+                        time_intervals, username, password, usernames_to_read,
+                        process_enabled, processing_description, remove_emojis,
+                        remove_images, clean_html, process_services,
+                        status_review_after_process, add_static_html, static_html_content
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        publish_enabled = EXCLUDED.publish_enabled,
+                        collect_enabled = EXCLUDED.collect_enabled,
+                        schedule_type = EXCLUDED.schedule_type,
+                        time_intervals = EXCLUDED.time_intervals,
+                        username = EXCLUDED.username,
+                        password = COALESCE(NULLIF(EXCLUDED.password, ''), instagram_profiles.password),
+                        usernames_to_read = COALESCE(EXCLUDED.usernames_to_read, instagram_profiles.usernames_to_read),
+                        process_enabled = EXCLUDED.process_enabled,
+                        processing_description = EXCLUDED.processing_description,
+                        remove_emojis = EXCLUDED.remove_emojis,
+                        remove_images = EXCLUDED.remove_images,
+                        clean_html = EXCLUDED.clean_html,
+                        process_services = EXCLUDED.process_services,
+                        status_review_after_process = EXCLUDED.status_review_after_process,
+                        add_static_html = EXCLUDED.add_static_html,
+                        static_html_content = EXCLUDED.static_html_content,
+                        updated_at = CURRENT_TIMESTAMP
+                    RETURNING *
+                    """,
+                    (
+                        user_id,
+                        data.get("publish_enabled", False),
+                        data.get("collect_enabled", False),
+                        data.get("schedule_type", "immediate"),
+                        json.dumps(data.get("time_intervals", [])),
+                        data.get("username"),
+                        password,
+                        json.dumps(usernames_to_read),
+                        data.get("process_enabled", False),
+                        data.get("processing_description"),
+                        data.get("remove_emojis", False),
+                        data.get("remove_images", False),
+                        data.get("clean_html", False),
+                        process_services_json,
+                        data.get("status_review_after_process", False),
+                        data.get("add_static_html", False),
+                        data.get("static_html_content"),
+                    )
+                )
+                row = await cur.fetchone()
+                return self._row_to_instagram_profile(row, cur.description)
+        finally:
+            await release_db_connection(conn)
+
+    def _row_to_instagram_profile(self, row, description) -> Dict:
+        """Преобразует строку БД в словарь профиля Instagram. Пароль не возвращается."""
+        columns = [col.name for col in description]
+        profile = dict(zip(columns, row))
+        if isinstance(profile.get("time_intervals"), str):
+            try:
+                profile["time_intervals"] = json.loads(profile["time_intervals"])
+            except (json.JSONDecodeError, TypeError):
+                profile["time_intervals"] = []
+        if isinstance(profile.get("usernames_to_read"), str):
+            try:
+                profile["usernames_to_read"] = json.loads(profile["usernames_to_read"])
+            except (json.JSONDecodeError, TypeError):
+                profile["usernames_to_read"] = []
+        if profile.get("password"):
+            profile["password"] = "***"
+        return profile
+
+    async def get_all_instagram_profiles(self) -> list[Dict]:
+        """Получает все профили Instagram."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT * FROM instagram_profiles")
+                rows = await cur.fetchall()
+                return [self._row_to_instagram_profile(row, cur.description) for row in rows]
         finally:
             await release_db_connection(conn)
 

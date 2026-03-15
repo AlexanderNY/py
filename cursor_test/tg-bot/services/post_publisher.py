@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 import httpx
 from database import get_db_connection, release_db_connection
 from config import settings
+from storage_helper import get_storage
 from .client_manager import TelegramClientManager
 
 
@@ -143,7 +144,7 @@ class PostPublisher:
 
     async def resolve_image_for_publish(self, post_id: int, images_raw) -> Optional[str]:
         """
-        Возвращает путь к файлу изображения для отправки: локальный путь или скачанный по URL.
+        Возвращает путь к файлу изображения: S3, URL или локальный диск.
         При отсутствии/ошибке логирует причину и возвращает None.
         """
         ref = self._get_first_image_ref(images_raw)
@@ -154,12 +155,25 @@ class PostPublisher:
                 str(images_raw)[:200] if images_raw is not None else "null",
             )
             return None
-        if ref.strip().lower().startswith(("http://", "https://")):
+        s = ref.strip()
+        if s.lower().startswith(("http://", "https://")):
             local_path = await self._download_image_url(ref)
             if local_path:
                 return local_path
             logger.warning("Post id=%s: could not download image URL", post_id)
             return None
+        # Единое хранилище (S3): ключ = путь без ведущего /
+        storage = get_storage()
+        if storage:
+            key = s.lstrip("/")
+            if key:
+                body = await storage.get_bytes(key)
+                if body:
+                    suffix = ".jpg"
+                    f = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                    f.write(body)
+                    f.close()
+                    return f.name
         local_path = self._resolve_image_path(ref)
         if not local_path:
             logger.warning(

@@ -14,6 +14,8 @@ from routers import (
     twitter,
     wordpress,
     vkontakte,
+    dzen,
+    instagram,
     curl,
     cpost,
     notifications,
@@ -56,6 +58,8 @@ app.include_router(telegram.router)
 app.include_router(twitter.router)
 app.include_router(wordpress.router)
 app.include_router(vkontakte.router)
+app.include_router(dzen.router)
+app.include_router(instagram.router)
 app.include_router(curl.router)
 app.include_router(cpost.router)
 app.include_router(notifications.router)
