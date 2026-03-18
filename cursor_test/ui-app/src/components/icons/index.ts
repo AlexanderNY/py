@@ -2,6 +2,7 @@ export {
   UserIcon,
   CreditCardIcon,
   ChartBarIcon,
+  LineChartIcon,
   TelegramIcon,
   ThreadsIcon,
   WordPressIcon,

@@ -66,7 +66,7 @@ def _upload_photo_wall_sync(
         p = photo_list[0]
         return f"photo{p['owner_id']}_{p['id']}"
     except Exception as e:
-        logger.debug("photo_wall upload failed: %s", e)
+        logger.warning("photo_wall upload failed (owner_id=%s, path=%s): %s", owner_id, photo_path, e, exc_info=True)
         return None
 
 
@@ -87,7 +87,7 @@ def _upload_document_wall_sync(
         d = doc_list[0]
         return f"doc{d['owner_id']}_{d['id']}"
     except Exception as e:
-        logger.debug("document_wall upload failed: %s", e)
+        logger.warning("document_wall upload failed (owner_id=%s, path=%s): %s", owner_id, file_path, e, exc_info=True)
         return None
 
 

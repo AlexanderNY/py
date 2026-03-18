@@ -833,6 +833,55 @@ class PostService:
         """Помечает пост Threads как удаленный (status = 'deleted')."""
         return await self.update_threads_post(user_id, post_id, status="deleted")
 
+    async def create_vk_post_record(
+        self,
+        user_id: int,
+        text: str,
+        images: Optional[List[str]] = None,
+        to_tg: bool = False,
+        to_tw: bool = False,
+        to_wp: bool = False,
+        to_vk: bool = True,
+    ) -> Dict:
+        """Создаёт пост VKontakte в таблице vk_posts (status=ready для публикации через upload.photo_wall)."""
+        limit = self.PLATFORM_LIMITS.get("vk", 15985)
+        if len(text) > limit:
+            raise ValueError(f"Text exceeds vk limit of {limit} characters")
+        images = images or []
+        # Для постов с картинками vk-bot использует upload.photo_wall; явно задаём attachments с type=photo
+        attachments = [{"type": "photo", "path": p} for p in images] if images else []
+        images_json = json.dumps(images)
+        attachments_json = json.dumps(attachments)
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO vk_posts (
+                        user_id, post_text, images, attachments,
+                        status, post_type, to_tg, to_tw, to_wp, to_vk
+                    ) VALUES (
+                        %s, %s, %s, %s,
+                        'ready', 'vk', %s, %s, %s, %s
+                    )
+                    RETURNING *
+                    """,
+                    (
+                        user_id,
+                        text,
+                        images_json,
+                        attachments_json,
+                        to_tg,
+                        to_tw,
+                        to_wp,
+                        to_vk,
+                    ),
+                )
+                row = await cur.fetchone()
+                return self._row_to_post(row, cur.description)
+        finally:
+            await release_db_connection(conn)
+
     async def get_vk_posts(
         self,
         user_id: int,

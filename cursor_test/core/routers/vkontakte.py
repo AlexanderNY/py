@@ -181,15 +181,14 @@ async def create_vk_post(
     user_id = get_user_id_from_header(x_user_id)
     
     try:
-        post = await post_service.create_post(
+        post = await post_service.create_vk_post_record(
             user_id=user_id,
             text=data.text,
-            platform="vk",
+            images=data.images or [],
             to_tg=data.to_tg,
             to_tw=data.to_tw,
             to_wp=data.to_wp,
             to_vk=data.to_vk,
-            images=data.images or [],
         )
         return post
     except ValueError as e:

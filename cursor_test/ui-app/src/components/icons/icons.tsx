@@ -30,6 +30,14 @@ export function ChartBarIcon({ className, size = defaultSize, ...props }: IconPr
   )
 }
 
+export function LineChartIcon({ className, size = defaultSize, ...props }: IconProps) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className ?? `h-5 w-5`} width={size} height={size} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 12l3-3 4 4 5-7M4 20h16" />
+    </svg>
+  )
+}
+
 export function TelegramIcon({ className, size = defaultSize, ...props }: IconProps) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" className={className ?? `h-5 w-5`} width={size} height={size} viewBox="0 0 24 24" fill="currentColor" {...props}>

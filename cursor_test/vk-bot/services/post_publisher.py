@@ -159,62 +159,93 @@ class PostPublisher:
         return owner_ids
 
     async def _resolve_file_path(self, item: Dict[str, str], post_id: int) -> Optional[str]:
-        """Возвращает локальный путь к файлу: S3, URL или локальный диск."""
+        """Возвращает локальный путь к файлу: S3 → HTTP (Core) → локальный диск. Пробует все методы последовательно."""
         path_or_url = item.get("path") or item.get("url") or ""
         if not path_or_url:
             return None
         s = path_or_url.strip()
+        suffix = ".jpg" if (item.get("type") or "photo") != "doc" else ""
+
         if s.lower().startswith(("http://", "https://")):
-            suffix = ".jpg"
-            if item.get("type") == "doc":
-                suffix = ""
-            return await _download_to_temp(path_or_url, suffix)
-        # Единое хранилище (S3): ключ = путь без ведущего /
+            result = await _download_to_temp(s, suffix)
+            if result:
+                return result
+            logger.warning("Post %s: HTTP download failed for %s", post_id, s[:120])
+            return None
+
+        # 1) S3
         storage = get_storage()
         if storage:
             key = s.lstrip("/")
             if key:
-                body = await storage.get_bytes(key)
+                try:
+                    body = await storage.get_bytes(key)
+                except Exception as exc:
+                    logger.warning("Post %s: S3 get_bytes('%s') error: %s", post_id, key, exc)
+                    body = None
                 if body:
-                    suffix = ".jpg"
-                    if item.get("type") == "doc":
-                        suffix = ""
+                    logger.info("Post %s: resolved '%s' from S3 (%d bytes)", post_id, key, len(body))
                     f = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
                     f.write(body)
                     f.close()
                     return f.name
-        url = _resolve_image_url(path_or_url)
-        if url:
-            suffix = ".jpg"
-            if item.get("type") == "doc":
-                suffix = ""
-            return await _download_to_temp(url, suffix)
+                logger.info("Post %s: S3 key '%s' not found, trying HTTP fallback", post_id, key)
+        else:
+            logger.info("Post %s: S3 storage not configured, trying HTTP fallback", post_id)
+
+        # 2) HTTP download via CORE_SERVICE_URL
+        url = _resolve_image_url(s)
+        if url and url.lower().startswith(("http://", "https://")):
+            result = await _download_to_temp(url, suffix)
+            if result:
+                logger.info("Post %s: resolved '%s' via HTTP (%s)", post_id, s[:80], url[:120])
+                return result
+            logger.warning("Post %s: HTTP download failed for %s", post_id, url[:120])
+
+        # 3) Local file
         base = (settings.PATH_TO_VK_IMAGE or settings.UPLOADS_DIR or os.getcwd()).rstrip("/")
-        return _resolve_path(path_or_url, base)
+        local = _resolve_path(s, base)
+        if local:
+            logger.info("Post %s: resolved '%s' from local path %s", post_id, s[:80], local)
+            return local
+
+        logger.warning("Post %s: could not resolve file '%s' (S3=%s, CORE_URL=%s)",
+                        post_id, s[:120], "yes" if storage else "no", settings.CORE_SERVICE_URL)
+        return None
 
     async def _build_attachments_string(
         self, client: VkClient, owner_id: int, post: Dict
     ) -> Optional[str]:
         """Загружает вложения поста для заданного owner_id и возвращает строку вложений для wall.post."""
+        post_id = post.get("id")
         attachments_list: List[Dict] = []
         raw_attachments = post.get("attachments")
         raw_images = post.get("images")
+        logger.info("Post %s: raw_attachments=%s (type=%s), raw_images=%s (type=%s)",
+                     post_id,
+                     str(raw_attachments)[:200], type(raw_attachments).__name__,
+                     str(raw_images)[:200], type(raw_images).__name__)
         if raw_attachments:
             try:
                 att = json.loads(raw_attachments) if isinstance(raw_attachments, str) else raw_attachments
                 if isinstance(att, list):
                     attachments_list = _parse_attachments_raw(att)
-            except (json.JSONDecodeError, TypeError):
-                pass
+            except (json.JSONDecodeError, TypeError) as exc:
+                logger.warning("Post %s: failed to parse attachments: %s", post_id, exc)
         if not attachments_list and raw_images is not None:
             attachments_list = _parse_attachments_raw(raw_images)
         if not attachments_list:
+            logger.info("Post %s: no attachments to upload", post_id)
             return None
+        logger.info("Post %s: %d attachment(s) to process: %s",
+                     post_id, len(attachments_list), attachments_list)
         parts: List[str] = []
         temp_paths: List[str] = []
-        for item in attachments_list:
-            local_path = await self._resolve_file_path(item, post.get("id"))
+        for idx, item in enumerate(attachments_list):
+            local_path = await self._resolve_file_path(item, post_id)
             if not local_path:
+                logger.warning("Post %s: could not resolve attachment #%d %s — skipping",
+                               post_id, idx, item)
                 continue
             if local_path.startswith(tempfile.gettempdir()):
                 temp_paths.append(local_path)
@@ -227,12 +258,18 @@ class PostPublisher:
                 astr = await client.upload_photo_wall(local_path, owner_id)
             if astr:
                 parts.append(astr)
+                logger.info("Post %s: attachment #%d uploaded → %s", post_id, idx, astr)
+            else:
+                logger.warning("Post %s: VK upload failed for attachment #%d (path=%s, type=%s, owner_id=%s)",
+                               post_id, idx, local_path, atype, owner_id)
         for p in temp_paths:
             try:
                 os.unlink(p)
             except OSError:
                 pass
-        return ",".join(parts) if parts else None
+        result = ",".join(parts) if parts else None
+        logger.info("Post %s: final attachments string: %s", post_id, result)
+        return result
 
     async def publish_post(self, post: Dict) -> bool:
         """Публикует один пост на личную стену и/или в группу с вложениями."""

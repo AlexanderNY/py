@@ -21,6 +21,7 @@ import { AdministrationPage } from '@/pages/administration'
 import { GroupPage } from '@/pages/group'
 import { FigmaPreviewPage } from '@/pages/figma-preview'
 import { AboutPage } from '@/pages/about/about'
+import { GraphsPage } from '@/pages/graphs'
 import { RouteLoader } from '@/components/route-loader'
 
 interface ProtectedRouteProps {
@@ -87,6 +88,7 @@ function App() {
         <Route path="profile" element={<ProfilePage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="statistics" element={<StatisticsPage />} />
+        <Route path="graphs" element={<GraphsPage />} />
         <Route path="telegram" element={<TelegramPage />} />
         <Route path="threads" element={<ThreadsPage />} />
         <Route path="wordpress" element={<WordPressPage />} />
