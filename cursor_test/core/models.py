@@ -490,6 +490,24 @@ EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 """
 
+# Пользовательский OAuth-токен для загрузки фото/доков на стену группы (photos.getWallUploadServer недоступен с групповым токеном)
+VK_PROFILES_USER_ACCESS_TOKEN_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN user_access_token VARCHAR(512);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+"""
+
+# VK ID пользователя после OAuth (для отображения в UI)
+VK_PROFILES_VK_USER_ID_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN vk_user_id BIGINT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+"""
+
 # Таблица vk_posts - посты VKontakte (структура аналогична tg_posts)
 VK_POSTS_TABLE = """
 CREATE TABLE IF NOT EXISTS vk_posts (
@@ -972,6 +990,88 @@ CREATE TABLE IF NOT EXISTS cpost_profiles (
 );
 """
 
+# Таблица cpost_posts - ручные посты (источник до collector -> posts)
+CPOST_POSTS_TABLE = """
+CREATE TABLE IF NOT EXISTS cpost_posts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    domain VARCHAR(255),
+    url TEXT,
+    title VARCHAR(500),
+    author VARCHAR(255),
+    avatar TEXT,
+    post_date TIMESTAMP,
+    post_text TEXT,
+    screenshot TEXT,
+    images JSONB DEFAULT '[]',
+    image_over_text TEXT,
+    comments INTEGER DEFAULT 0,
+    reposts INTEGER DEFAULT 0,
+    likes INTEGER DEFAULT 0,
+    views INTEGER DEFAULT 0,
+    is_ad BOOLEAN DEFAULT FALSE,
+    status VARCHAR(50) DEFAULT 'collected',
+    post_type VARCHAR(50),
+    to_tg BOOLEAN DEFAULT FALSE,
+    to_tw BOOLEAN DEFAULT FALSE,
+    to_wp BOOLEAN DEFAULT FALSE,
+    to_vk BOOLEAN DEFAULT FALSE,
+    to_dzen BOOLEAN DEFAULT FALSE,
+    to_instagram BOOLEAN DEFAULT FALSE,
+    to_threads BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+CPOST_POSTS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_cpost_posts_user_id ON cpost_posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_cpost_posts_status ON cpost_posts(status);
+CREATE INDEX IF NOT EXISTS idx_cpost_posts_created_at ON cpost_posts(created_at);
+CREATE INDEX IF NOT EXISTS idx_cpost_posts_status_created ON cpost_posts(status, created_at);
+"""
+
+# Таблица tw_posts - посты Twitter (источник до collector -> posts)
+TW_POSTS_TABLE = """
+CREATE TABLE IF NOT EXISTS tw_posts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    domain VARCHAR(255),
+    url TEXT,
+    title VARCHAR(500),
+    author VARCHAR(255),
+    avatar TEXT,
+    post_date TIMESTAMP,
+    post_text TEXT,
+    screenshot TEXT,
+    images JSONB DEFAULT '[]',
+    image_over_text TEXT,
+    comments INTEGER DEFAULT 0,
+    reposts INTEGER DEFAULT 0,
+    likes INTEGER DEFAULT 0,
+    views INTEGER DEFAULT 0,
+    is_ad BOOLEAN DEFAULT FALSE,
+    status VARCHAR(50) DEFAULT 'collected',
+    post_type VARCHAR(50),
+    to_tg BOOLEAN DEFAULT FALSE,
+    to_tw BOOLEAN DEFAULT FALSE,
+    to_wp BOOLEAN DEFAULT FALSE,
+    to_vk BOOLEAN DEFAULT FALSE,
+    to_dzen BOOLEAN DEFAULT FALSE,
+    to_instagram BOOLEAN DEFAULT FALSE,
+    to_threads BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+TW_POSTS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_tw_posts_user_id ON tw_posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_tw_posts_status ON tw_posts(status);
+CREATE INDEX IF NOT EXISTS idx_tw_posts_created_at ON tw_posts(created_at);
+CREATE INDEX IF NOT EXISTS idx_tw_posts_status_created ON tw_posts(status, created_at);
+"""
+
 # Таблица notifications - уведомления для всех пользователей
 NOTIFICATIONS_TABLE = """
 CREATE TABLE IF NOT EXISTS notifications (
@@ -1024,6 +1124,8 @@ ALL_TABLES = [
     WP_POSTS_INDEXES,
     VK_PROFILES_TABLE,
     VK_PROFILES_MIGRATION,
+    VK_PROFILES_USER_ACCESS_TOKEN_MIGRATION,
+    VK_PROFILES_VK_USER_ID_MIGRATION,
     VK_POSTS_TABLE,
     VK_POSTS_INDEXES,
     VK_POSTS_MIGRATION,
@@ -1046,6 +1148,10 @@ ALL_TABLES = [
     CURL_SETTINGS_MIGRATION,
     CURL_ONE_TIME_DONE_TABLE,
     CPOST_PROFILES_TABLE,
+    CPOST_POSTS_TABLE,
+    CPOST_POSTS_INDEXES,
+    TW_POSTS_TABLE,
+    TW_POSTS_INDEXES,
     NOTIFICATIONS_TABLE,
     NOTIFICATIONS_MIGRATION,
     NOTIFICATIONS_INDEXES,

@@ -1,5 +1,12 @@
 export type ScheduleType = 'immediate' | 'intervals'
 
+/** Статус OAuth VK (пользовательский токен для стены/фото группы) */
+export interface VKAuthStatus {
+  connected: boolean
+  message: string
+  vk_user_id?: number | null
+}
+
 export interface TimeInterval {
   start: string // HH:MM
   end?: string
@@ -19,6 +26,12 @@ export interface VKontakteProfile {
   mark_as_ads?: boolean
   /** Токен доступа VK (в ответах маскируется как "***") */
   access_token?: string | null
+  /** Пользовательский OAuth (маскируется как "***"); для загрузки фото на стену группы */
+  user_access_token?: string | null
+  /** Есть сохранённый пользовательский OAuth-токен */
+  vk_connected?: boolean
+  /** VK user id после OAuth */
+  vk_user_id?: number | null
   /** ID групп для чтения стены (например [123456]) */
   groups_to_read?: number[]
   /** ID или short_name группы для публикации */

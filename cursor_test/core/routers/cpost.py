@@ -75,16 +75,17 @@ async def create_manual_post(
     user_id = get_user_id_from_header(x_user_id)
     
     try:
-        post = await post_service.create_post(
+        post = await post_service.create_cpost_post_record(
             user_id=user_id,
             text=data.text,
-            platform="cpost",
             title=data.title,
             to_tg=data.to_tg,
             to_tw=data.to_tw,
             to_wp=data.to_wp,
             to_vk=data.to_vk,
             to_threads=data.to_threads,
+            to_dzen=data.to_dzen,
+            status=data.status,
             domain=data.domain,
             url=data.url,
             author=data.author,
@@ -98,7 +99,6 @@ async def create_manual_post(
             likes=data.likes,
             views=data.views,
             is_ad=data.is_ad,
-            status=data.status,
         )
         return post
     except ValueError as e:
@@ -111,15 +111,13 @@ async def get_cpost_posts(
     offset: int = 0,
     x_user_id: Optional[str] = Header(None)
 ):
-    """Возвращает список ручных постов пользователя из таблицы posts (post_type=cpost)."""
+    """Возвращает список ручных постов из cpost_posts."""
     user_id = get_user_id_from_header(x_user_id)
-    posts = await post_service.get_posts(
+    return await post_service.get_cpost_posts(
         user_id=user_id,
-        post_type="cpost",
         limit=limit,
         offset=offset,
     )
-    return posts
 
 
 @router.get("/post/{post_id}")
@@ -129,7 +127,7 @@ async def get_cpost_post(
 ):
     """Возвращает один ручной пост по id."""
     user_id = get_user_id_from_header(x_user_id)
-    post = await post_service.get_post(user_id=user_id, post_id=post_id)
+    post = await post_service.get_cpost_post(user_id=user_id, post_id=post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     return post
@@ -143,7 +141,7 @@ async def update_cpost_post(
 ):
     """Обновляет ручной пост."""
     user_id = get_user_id_from_header(x_user_id)
-    post = await post_service.update_post(
+    post = await post_service.update_cpost_post(
         user_id=user_id,
         post_id=post_id,
         title=data.title,
@@ -153,6 +151,7 @@ async def update_cpost_post(
         to_wp=data.to_wp,
         to_vk=data.to_vk,
         to_threads=data.to_threads,
+        to_dzen=data.to_dzen,
         domain=data.domain,
         url=data.url,
         author=data.author,
@@ -180,7 +179,7 @@ async def delete_cpost_post(
 ):
     """Удаляет ручной пост."""
     user_id = get_user_id_from_header(x_user_id)
-    deleted = await post_service.delete_post(user_id=user_id, post_id=post_id)
+    deleted = await post_service.delete_cpost_post(user_id=user_id, post_id=post_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Post not found")
     return {"ok": True}

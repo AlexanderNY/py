@@ -53,7 +53,10 @@ def _users_get_sync(access_token: str) -> Optional[int]:
 def _upload_photo_wall_sync(
     access_token: str, photo_path: str, owner_id: int
 ) -> Optional[str]:
-    """Загружает фото на стену. owner_id > 0 — пользователь, < 0 — группа. Возвращает строку вложения photo{owner_id}_{id}."""
+    """Загружает фото на стену. owner_id > 0 — пользователь, < 0 — группа.
+
+    Для группы VK требует **пользовательский** access_token (photos.getWallUploadServer недоступен с токеном сообщества).
+    """
     try:
         vk_session = vk_api.VkApi(token=access_token)
         upload = VkUpload(vk_session)

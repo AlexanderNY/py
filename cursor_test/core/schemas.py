@@ -411,6 +411,11 @@ class VKontakteProfileBase(BaseModel):
     mark_as_ads: bool = False
     # Сбор и публикация (vk-bot)
     access_token: Optional[str] = None
+    # Пользовательский OAuth (не токен сообщества): для photos.getWallUploadServer при публикации фото на стену группы
+    user_access_token: Optional[str] = None
+    # Вычисляемые/сервисные поля (OAuth VK)
+    vk_connected: bool = False
+    vk_user_id: Optional[int] = None
     groups_to_read: List[int] = []  # ID групп для чтения стены, например [-123456] -> 123456
     users_to_read: List[int] = []  # ID пользователей для чтения стены
     group_to_post: Optional[str] = None  # ID или short_name группы для публикации
@@ -853,6 +858,7 @@ class PlatformMetric(BaseModel):
     platform: str
     table: str
     collected_count: int = 0
+    created_count: int = 0
     ready_count: int = 0
     processing_count: int = 0
 

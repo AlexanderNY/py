@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     THREADS_OAUTH_REDIRECT_URI: str = ""
     FRONTEND_URL: str = "http://localhost:5173"
 
+    # VK OAuth (user_access_token для wall/photos на стене группы)
+    VK_APP_ID: str = ""
+    VK_APP_SECRET: str = ""
+    VK_OAUTH_REDIRECT_URI: str = ""
+
     # Базовый URL для ссылок в RSS Дзен (item link)
     RSS_BASE_URL: str = "http://localhost:8002"
 

@@ -55,6 +55,7 @@ class PlatformMetric(BaseModel):
     platform: str
     table: str
     collected_count: int
+    created_count: int = 0
     ready_count: int
     processing_count: int
 

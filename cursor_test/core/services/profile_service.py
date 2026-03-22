@@ -645,6 +645,9 @@ class ProfileService:
         # При обновлении не перезаписываем токен маской "***"
         if access_token in (None, "", "***"):
             access_token = None
+        user_access_token = data.get("user_access_token")
+        if user_access_token in (None, "", "***"):
+            user_access_token = None
         groups_to_read = data.get("groups_to_read", [])
         if not isinstance(groups_to_read, list):
             groups_to_read = []
@@ -662,9 +665,9 @@ class ProfileService:
                         user_id, publish_enabled, collect_enabled, schedule_type,
                         time_intervals, owner_id, friends_only, from_group,
                         message, attachments, signed, mark_as_ads,
-                        access_token, groups_to_read, group_to_post,
+                        access_token, user_access_token, groups_to_read, group_to_post,
                         post_to_own_wall, users_to_read
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -678,6 +681,7 @@ class ProfileService:
                         signed = EXCLUDED.signed,
                         mark_as_ads = EXCLUDED.mark_as_ads,
                         access_token = COALESCE(NULLIF(EXCLUDED.access_token, ''), vk_profiles.access_token),
+                        user_access_token = COALESCE(NULLIF(EXCLUDED.user_access_token, ''), vk_profiles.user_access_token),
                         groups_to_read = COALESCE(EXCLUDED.groups_to_read, vk_profiles.groups_to_read),
                         group_to_post = COALESCE(EXCLUDED.group_to_post, vk_profiles.group_to_post),
                         post_to_own_wall = COALESCE(EXCLUDED.post_to_own_wall, vk_profiles.post_to_own_wall),
@@ -699,6 +703,7 @@ class ProfileService:
                         data.get("signed", False),
                         data.get("mark_as_ads", False),
                         access_token,
+                        user_access_token,
                         json.dumps(groups_to_read),
                         group_to_post,
                         post_to_own_wall,
@@ -707,6 +712,30 @@ class ProfileService:
                 )
                 row = await cur.fetchone()
                 return self._row_to_vk_profile(row, cur.description)
+        finally:
+            await release_db_connection(conn)
+
+    async def save_vk_oauth_tokens(
+        self,
+        user_id: int,
+        user_access_token: str,
+        vk_user_id: Optional[int] = None,
+    ) -> None:
+        """Сохраняет пользовательский OAuth-токен VK после callback (создаёт минимальный профиль при необходимости)."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO vk_profiles (user_id, user_access_token, vk_user_id)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        user_access_token = EXCLUDED.user_access_token,
+                        vk_user_id = EXCLUDED.vk_user_id,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (user_id, user_access_token, vk_user_id),
+                )
         finally:
             await release_db_connection(conn)
     
@@ -726,8 +755,14 @@ class ProfileService:
                 profile["users_to_read"] = json.loads(profile["users_to_read"])
             except (json.JSONDecodeError, TypeError):
                 profile["users_to_read"] = []
+        has_user_oauth = bool(profile.get("user_access_token"))
+        profile["vk_connected"] = has_user_oauth
+        if "vk_user_id" not in profile:
+            profile["vk_user_id"] = None
         if profile.get("access_token"):
             profile["access_token"] = "***"
+        if profile.get("user_access_token"):
+            profile["user_access_token"] = "***"
         return profile
     
     # ==================== cURL ====================

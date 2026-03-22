@@ -1,4 +1,5 @@
 import { useState, FormEvent, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -7,7 +8,13 @@ import { PageHeader, PageContainer } from '@/components/ui'
 import { TipTapEditor } from '@/components/ui/tiptap-editor'
 import { apiClient } from '@/services/api-client'
 import { vkontakteService } from '@/services/vkontakte-service'
-import type { VKontakteProfile, VKontaktePostListItem, ScheduleType } from '@/types/vkontakte'
+import { useAuth } from '@/contexts/auth-context'
+import type {
+  VKontakteProfile,
+  VKontaktePostListItem,
+  ScheduleType,
+  VKAuthStatus,
+} from '@/types/vkontakte'
 
 function htmlToPlainText(html: string): string {
   const div = document.createElement('div')
@@ -32,9 +39,15 @@ interface DynamicField {
 }
 
 const VK_MAX_LENGTH = 15985
+const AUTH_STATUS_POLL_INTERVAL_MS = 15_000
 
 export function VKontaktePage() {
-  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'processing'>('create')
+  const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'processing' | 'auth'>(() =>
+    searchParams.get('auth') === '1' ? 'auth' : 'create'
+  )
+  const [authStatus, setAuthStatus] = useState<VKAuthStatus | null>(null)
 
   // Profile state
   const [publishEnabled, setPublishEnabled] = useState(false)
@@ -68,7 +81,7 @@ export function VKontaktePage() {
 
   // Create post state (editor content is HTML; we send plain text to API)
   const [postContent, setPostContent] = useState('')
-  const [postImages, setPostImages] = useState<string[]>([''])
+  const [postImages, setPostImages] = useState<string[]>([])
   const [toTg, setToTg] = useState(false)
   const [toTw, setToTw] = useState(false)
   const [toWp, setToWp] = useState(false)
@@ -143,9 +156,48 @@ export function VKontaktePage() {
     }
   }, [])
 
+  const loadAuthStatus = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      const status = await vkontakteService.getAuthStatus(user.id)
+      setAuthStatus(status)
+    } catch (err) {
+      console.error('[VKontaktePage] Failed to load auth status:', err)
+    }
+  }, [user?.id])
+
   useEffect(() => {
     loadProfile()
   }, [loadProfile])
+
+  useEffect(() => {
+    if (searchParams.get('auth') === '1') {
+      setActiveTab('auth')
+      searchParams.delete('auth')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
+  useEffect(() => {
+    if (searchParams.get('oauth') === 'success' || searchParams.get('oauth') === 'error') {
+      if (user?.id) void loadAuthStatus()
+      const message =
+        searchParams.get('message') ||
+        (searchParams.get('oauth') === 'success' ? 'Connected successfully' : 'Connection failed')
+      setSuccess(searchParams.get('oauth') === 'success' ? message : '')
+      setError(searchParams.get('oauth') === 'error' ? message : '')
+      searchParams.delete('oauth')
+      searchParams.delete('message')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams, user?.id, loadAuthStatus])
+
+  useEffect(() => {
+    if (!user?.id) return
+    void loadAuthStatus()
+    const interval = setInterval(loadAuthStatus, AUTH_STATUS_POLL_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [user?.id, loadAuthStatus])
 
   useEffect(() => {
     if (activeTab === 'posts' && !hasLoadedPosts) {
@@ -336,6 +388,18 @@ export function VKontaktePage() {
     )
   }
 
+  async function handleConnectVk() {
+    setError('')
+    try {
+      const { url } = await vkontakteService.getAuthUrl()
+      window.location.href = url
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to get OAuth URL')
+    }
+  }
+
+  const showAuthBlock = authStatus != null && !authStatus.connected
+
   return (
     <PageContainer maxWidth="wide">
       <PageHeader title="VKontakte Integration" description="Configure your VKontakte account settings and post management" />
@@ -379,7 +443,67 @@ export function VKontaktePage() {
             {activeTab === key && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />}
           </button>
         ))}
+        <button
+          type="button"
+          className={`px-6 py-3 text-sm font-medium transition-all relative flex items-center gap-1.5 ${
+            activeTab === 'auth'
+              ? 'text-amber-400'
+              : showAuthBlock
+                ? 'text-amber-400 animate-pulse'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+          onClick={() => setActiveTab('auth')}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          Авторизация
+          {showAuthBlock && <span className="inline-block w-2 h-2 bg-amber-400 rounded-full" />}
+          {activeTab === 'auth' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-500" />}
+        </button>
       </div>
+
+      {activeTab === 'auth' && (
+        <Card className="animate-slide-up border-amber-500/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-amber-400">VK авторизация</CardTitle>
+            <CardDescription>
+              {authStatus?.message ?? 'Пользовательский OAuth нужен для загрузки фото на стену сообщества (photos.getWallUploadServer). Токен сообщества в Profile Settings остаётся для остальных операций.'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-tertiary)]">
+              <div
+                className={`w-3 h-3 rounded-full ${
+                  authStatus?.connected ? 'bg-green-400' : 'bg-amber-400 animate-pulse'
+                }`}
+              />
+              <span className="text-sm text-[var(--text-secondary)]">
+                {authStatus?.connected ? 'Подключено' : 'Не подключено'}
+                {authStatus?.vk_user_id != null && authStatus.connected && (
+                  <span className="ml-2 text-[var(--text-muted)]">(VK id: {authStatus.vk_user_id})</span>
+                )}
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => void loadAuthStatus()} className="ml-auto">
+                Обновить
+              </Button>
+            </div>
+            {!authStatus?.connected && (
+              <div className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/5">
+                <p className="text-sm text-[var(--text-muted)] mb-4">
+                  Нажмите кнопку и войдите в VK. После успешного входа токен сохранится в профиле (user_access_token).
+                </p>
+                <Button onClick={() => void handleConnectVk()}>Подключить VK</Button>
+              </div>
+            )}
+            {authStatus?.connected && (
+              <div className="p-4 rounded-lg border border-green-500/30 bg-green-500/5">
+                <p className="text-sm text-green-400">Пользовательский токен VK сохранён. Публикация с фото на стену группы доступна.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Create Post */}
       {activeTab === 'create' && (
@@ -428,47 +552,49 @@ export function VKontaktePage() {
                 <p className="text-xs text-[var(--text-muted)] mb-2">
                   Загрузите фото с компьютера (JPG, PNG, GIF, WebP). Они будут прикреплены к посту.
                 </p>
-                {postImages.length > 0 && (
+                {postImages.some(Boolean) && (
                   <ul className="space-y-2 mb-3">
-                    {postImages.map((url, index) => (
-                      <li
-                        key={`${url}-${index}`}
-                        className="flex items-center gap-3 p-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]"
-                      >
-                        <img
-                          src={imagePreviewUrl(url)}
-                          alt=""
-                          className="h-14 w-14 shrink-0 object-cover rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)]"
-                          onError={(e) => {
-                            const el = e.target as HTMLImageElement
-                            el.src = ''
-                            el.style.display = 'none'
-                          }}
-                        />
-                        <a
-                          href={imagePreviewUrl(url)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 min-w-0 text-sm text-primary-400 hover:underline truncate"
-                          title={url}
+                    {postImages.map((url, index) =>
+                      !url ? null : (
+                        <li
+                          key={`${url}-${index}`}
+                          className="flex items-center gap-3 p-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]"
                         >
-                          {url}
-                        </a>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setPostImages((prev) => prev.filter((_, i) => i !== index))}
-                          className="shrink-0 text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                          title="Удалить фото"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                          Удалить
-                        </Button>
-                      </li>
-                    ))}
+                          <img
+                            src={imagePreviewUrl(url)}
+                            alt=""
+                            className="h-14 w-14 shrink-0 object-cover rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)]"
+                            onError={(e) => {
+                              const el = e.target as HTMLImageElement
+                              el.src = ''
+                              el.style.display = 'none'
+                            }}
+                          />
+                          <a
+                            href={imagePreviewUrl(url)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 min-w-0 text-sm text-primary-400 hover:underline truncate"
+                            title={url}
+                          >
+                            {url}
+                          </a>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setPostImages((prev) => prev.filter((_, i) => i !== index))}
+                            className="shrink-0 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                            title="Удалить фото"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Удалить
+                          </Button>
+                        </li>
+                      )
+                    )}
                   </ul>
                 )}
                 <div className="border-2 border-dashed border-[var(--border-color)] rounded-xl p-6 text-center">

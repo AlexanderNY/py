@@ -9,7 +9,7 @@
 ```
   [платформенные таблицы]     posts                    [платформенные таблицы]
   tg_posts, url_posts, ...    (центральная)            tg_posts, wp_posts, vk_posts
-  status = 'collected'  ──►   collected   ──►  processing   ──►   ready / review
+  status = 'collected' или 'created'  ──►   collected   ──►  processing   ──►   ready / review
        │                            │              │                    │
        │  Collector (collect)       │  Processor   │  Collector         │
        │  INSERT + source_id        │  обработка   │  (distribute)      │
@@ -24,15 +24,18 @@
 
 ## Этапы жизненного цикла
 
-### 1. Появление записи: **collected**
+### 1. Появление записи в платформенных таблицах и перенос в **posts**: **collected**
 
-- **Кто создаёт:** сервис **Collector** (цикл collect).
-- **Откуда данные:** из платформенных таблиц (`tg_posts`, `wp_posts`, `url_posts`, `vk_posts`) строки со статусом `collected`.
-- **Действия Collector:**
-  - `SELECT ... FROM tg_posts (и др.) WHERE status = 'collected'`
+- **Кто создаёт строки в `*_posts`:** боты и сервисы Core (сборщики, url-bot, vk-bot, ручные cpost/Twitter и т.д.) — вставка со статусом **`collected`** (сбор с внешних источников) или **`created`** (например, ручное создание поста VK в Core), пока collector не заберёт запись в `posts`.
+- **Кто переносит в `posts`:** только сервис **Collector** (цикл collect). Без запущенного collector новые строки остаются только в платформенной таблице.
+- **Реестр источников** задаётся в `collector/config.py` (`SOURCE_TABLES`), в том числе: `tg_posts`, `wp_posts`, `url_posts`, `vk_posts`, `instagram_posts`, `dzen_posts`, `cpost_posts`, `tw_posts`.
+- **Действия Collector (collect):**
+  - `SELECT ... FROM <таблица> WHERE status IN ('collected', 'created') FOR UPDATE SKIP LOCKED`
   - `INSERT INTO posts (... source_platform, source_id)` со статусом **collected**
-  - `UPDATE tg_posts (и др.) SET status = 'processing'`
+  - `UPDATE <таблица> SET status = 'processing'`
 - **Смысл:** пост попал в общую очередь на обработку и привязан к источнику (`source_platform`, `source_id`).
+
+Разовый перенос старых записей, которые раньше создавались сразу в `posts`, описан в [migrate_legacy_cpost_tw_from_posts.sql](migrations/migrate_legacy_cpost_tw_from_posts.sql).
 
 ---
 

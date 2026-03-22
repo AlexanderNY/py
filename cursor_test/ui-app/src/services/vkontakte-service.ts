@@ -5,6 +5,7 @@ import type {
   VKontaktePost,
   VKontaktePostListItem,
   VKontaktePostFull,
+  VKAuthStatus,
 } from '@/types/vkontakte'
 
 export const vkontakteService = {
@@ -66,5 +67,17 @@ export const vkontakteService = {
     })
     const path = response.data.url
     return path.startsWith('/') ? path : `/${path}`
+  },
+
+  /** URL редиректа на oauth.vk.com (требуется JWT, X-User-Id через gateway). */
+  async getAuthUrl(): Promise<{ url: string }> {
+    const response = await apiClient.get<{ url: string }>('/vk/oauth/url')
+    return response.data
+  },
+
+  /** Статус сохранённого пользовательского OAuth-токена VK. */
+  async getAuthStatus(_userId?: number): Promise<VKAuthStatus> {
+    const response = await apiClient.get<VKAuthStatus>('/vk/oauth/status')
+    return response.data
   },
 }

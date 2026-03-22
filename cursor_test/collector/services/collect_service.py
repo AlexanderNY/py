@@ -16,6 +16,7 @@ _POST_COLUMNS = [
     "post_date", "post_text", "screenshot", "images", "image_over_text",
     "comments", "reposts", "likes", "views", "is_ad", "status",
     "post_type", "to_tg", "to_tw", "to_wp", "to_vk", "to_dzen", "to_instagram",
+    "to_threads",
 ]
 
 
@@ -31,7 +32,7 @@ class CollectService:
         """Выполняет один цикл сбора.
 
         Для каждой таблицы из SOURCE_TABLES:
-        1. SELECT ... WHERE status = 'collected' FOR UPDATE SKIP LOCKED
+        1. SELECT ... WHERE status IN ('collected', 'created') FOR UPDATE SKIP LOCKED
         2. INSERT INTO posts с source_platform / source_id
         3. UPDATE source status -> 'processing'
 
@@ -84,12 +85,12 @@ class CollectService:
                 tables_with_videos = ("dzen_posts", "instagram_posts")
                 select_cols = list(_POST_COLUMNS) + (["videos"] if table in tables_with_videos else [])
 
-                # 1. Выбрать посты со статусом 'collected'
+                # 1. Выбрать посты со статусом 'collected' или 'created' (ожидают переноса в posts)
                 await cur.execute(
                     f"""
                     SELECT id, {", ".join(select_cols)}
                     FROM {table}
-                    WHERE status = 'collected'
+                    WHERE status IN ('collected', 'created')
                     ORDER BY created_at
                     LIMIT %s
                     FOR UPDATE SKIP LOCKED

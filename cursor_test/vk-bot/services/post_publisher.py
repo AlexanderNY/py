@@ -128,7 +128,7 @@ class PostPublisher:
                 await cur.execute(
                     """
                     SELECT p.id, p.user_id, p.post_text, p.images, p.attachments,
-                           pr.group_to_post, pr.access_token, pr.from_group,
+                           pr.group_to_post, pr.access_token, pr.user_access_token, pr.from_group,
                            pr.post_to_own_wall
                     FROM vk_posts p
                     JOIN vk_profiles pr ON p.user_id = pr.user_id
@@ -157,6 +157,25 @@ class PostPublisher:
         if group_owner is not None:
             owner_ids.append(group_owner)
         return owner_ids
+
+    def _vk_client_for_upload(
+        self,
+        access_token: str,
+        user_access_token: Optional[str],
+        owner_id: int,
+        post_id: Optional[int],
+    ) -> VkClient:
+        """Для стены группы (owner_id < 0) photos.getWallUploadServer требует пользовательский OAuth, не токен сообщества ([27])."""
+        if owner_id < 0 and user_access_token:
+            return VkClient(user_access_token)
+        if owner_id < 0 and not user_access_token:
+            logger.warning(
+                "Post %s: group wall (owner_id=%s) — задайте user_access_token в vk_profiles для загрузки фото/файлов; "
+                "групповой access_token не может вызывать photos.getWallUploadServer",
+                post_id,
+                owner_id,
+            )
+        return VkClient(access_token)
 
     async def _resolve_file_path(self, item: Dict[str, str], post_id: int) -> Optional[str]:
         """Возвращает локальный путь к файлу: S3 → HTTP (Core) → локальный диск. Пробует все методы последовательно."""
@@ -277,6 +296,7 @@ class PostPublisher:
         user_id = post.get("user_id")
         text = (post.get("post_text") or "")[:VK_MESSAGE_LIMIT]
         token = post.get("access_token")
+        user_access_token = post.get("user_access_token")
         from_group = bool(post.get("from_group", True))
 
         if not token:
@@ -308,7 +328,10 @@ class PostPublisher:
 
         published_any = False
         for owner_id in owner_ids:
-            attachments_str = await self._build_attachments_string(client, owner_id, post)
+            upload_client = self._vk_client_for_upload(
+                token, user_access_token, owner_id, post_id
+            )
+            attachments_str = await self._build_attachments_string(upload_client, owner_id, post)
             new_post_id = await client.wall_post(
                 owner_id=owner_id,
                 message=text,

@@ -91,6 +91,7 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
 # Публичные endpoints без JWT проверки
 PUBLIC_ENDPOINTS: list[str] = [
     "/threads/oauth/callback",
+    "/vk/oauth/callback",
     "/auth/login",
     "/auth/register",
     "/auth/refresh",

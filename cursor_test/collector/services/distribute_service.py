@@ -16,6 +16,7 @@ _POST_COLUMNS = [
     "post_date", "post_text", "screenshot", "images", "image_over_text",
     "comments", "reposts", "likes", "views", "is_ad", "status",
     "post_type", "to_tg", "to_tw", "to_wp", "to_vk", "to_dzen", "to_instagram",
+    "to_threads",
 ]
 
 # Все флаги to_* для проверки

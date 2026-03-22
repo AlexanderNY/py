@@ -172,7 +172,7 @@ class PostCollector:
         likes: int,
         views: int,
     ) -> bool:
-        """Вставляет пост в vk_posts со статусом collected."""
+        """Вставляет пост в vk_posts со статусом collected (далее collector переносит в posts)."""
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:

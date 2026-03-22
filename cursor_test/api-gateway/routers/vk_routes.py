@@ -140,3 +140,27 @@ async def get_vk_upload(
 ) -> Response:
     """Отдаёт загруженный файл из uploads/vk (превью и скачивание)."""
     return await forward_to_core(f"/vk/uploads/{filename}", request)
+
+
+@router.get("/oauth/url")
+async def get_vk_oauth_url(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """GET /vk/oauth/url -> core (JWT)."""
+    return await forward_to_core("/vk/oauth/url", request)
+
+
+@router.get("/oauth/callback")
+async def vk_oauth_callback(request: Request) -> Response:
+    """OAuth callback VK: проксирование на core (без JWT)."""
+    return await forward_to_core("/vk/oauth/callback", request)
+
+
+@router.get("/oauth/status")
+async def vk_oauth_status(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """GET /vk/oauth/status -> core (JWT)."""
+    return await forward_to_core("/vk/oauth/status", request)

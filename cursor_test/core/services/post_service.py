@@ -210,6 +210,366 @@ class PostService:
                 return self._row_to_post(row, cur.description)
         finally:
             await release_db_connection(conn)
+
+    async def create_cpost_post_record(
+        self,
+        user_id: int,
+        text: str,
+        title: Optional[str] = None,
+        to_tg: bool = False,
+        to_tw: bool = False,
+        to_wp: bool = False,
+        to_vk: bool = False,
+        to_threads: bool = False,
+        to_dzen: bool = False,
+        to_instagram: bool = False,
+        status: str = "collected",
+        **kwargs,
+    ) -> Dict:
+        """Создаёт ручной пост в cpost_posts (далее collector переносит в posts)."""
+        limit = self.PLATFORM_LIMITS.get("cpost", 150000)
+        if len(text) > limit:
+            raise ValueError(f"Text exceeds cpost limit of {limit} characters")
+
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO cpost_posts (
+                        user_id, post_text, title, domain, url, author, avatar,
+                        post_date, screenshot, images, image_over_text,
+                        comments, reposts, likes, views, is_ad, status,
+                        post_type, to_tg, to_tw, to_wp, to_vk, to_dzen, to_instagram, to_threads
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s::jsonb, %s,
+                        %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    )
+                    RETURNING *
+                    """,
+                    (
+                        user_id,
+                        text,
+                        title,
+                        kwargs.get("domain"),
+                        kwargs.get("url"),
+                        kwargs.get("author"),
+                        kwargs.get("avatar"),
+                        kwargs.get("post_date"),
+                        kwargs.get("screenshot"),
+                        json.dumps(kwargs.get("images") or []),
+                        kwargs.get("image_over_text"),
+                        kwargs.get("comments", 0),
+                        kwargs.get("reposts", 0),
+                        kwargs.get("likes", 0),
+                        kwargs.get("views", 0),
+                        kwargs.get("is_ad", False),
+                        status,
+                        "cpost",
+                        to_tg,
+                        to_tw,
+                        to_wp,
+                        to_vk,
+                        to_dzen,
+                        to_instagram,
+                        to_threads,
+                    ),
+                )
+                row = await cur.fetchone()
+                return self._row_to_post(row, cur.description)
+        finally:
+            await release_db_connection(conn)
+
+    async def create_tw_post_record(
+        self,
+        user_id: int,
+        text: str,
+        to_tg: bool = False,
+        to_tw: bool = False,
+        to_wp: bool = False,
+        to_vk: bool = False,
+    ) -> Dict:
+        """Создаёт пост Twitter в tw_posts (далее collector переносит в posts)."""
+        limit = self.PLATFORM_LIMITS.get("tw", 280)
+        if len(text) > limit:
+            raise ValueError(f"Text exceeds tw limit of {limit} characters")
+
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO tw_posts (
+                        user_id, post_text, status, post_type,
+                        to_tg, to_tw, to_wp, to_vk
+                    ) VALUES (
+                        %s, %s, 'collected', 'tw',
+                        %s, %s, %s, %s
+                    )
+                    RETURNING *
+                    """,
+                    (user_id, text, to_tg, to_tw, to_wp, to_vk),
+                )
+                row = await cur.fetchone()
+                return self._row_to_post(row, cur.description)
+        finally:
+            await release_db_connection(conn)
+
+    async def get_cpost_posts(
+        self,
+        user_id: int,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """Список ручных постов из cpost_posts."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT * FROM cpost_posts
+                    WHERE user_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (user_id, limit, offset),
+                )
+                rows = await cur.fetchall()
+                return [self._row_to_post(row, cur.description) for row in rows]
+        finally:
+            await release_db_connection(conn)
+
+    async def get_cpost_post(self, user_id: int, post_id: int) -> Optional[Dict]:
+        """Один ручной пост по id в cpost_posts."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT * FROM cpost_posts WHERE user_id = %s AND id = %s",
+                    (user_id, post_id),
+                )
+                row = await cur.fetchone()
+                if row:
+                    return self._row_to_post(row, cur.description)
+                return None
+        finally:
+            await release_db_connection(conn)
+
+    async def update_cpost_post(
+        self,
+        user_id: int,
+        post_id: int,
+        title: Optional[str] = None,
+        post_text: Optional[str] = None,
+        domain: Optional[str] = None,
+        url: Optional[str] = None,
+        author: Optional[str] = None,
+        avatar: Optional[str] = None,
+        post_date: Optional[datetime] = None,
+        screenshot: Optional[str] = None,
+        images: Optional[list] = None,
+        image_over_text: Optional[str] = None,
+        comments: Optional[int] = None,
+        reposts: Optional[int] = None,
+        likes: Optional[int] = None,
+        views: Optional[int] = None,
+        is_ad: Optional[bool] = None,
+        status: Optional[str] = None,
+        to_tg: Optional[bool] = None,
+        to_tw: Optional[bool] = None,
+        to_wp: Optional[bool] = None,
+        to_vk: Optional[bool] = None,
+        to_threads: Optional[bool] = None,
+        to_dzen: Optional[bool] = None,
+    ) -> Optional[Dict]:
+        """Обновляет cpost_posts и дублирует изменения в posts, если строка уже собрана collector."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                updates = []
+                params = []
+                if title is not None:
+                    updates.append("title = %s")
+                    params.append(title)
+                if post_text is not None:
+                    updates.append("post_text = %s")
+                    params.append(post_text)
+                if domain is not None:
+                    updates.append("domain = %s")
+                    params.append(domain)
+                if url is not None:
+                    updates.append("url = %s")
+                    params.append(url)
+                if author is not None:
+                    updates.append("author = %s")
+                    params.append(author)
+                if avatar is not None:
+                    updates.append("avatar = %s")
+                    params.append(avatar)
+                if post_date is not None:
+                    updates.append("post_date = %s")
+                    params.append(post_date)
+                if screenshot is not None:
+                    updates.append("screenshot = %s")
+                    params.append(screenshot)
+                if images is not None:
+                    updates.append("images = %s")
+                    params.append(json.dumps(images))
+                if image_over_text is not None:
+                    updates.append("image_over_text = %s")
+                    params.append(image_over_text)
+                if comments is not None:
+                    updates.append("comments = %s")
+                    params.append(comments)
+                if reposts is not None:
+                    updates.append("reposts = %s")
+                    params.append(reposts)
+                if likes is not None:
+                    updates.append("likes = %s")
+                    params.append(likes)
+                if views is not None:
+                    updates.append("views = %s")
+                    params.append(views)
+                if is_ad is not None:
+                    updates.append("is_ad = %s")
+                    params.append(is_ad)
+                if status is not None:
+                    updates.append("status = %s")
+                    params.append(status)
+                if to_tg is not None:
+                    updates.append("to_tg = %s")
+                    params.append(to_tg)
+                if to_tw is not None:
+                    updates.append("to_tw = %s")
+                    params.append(to_tw)
+                if to_wp is not None:
+                    updates.append("to_wp = %s")
+                    params.append(to_wp)
+                if to_vk is not None:
+                    updates.append("to_vk = %s")
+                    params.append(to_vk)
+                if to_threads is not None:
+                    updates.append("to_threads = %s")
+                    params.append(to_threads)
+                if to_dzen is not None:
+                    updates.append("to_dzen = %s")
+                    params.append(to_dzen)
+                if not updates:
+                    return await self.get_cpost_post(user_id, post_id)
+                params.extend([user_id, post_id])
+                query = f"""
+                    UPDATE cpost_posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s AND id = %s
+                    RETURNING *
+                """
+                await cur.execute(query, params)
+                row = await cur.fetchone()
+                if not row:
+                    return None
+
+                mirror_updates = []
+                mirror_params = []
+                if title is not None:
+                    mirror_updates.append("title = %s")
+                    mirror_params.append(title)
+                if post_text is not None:
+                    mirror_updates.append("post_text = %s")
+                    mirror_params.append(post_text)
+                if domain is not None:
+                    mirror_updates.append("domain = %s")
+                    mirror_params.append(domain)
+                if url is not None:
+                    mirror_updates.append("url = %s")
+                    mirror_params.append(url)
+                if author is not None:
+                    mirror_updates.append("author = %s")
+                    mirror_params.append(author)
+                if avatar is not None:
+                    mirror_updates.append("avatar = %s")
+                    mirror_params.append(avatar)
+                if post_date is not None:
+                    mirror_updates.append("post_date = %s")
+                    mirror_params.append(post_date)
+                if screenshot is not None:
+                    mirror_updates.append("screenshot = %s")
+                    mirror_params.append(screenshot)
+                if images is not None:
+                    mirror_updates.append("images = %s")
+                    mirror_params.append(json.dumps(images))
+                if image_over_text is not None:
+                    mirror_updates.append("image_over_text = %s")
+                    mirror_params.append(image_over_text)
+                if comments is not None:
+                    mirror_updates.append("comments = %s")
+                    mirror_params.append(comments)
+                if reposts is not None:
+                    mirror_updates.append("reposts = %s")
+                    mirror_params.append(reposts)
+                if likes is not None:
+                    mirror_updates.append("likes = %s")
+                    mirror_params.append(likes)
+                if views is not None:
+                    mirror_updates.append("views = %s")
+                    mirror_params.append(views)
+                if is_ad is not None:
+                    mirror_updates.append("is_ad = %s")
+                    mirror_params.append(is_ad)
+                if status is not None:
+                    mirror_updates.append("status = %s")
+                    mirror_params.append(status)
+                if to_tg is not None:
+                    mirror_updates.append("to_tg = %s")
+                    mirror_params.append(to_tg)
+                if to_tw is not None:
+                    mirror_updates.append("to_tw = %s")
+                    mirror_params.append(to_tw)
+                if to_wp is not None:
+                    mirror_updates.append("to_wp = %s")
+                    mirror_params.append(to_wp)
+                if to_vk is not None:
+                    mirror_updates.append("to_vk = %s")
+                    mirror_params.append(to_vk)
+                if to_threads is not None:
+                    mirror_updates.append("to_threads = %s")
+                    mirror_params.append(to_threads)
+                if to_dzen is not None:
+                    mirror_updates.append("to_dzen = %s")
+                    mirror_params.append(to_dzen)
+                if mirror_updates:
+                    sync_params = list(mirror_params)
+                    sync_params.extend([user_id, "cpost", post_id])
+                    await cur.execute(
+                        f"""
+                        UPDATE posts SET {", ".join(mirror_updates)}, updated_at = CURRENT_TIMESTAMP
+                        WHERE user_id = %s AND source_platform = %s AND source_id = %s
+                        """,
+                        sync_params,
+                    )
+                return self._row_to_post(row, cur.description)
+        finally:
+            await release_db_connection(conn)
+
+    async def delete_cpost_post(self, user_id: int, post_id: int) -> bool:
+        """Удаляет зеркало в posts и строку в cpost_posts."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    DELETE FROM posts
+                    WHERE user_id = %s AND source_platform = %s AND source_id = %s
+                    """,
+                    (user_id, "cpost", post_id),
+                )
+                await cur.execute(
+                    "DELETE FROM cpost_posts WHERE user_id = %s AND id = %s",
+                    (user_id, post_id),
+                )
+                return cur.rowcount > 0
+        finally:
+            await release_db_connection(conn)
     
     async def get_posts(
         self,
@@ -843,7 +1203,7 @@ class PostService:
         to_wp: bool = False,
         to_vk: bool = True,
     ) -> Dict:
-        """Создаёт пост VKontakte в таблице vk_posts (status=ready для публикации через upload.photo_wall)."""
+        """Создаёт пост VKontakte в таблице vk_posts (status=created; collector переносит в posts, затем pipeline до ready для публикации)."""
         limit = self.PLATFORM_LIMITS.get("vk", 15985)
         if len(text) > limit:
             raise ValueError(f"Text exceeds vk limit of {limit} characters")
@@ -862,7 +1222,7 @@ class PostService:
                         status, post_type, to_tg, to_tw, to_wp, to_vk
                     ) VALUES (
                         %s, %s, %s, %s,
-                        'ready', 'vk', %s, %s, %s, %s
+                        'created', 'vk', %s, %s, %s, %s
                     )
                     RETURNING *
                     """,

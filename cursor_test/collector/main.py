@@ -249,6 +249,7 @@ async def get_metrics():
                         f"""
                         SELECT
                             COALESCE(SUM(CASE WHEN status = 'collected' THEN 1 ELSE 0 END), 0),
+                            COALESCE(SUM(CASE WHEN status = 'created' THEN 1 ELSE 0 END), 0),
                             COALESCE(SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END), 0),
                             COALESCE(SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END), 0)
                         FROM {table}
@@ -260,8 +261,9 @@ async def get_metrics():
                             platform=platform,
                             table=table,
                             collected_count=row[0],
-                            ready_count=row[1],
-                            processing_count=row[2],
+                            created_count=row[1],
+                            ready_count=row[2],
+                            processing_count=row[3],
                         )
                     )
                 except Exception:
