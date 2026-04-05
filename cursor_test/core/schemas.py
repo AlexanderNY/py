@@ -270,6 +270,8 @@ class TwitterProfileBase(BaseModel):
     proxy_port: Optional[int] = None
     twitter_username: Optional[str] = None
     twitter_password: Optional[str] = None
+    take_screenshot_collect: bool = False
+    screenshot_xpath: Optional[str] = None
 
 
 class TwitterProfileCreate(TwitterProfileBase):
@@ -460,6 +462,10 @@ class DzenProfileBase(BaseModel):
     channel_name: Optional[str] = None
     channels_to_read: List[str] = []  # RSS URL чужих каналов для вычитки
     rss_token: Optional[str] = None  # опционально: защита RSS по ?token=...
+    yandex_login: Optional[str] = None
+    yandex_password: Optional[str] = None  # при сохранении пусто или "***" — не менять в БД
+    dzen_studio_url: Optional[str] = None  # URL студии / списка публикаций для Selenium-сбора
+    collect_source: Optional[str] = "rss"  # rss | selenium | both
 
 
 class DzenProfileCreate(DzenProfileBase):
@@ -473,6 +479,7 @@ class DzenProfile(DzenProfileBase):
     user_id: int
     created_at: datetime
     updated_at: datetime
+    last_auth_error: Optional[str] = None  # выставляется dzen-bot; только чтение в UI
 
     class Config:
         from_attributes = True
@@ -520,6 +527,7 @@ class InstagramProfileBase(BaseModel):
     status_review_after_process: bool = False
     add_static_html: bool = False
     static_html_content: Optional[str] = None
+    instagram_verification_code: Optional[str] = None
 
 
 class InstagramProfileCreate(InstagramProfileBase):
@@ -533,6 +541,8 @@ class InstagramProfile(InstagramProfileBase):
     user_id: int
     created_at: datetime
     updated_at: datetime
+    instagram_last_auth_error: Optional[str] = None
+    instagram_verification_pending: bool = False
 
     class Config:
         from_attributes = True

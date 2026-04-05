@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import tempfile
+from itertools import groupby
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -24,6 +25,20 @@ def _log_action(msg: str, *args, **kwargs) -> None:
         logger.info(msg, *args, **kwargs)
     else:
         logger.debug(msg, *args, **kwargs)
+
+
+def _normalize_session(raw: Any) -> Optional[Dict[str, Any]]:
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw)
+            return data if isinstance(data, dict) else None
+        except (json.JSONDecodeError, TypeError):
+            return None
+    return None
 
 
 def _parse_images_raw(raw: Any) -> List[str]:
@@ -94,7 +109,8 @@ class PostPublisher:
                 await cur.execute(
                     """
                     SELECT p.id, p.user_id, p.post_text, p.images,
-                           pr.username, pr.password
+                           pr.username, pr.password,
+                           pr.instagrapi_session, pr.instagram_verification_code
                     FROM instagram_posts p
                     JOIN instagram_profiles pr ON p.user_id = pr.user_id
                     WHERE p.status = 'ready'
@@ -103,12 +119,17 @@ class PostPublisher:
                       AND pr.username != ''
                       AND pr.password IS NOT NULL
                       AND pr.password != ''
-                    ORDER BY p.created_at ASC
+                    ORDER BY p.user_id ASC, p.created_at ASC
                     """
                 )
                 rows = await cur.fetchall()
                 cols = [c.name for c in cur.description]
-                return [dict(zip(cols, row)) for row in rows]
+                result = []
+                for row in rows:
+                    rec = dict(zip(cols, row))
+                    rec["instagrapi_session"] = _normalize_session(rec.get("instagrapi_session"))
+                    result.append(rec)
+                return result
         finally:
             await release_db_connection(conn)
 
@@ -132,8 +153,8 @@ class PostPublisher:
         base = (settings.UPLOADS_DIR or os.getcwd()).rstrip("/")
         return _resolve_path(path_or_url, base)
 
-    async def publish_post(self, post: Dict) -> bool:
-        """Публикует один пост в Instagram (фото или карусель)."""
+    async def publish_post(self, post: Dict, client: Optional[InstagramClient] = None) -> bool:
+        """Публикует один пост в Instagram (фото или карусель). client — переиспользуемый после одного login."""
         post_id = post.get("id")
         user_id = post.get("user_id")
         caption = (post.get("post_text") or "")[:INSTAGRAM_CAPTION_LIMIT]
@@ -142,10 +163,18 @@ class PostPublisher:
         if not username or not password:
             logger.warning("Post %s: missing username/password", post_id)
             return False
-        client = InstagramClient(username, password)
-        if not await client.login():
-            logger.warning("Post %s: Instagram login failed", post_id)
-            return False
+        own_client = client
+        if own_client is None:
+            own_client = InstagramClient(
+                username,
+                password,
+                user_id=user_id,
+                session_dict=post.get("instagrapi_session"),
+                verification_code=post.get("instagram_verification_code"),
+            )
+            if not await own_client.login():
+                logger.warning("Post %s: Instagram login failed", post_id)
+                return False
         raw_images = post.get("images")
         paths = _parse_images_raw(raw_images)
         local_paths: List[str] = []
@@ -163,9 +192,9 @@ class PostPublisher:
                 logger.warning("Post %s: no valid images, skip", post_id)
                 return False
             if len(local_paths) == 1:
-                code = await client.photo_upload(local_paths[0], caption=caption)
+                code = await own_client.photo_upload(local_paths[0], caption=caption)
             else:
-                code = await client.album_upload(local_paths, caption=caption)
+                code = await own_client.album_upload(local_paths, caption=caption)
             if code is not None:
                 _log_action("Published instagram post %s for user %s", post_id, user_id)
                 await self._update_post_status(post_id, "published")
@@ -194,15 +223,30 @@ class PostPublisher:
             await release_db_connection(conn)
 
     async def publish_ready_posts(self) -> int:
-        """Публикует все посты со статусом ready. Возвращает количество опубликованных."""
+        """Публикует посты со статусом ready: один login на user_id."""
         posts = await self.get_ready_posts()
         _log_action("get_ready_posts returned %d posts", len(posts))
         if not posts:
             return 0
         published = 0
-        for post in posts:
-            if await self.publish_post(post):
-                published += 1
-            await asyncio.sleep(3)
+        for user_id, group_iter in groupby(posts, key=lambda r: r["user_id"]):
+            group = list(group_iter)
+            first = group[0]
+            username = (first.get("username") or "").strip()
+            password = first.get("password") or ""
+            shared_client = InstagramClient(
+                username,
+                password,
+                user_id=user_id,
+                session_dict=first.get("instagrapi_session"),
+                verification_code=first.get("instagram_verification_code"),
+            )
+            if not await shared_client.login():
+                logger.warning("Instagram login failed for user_id=%s, skipping %d posts", user_id, len(group))
+                continue
+            for post in group:
+                if await self.publish_post(post, client=shared_client):
+                    published += 1
+                await asyncio.sleep(3)
         _log_action("publish_ready_posts: published %d of %d", published, len(posts))
         return published

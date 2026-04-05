@@ -24,6 +24,7 @@ class Settings(BaseSettings):
         "vk-bot",
         "wp-bot",
         "url-bot",
+        "tw-bot",
         "scheduler"
     ]
     
@@ -33,6 +34,7 @@ class Settings(BaseSettings):
     VK_BOT_SERVICE_URL: str = "http://localhost:8005"
     WP_BOT_SERVICE_URL: str = "http://localhost:8006"
     URL_BOT_SERVICE_URL: str = "http://localhost:8007"
+    TW_BOT_SERVICE_URL: str = "http://localhost:8011"
     SCHEDULER_SERVICE_URL: str = "http://localhost:8003"
     COLLECTOR_SERVICE_URL: str = "http://localhost:8009"
     PROCESSOR_SERVICE_URL: str = "http://localhost:8010"
@@ -47,6 +49,11 @@ class Settings(BaseSettings):
     VK_APP_ID: str = ""
     VK_APP_SECRET: str = ""
     VK_OAUTH_REDIRECT_URI: str = ""
+
+    # X (Twitter) OAuth 2.0 PKCE (Core callback обменивает code на токены)
+    TWITTER_CLIENT_ID: str = ""
+    TWITTER_CLIENT_SECRET: str = ""
+    TWITTER_OAUTH_REDIRECT_URI: str = ""
 
     # Базовый URL для ссылок в RSS Дзен (item link)
     RSS_BASE_URL: str = "http://localhost:8002"

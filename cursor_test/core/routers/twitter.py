@@ -1,13 +1,30 @@
-"""Роутер для Twitter профилей и постов."""
+"""Роутер для Twitter / X профилей и постов."""
 
-from fastapi import APIRouter, HTTPException, Header
-from typing import Optional
-from services.profile_service import profile_service
-from services.post_service import post_service
+import base64
+import hashlib
+import logging
+import secrets
+from datetime import datetime, timedelta
+from typing import Any, Optional
+from urllib.parse import quote, urlencode
+
+import httpx
+from fastapi import APIRouter, Header, HTTPException
+from fastapi.responses import RedirectResponse
+
+from config import settings
 from schemas import TwitterProfileCreate, TwitterPost
+from services.post_service import post_service
+from services.profile_service import profile_service
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tw", tags=["Twitter"])
+
+TWITTER_SCOPES = "tweet.read tweet.write users.read offline.access"
+TWITTER_AUTH_URL = "https://x.com/i/oauth2/authorize"
+TWITTER_TOKEN_URL = "https://api.twitter.com/2/oauth2/token"
+TWITTER_API_ME = "https://api.twitter.com/2/users/me"
 
 
 def get_user_id_from_header(x_user_id: Optional[str] = Header(None)) -> int:
@@ -20,13 +37,14 @@ def get_user_id_from_header(x_user_id: Optional[str] = Header(None)) -> int:
         raise HTTPException(status_code=400, detail="Invalid user ID")
 
 
+def _pkce_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
 @router.get("/profile")
 async def get_tw_profile(x_user_id: Optional[str] = Header(None)):
-    """Получает профиль Twitter пользователя.
-    
-    Returns:
-        Профиль Twitter или пустой объект
-    """
+    """Получает профиль Twitter пользователя."""
     user_id = get_user_id_from_header(x_user_id)
     profile = await profile_service.get_tw_profile(user_id)
     if profile:
@@ -42,23 +60,20 @@ async def get_tw_profile(x_user_id: Optional[str] = Header(None)):
         "proxy_host": None,
         "proxy_port": None,
         "twitter_username": None,
-        "twitter_password": None
+        "twitter_password": None,
+        "take_screenshot_collect": False,
+        "screenshot_xpath": None,
+        "twitter_connected": False,
+        "twitter_rest_id": None,
     }
 
 
 @router.post("/profile")
 async def save_tw_profile(
     data: TwitterProfileCreate,
-    x_user_id: Optional[str] = Header(None)
+    x_user_id: Optional[str] = Header(None),
 ):
-    """Сохраняет профиль Twitter пользователя.
-    
-    Args:
-        data: Данные профиля
-    
-    Returns:
-        Сохраненный профиль
-    """
+    """Сохраняет профиль Twitter пользователя."""
     user_id = get_user_id_from_header(x_user_id)
     profile = await profile_service.save_tw_profile(user_id, data.model_dump())
     return profile
@@ -66,30 +81,29 @@ async def save_tw_profile(
 
 @router.get("/profiles")
 async def get_all_tw_profiles():
-    """Получает все профили Twitter.
-    
-    Returns:
-        Список всех профилей Twitter
-    """
+    """Получает все профили Twitter (админка)."""
     profiles = await profile_service.get_all_tw_profiles()
     return {"profiles": profiles}
+
+
+@router.get("/posts")
+async def get_tw_posts(
+    x_user_id: Optional[str] = Header(None),
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Список постов tw_posts пользователя."""
+    user_id = get_user_id_from_header(x_user_id)
+    return await post_service.get_tw_posts(user_id=user_id, limit=limit, offset=offset)
 
 
 @router.post("/post")
 async def create_tw_post(
     data: TwitterPost,
-    x_user_id: Optional[str] = Header(None)
+    x_user_id: Optional[str] = Header(None),
 ):
-    """Создает пост для Twitter (max 280 символов).
-    
-    Args:
-        data: Данные поста
-        
-    Returns:
-        Созданный пост
-    """
+    """Создаёт запись в tw_posts (max 280 символов)."""
     user_id = get_user_id_from_header(x_user_id)
-    
     try:
         post = await post_service.create_tw_post_record(
             user_id=user_id,
@@ -102,3 +116,147 @@ async def create_tw_post(
         return post
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/oauth/url")
+async def get_tw_oauth_url(x_user_id: Optional[str] = Header(None)):
+    """URL OAuth 2.0 PKCE для X (Twitter)."""
+    user_id = get_user_id_from_header(x_user_id)
+    client_id = (getattr(settings, "TWITTER_CLIENT_ID", None) or "").strip()
+    redirect_uri = (getattr(settings, "TWITTER_OAUTH_REDIRECT_URI", None) or "").strip()
+    if not client_id or not redirect_uri:
+        raise HTTPException(
+            status_code=503,
+            detail="X OAuth is not configured (TWITTER_CLIENT_ID, TWITTER_OAUTH_REDIRECT_URI)",
+        )
+    code_verifier = secrets.token_urlsafe(32)
+    challenge = _pkce_challenge(code_verifier)
+    expires = datetime.utcnow() + timedelta(minutes=10)
+    await profile_service.set_tw_oauth_pkce(user_id, code_verifier, expires)
+    params = {
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": TWITTER_SCOPES,
+        "state": str(user_id),
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+    }
+    url = f"{TWITTER_AUTH_URL}?{urlencode(params)}"
+    return {"url": url}
+
+
+@router.get("/oauth/status")
+async def tw_oauth_status(x_user_id: Optional[str] = Header(None)):
+    """Статус OAuth X."""
+    user_id = get_user_id_from_header(x_user_id)
+    profile = await profile_service.get_tw_profile(user_id)
+    if not profile:
+        return {"twitter_connected": False, "twitter_rest_id": None}
+    return {
+        "twitter_connected": bool(profile.get("twitter_connected")),
+        "twitter_rest_id": profile.get("twitter_rest_id"),
+    }
+
+
+@router.get("/oauth/callback")
+async def tw_oauth_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None,
+):
+    """Callback OAuth 2.0: обмен code на токены."""
+    frontend_url = (settings.FRONTEND_URL or "").rstrip("/")
+    tw_page = f"{frontend_url}/twitter"
+
+    def _redirect_err(msg: str) -> RedirectResponse:
+        return RedirectResponse(url=f"{tw_page}?oauth=error&message={quote(msg)}")
+
+    if error:
+        msg = error_description or error
+        return _redirect_err(msg)
+    if not code or not state:
+        return _redirect_err("missing_code_or_state")
+    try:
+        user_id = int(state)
+    except (ValueError, TypeError):
+        return _redirect_err("invalid_state")
+
+    client_id = (getattr(settings, "TWITTER_CLIENT_ID", None) or "").strip()
+    client_secret = (getattr(settings, "TWITTER_CLIENT_SECRET", None) or "").strip()
+    redirect_uri = (getattr(settings, "TWITTER_OAUTH_REDIRECT_URI", None) or "").strip()
+    if not client_id or not client_secret or not redirect_uri:
+        return _redirect_err("server_config")
+
+    code_verifier = await profile_service.get_tw_oauth_pkce(user_id)
+    if not code_verifier:
+        return _redirect_err("pkce_expired")
+
+    basic = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("ascii")
+    body = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "code_verifier": code_verifier,
+        "client_id": client_id,
+    }
+    data: dict[str, Any] = {}
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                TWITTER_TOKEN_URL,
+                headers={
+                    "Authorization": f"Basic {basic}",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                data=body,
+            )
+            data = resp.json()
+            if resp.status_code >= 400:
+                err = data.get("error_description") or data.get("error") or resp.text
+                logger.warning("Twitter token exchange failed: %s", err)
+                await profile_service.clear_tw_oauth_pkce(user_id)
+                return _redirect_err("exchange_failed")
+    except Exception as e:
+        logger.exception("Twitter token exchange: %s", e)
+        await profile_service.clear_tw_oauth_pkce(user_id)
+        return _redirect_err("exchange_failed")
+
+    access_token = data.get("access_token")
+    if not access_token:
+        await profile_service.clear_tw_oauth_pkce(user_id)
+        return _redirect_err("no_token")
+
+    refresh_token = data.get("refresh_token")
+    expires_in = data.get("expires_in")
+    expires_at = None
+    if expires_in is not None:
+        try:
+            expires_at = datetime.utcnow() + timedelta(seconds=int(expires_in))
+        except (TypeError, ValueError):
+            pass
+
+    twitter_rest_id: Optional[str] = None
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            me = await client.get(
+                TWITTER_API_ME,
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={"user.fields": "id,name,username"},
+            )
+            if me.status_code == 200:
+                me_json = me.json()
+                twitter_rest_id = (me_json.get("data") or {}).get("id")
+    except Exception as e:
+        logger.warning("Twitter users/me: %s", e)
+
+    await profile_service.save_tw_oauth_tokens(
+        user_id=user_id,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_at=expires_at,
+        twitter_rest_id=twitter_rest_id,
+    )
+    return RedirectResponse(url=f"{tw_page}?oauth=success")
+

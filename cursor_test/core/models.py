@@ -180,6 +180,50 @@ CREATE TABLE IF NOT EXISTS tw_profiles (
 );
 """
 
+# Миграция: OAuth X (Twitter), скриншоты при сборе, PKCE
+TW_PROFILES_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE tw_profiles ADD COLUMN twitter_oauth_access_token TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tw_profiles ADD COLUMN twitter_oauth_refresh_token TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tw_profiles ADD COLUMN twitter_oauth_expires_at TIMESTAMP;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tw_profiles ADD COLUMN twitter_rest_id VARCHAR(32);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tw_profiles ADD COLUMN oauth_pkce_verifier VARCHAR(128);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tw_profiles ADD COLUMN oauth_pkce_expires_at TIMESTAMP;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tw_profiles ADD COLUMN take_screenshot_collect BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tw_profiles ADD COLUMN screenshot_xpath TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+"""
+
 # Таблица wp_profiles - настройки WordPress (legacy, оставлена для совместимости)
 WP_PROFILES_TABLE = """
 CREATE TABLE IF NOT EXISTS wp_profiles (
@@ -720,6 +764,35 @@ EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 """
 
+# Selenium: Яндекс-логин, URL студии, режим сбора (rss / selenium / both)
+DZEN_PROFILES_SELENIUM_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE dzen_profiles ADD COLUMN yandex_login VARCHAR(255);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE dzen_profiles ADD COLUMN yandex_password TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE dzen_profiles ADD COLUMN dzen_studio_url TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE dzen_profiles ADD COLUMN collect_source VARCHAR(20) DEFAULT 'rss';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE dzen_profiles ADD COLUMN last_auth_error TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+"""
+
 # Таблица dzen_posts - посты Дзен (структура как vk_posts + videos)
 DZEN_POSTS_TABLE = """
 CREATE TABLE IF NOT EXISTS dzen_posts (
@@ -807,9 +880,31 @@ CREATE TABLE IF NOT EXISTS instagram_profiles (
     status_review_after_process BOOLEAN DEFAULT FALSE,
     add_static_html BOOLEAN DEFAULT FALSE,
     static_html_content TEXT,
+    instagrapi_session JSONB,
+    instagram_verification_code VARCHAR(64),
+    instagram_last_auth_error TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+"""
+
+# Миграция: сессия instagrapi и код 2FA в instagram_profiles
+INSTAGRAM_PROFILES_SESSION_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE instagram_profiles ADD COLUMN instagrapi_session JSONB;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE instagram_profiles ADD COLUMN instagram_verification_code VARCHAR(64);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE instagram_profiles ADD COLUMN instagram_last_auth_error TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 """
 
 # Таблица instagram_posts - посты Instagram (структура как vk_posts + instagram_source_id, to_instagram, videos)
@@ -1113,6 +1208,7 @@ ALL_TABLES = [
     TG_POSTS_TABLE,
     TG_POSTS_INDEXES,
     TW_PROFILES_TABLE,
+    TW_PROFILES_MIGRATION,
     WP_PROFILES_TABLE,
     WP_PUBLISH_PROFILE_TABLE,
     WP_PUBLISH_PROFILE_MIGRATION,
@@ -1137,10 +1233,12 @@ ALL_TABLES = [
     TO_THREADS_MIGRATION,
     DZEN_PROFILES_TABLE,
     DZEN_PROFILES_MIGRATION,
+    DZEN_PROFILES_SELENIUM_MIGRATION,
     DZEN_POSTS_TABLE,
     DZEN_POSTS_INDEXES,
     TO_DZEN_MIGRATION,
     INSTAGRAM_PROFILES_TABLE,
+    INSTAGRAM_PROFILES_SESSION_MIGRATION,
     INSTAGRAM_POSTS_TABLE,
     INSTAGRAM_POSTS_INDEXES,
     TO_INSTAGRAM_MIGRATION,

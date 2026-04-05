@@ -1,4 +1,8 @@
-"""Публикация постов из vk_posts со статусом ready на личную стену и/или в группу VK с вложениями."""
+"""Публикация постов из vk_posts со статусом ready на личную стену и/или в группу VK с вложениями.
+
+Разделение клиентов VkClient: публикация на стену (wall.post) и загрузка вложений (photos/doc) могут
+требовать разные типы токенов — см. docs/VK_BOT_POSTING.md.
+"""
 
 import asyncio
 import json
@@ -133,8 +137,10 @@ class PostPublisher:
                     FROM vk_posts p
                     JOIN vk_profiles pr ON p.user_id = pr.user_id
                     WHERE p.status = 'ready'
-                      AND pr.access_token IS NOT NULL
-                      AND pr.access_token != ''
+                      AND (
+                        (pr.access_token IS NOT NULL AND pr.access_token != '')
+                        OR (pr.user_access_token IS NOT NULL AND pr.user_access_token != '')
+                      )
                       AND (
                         (pr.group_to_post IS NOT NULL AND pr.group_to_post != '')
                         OR pr.post_to_own_wall = TRUE
@@ -158,15 +164,59 @@ class PostPublisher:
             owner_ids.append(group_owner)
         return owner_ids
 
+    def _vk_client_for_wall_post(
+        self,
+        access_token: Optional[str],
+        user_access_token: Optional[str],
+        owner_id: int,
+        post_id: Optional[int],
+    ) -> Optional[VkClient]:
+        """Клиент для wall.post: группа — community access_token; личная стена — user_access_token (предпочтительно)."""
+        if owner_id < 0:
+            if not access_token:
+                logger.error(
+                    "Post %s: wall.post to group owner_id=%s requires access_token (community)",
+                    post_id,
+                    owner_id,
+                )
+                return None
+            logger.info(
+                "Post %s: wall.post owner_id=%s using community access_token",
+                post_id,
+                owner_id,
+            )
+            return VkClient(access_token)
+        if user_access_token:
+            logger.info(
+                "Post %s: wall.post owner_id=%s using user_access_token",
+                post_id,
+                owner_id,
+            )
+            return VkClient(user_access_token)
+        if access_token:
+            logger.warning(
+                "Post %s: wall.post to personal wall without user_access_token — using access_token "
+                "(must be a user token with wall scope, not a community token)",
+                post_id,
+            )
+            return VkClient(access_token)
+        logger.error("Post %s: no token for personal wall wall.post", post_id)
+        return None
+
     def _vk_client_for_upload(
         self,
-        access_token: str,
+        access_token: Optional[str],
         user_access_token: Optional[str],
         owner_id: int,
         post_id: Optional[int],
     ) -> VkClient:
-        """Для стены группы (owner_id < 0) photos.getWallUploadServer требует пользовательский OAuth, не токен сообщества ([27])."""
+        """Клиент для загрузки вложений на стену. Для стены группы (owner_id < 0) photos.getWallUploadServer требует пользовательский OAuth ([27])."""
         if owner_id < 0 and user_access_token:
+            logger.info(
+                "Post %s: upload group wall owner_id=%s token=user",
+                post_id,
+                owner_id,
+            )
             return VkClient(user_access_token)
         if owner_id < 0 and not user_access_token:
             logger.warning(
@@ -175,7 +225,23 @@ class PostPublisher:
                 post_id,
                 owner_id,
             )
-        return VkClient(access_token)
+        if owner_id > 0 and user_access_token:
+            logger.info(
+                "Post %s: upload personal wall owner_id=%s token=user",
+                post_id,
+                owner_id,
+            )
+            return VkClient(user_access_token)
+        fallback = access_token or user_access_token
+        if not fallback:
+            logger.error("Post %s: upload has no access_token or user_access_token", post_id)
+            raise ValueError("VK upload requires access_token or user_access_token")
+        logger.info(
+            "Post %s: upload owner_id=%s token=fallback_access_or_user",
+            post_id,
+            owner_id,
+        )
+        return VkClient(fallback)
 
     async def _resolve_file_path(self, item: Dict[str, str], post_id: int) -> Optional[str]:
         """Возвращает локальный путь к файлу: S3 → HTTP (Core) → локальный диск. Пробует все методы последовательно."""
@@ -295,22 +361,24 @@ class PostPublisher:
         post_id = post.get("id")
         user_id = post.get("user_id")
         text = (post.get("post_text") or "")[:VK_MESSAGE_LIMIT]
-        token = post.get("access_token")
-        user_access_token = post.get("user_access_token")
+        raw_at = post.get("access_token")
+        raw_uat = post.get("user_access_token")
+        token = (raw_at or "").strip() or None
+        user_access_token = (raw_uat or "").strip() or None
         from_group = bool(post.get("from_group", True))
 
-        if not token:
-            logger.warning("Post %s: missing access_token", post_id)
+        if not token and not user_access_token:
+            logger.warning("Post %s: missing access_token and user_access_token", post_id)
             return False
 
-        client = VkClient(token)
+        id_client = VkClient(user_access_token or token)
         vk_user_id: Optional[int] = None
         if post.get("post_to_own_wall"):
-            vk_user_id = await client.get_current_user_id()
+            vk_user_id = await id_client.get_current_user_id()
             if vk_user_id is None:
                 logger.warning(
                     "Post %s: post_to_own_wall is set but get_current_user_id() failed "
-                    "(use user token with users.get scope, not group token)",
+                    "(set user_access_token from OAuth or use a user access_token with users scope, not only a community token)",
                     post_id,
                 )
 
@@ -328,11 +396,23 @@ class PostPublisher:
 
         published_any = False
         for owner_id in owner_ids:
+            wall_client = self._vk_client_for_wall_post(
+                token, user_access_token, owner_id, post_id
+            )
+            if wall_client is None:
+                logger.warning(
+                    "Post %s: skip owner_id=%s — no VkClient for wall.post",
+                    post_id,
+                    owner_id,
+                )
+                continue
             upload_client = self._vk_client_for_upload(
                 token, user_access_token, owner_id, post_id
             )
-            attachments_str = await self._build_attachments_string(upload_client, owner_id, post)
-            new_post_id = await client.wall_post(
+            attachments_str = await self._build_attachments_string(
+                upload_client, owner_id, post
+            )
+            new_post_id = await wall_client.wall_post(
                 owner_id=owner_id,
                 message=text,
                 from_group=from_group and owner_id < 0,

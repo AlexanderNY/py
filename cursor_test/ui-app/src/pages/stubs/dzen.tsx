@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import { dzenService } from '@/services/dzen-service'
-import type { DzenProfile, DzenPostListItem, ScheduleType } from '@/types/dzen'
+import type { DzenProfile, DzenPostListItem, DzenCollectSource, ScheduleType } from '@/types/dzen'
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
@@ -31,6 +31,11 @@ export function DzenPage() {
   const [channelName, setChannelName] = useState('')
   const [channelsToRead, setChannelsToRead] = useState<DynamicField[]>([{ id: generateId(), value: '' }])
   const [rssToken, setRssToken] = useState('')
+  const [yandexLogin, setYandexLogin] = useState('')
+  const [yandexPassword, setYandexPassword] = useState('')
+  const [dzenStudioUrl, setDzenStudioUrl] = useState('')
+  const [collectSource, setCollectSource] = useState<DzenCollectSource>('rss')
+  const [lastAuthError, setLastAuthError] = useState<string | null>(null)
 
   const [postText, setPostText] = useState('')
   const [postTitle, setPostTitle] = useState('')
@@ -58,7 +63,9 @@ export function DzenPage() {
     setError('')
     try {
       const profile = await dzenService.getProfile()
+      setLastAuthError(null)
       if (profile) {
+        setLastAuthError(profile.last_auth_error ?? null)
         setPublishEnabled(profile.publish_enabled ?? false)
         setCollectEnabled(profile.collect_enabled ?? false)
         setScheduleType((profile.schedule_type as ScheduleType) ?? 'immediate')
@@ -79,6 +86,10 @@ export function DzenPage() {
           setChannelsToRead(cr.map((url) => ({ id: generateId(), value: String(url) })))
         }
         setRssToken(profile.rss_token ?? '')
+        setYandexLogin(profile.yandex_login ?? '')
+        setYandexPassword('')
+        setDzenStudioUrl(profile.dzen_studio_url ?? '')
+        setCollectSource((profile.collect_source as DzenCollectSource) ?? 'rss')
       }
     } catch (err) {
       console.error('Failed to load profile:', err)
@@ -202,7 +213,7 @@ export function DzenPage() {
         ? timeIntervals.filter((i) => i.start && i.end).map(({ start, end }) => ({ start, end }))
         : []
     const channelsToReadPayload = channelsToRead.map((f) => f.value.trim()).filter(Boolean)
-    return {
+    const payload: Partial<DzenProfile> = {
       publish_enabled: publishEnabled,
       collect_enabled: collectEnabled,
       schedule_type: scheduleType,
@@ -211,7 +222,14 @@ export function DzenPage() {
       channel_name: channelName || undefined,
       channels_to_read: channelsToReadPayload,
       rss_token: rssToken || undefined,
+      yandex_login: yandexLogin || undefined,
+      dzen_studio_url: dzenStudioUrl || undefined,
+      collect_source: collectSource,
     }
+    if (yandexPassword.length > 0) {
+      payload.yandex_password = yandexPassword
+    }
+    return payload
   }
 
   async function handleSaveProfile(e: FormEvent) {
@@ -222,6 +240,7 @@ export function DzenPage() {
     try {
       await dzenService.saveProfile(buildProfilePayload())
       setSuccess('Profile settings saved successfully')
+      await loadProfile()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save profile settings')
     } finally {
@@ -259,7 +278,7 @@ export function DzenPage() {
     <PageContainer maxWidth="wide">
       <PageHeader
         title="Яндекс Дзен"
-        description="Настройки канала, RSS-лента и публикация постов с картинками и видео"
+        description="RSS, Selenium-бот (публикация и своя лента), посты с картинками и видео"
       />
 
       {error && (
@@ -470,7 +489,7 @@ export function DzenPage() {
         <Card className="animate-slide-up">
           <CardHeader>
             <CardTitle>Настройки канала Дзен</CardTitle>
-            <CardDescription>RSS-лента, вычитка чужих каналов по RSS, расписание</CardDescription>
+            <CardDescription>RSS, учётные данные Яндекса для dzen-bot, вычитка каналов, расписание</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingProfile ? (
@@ -522,6 +541,62 @@ export function DzenPage() {
                         )}
                       </div>
                     )}
+                  </div>
+                </div>
+
+                <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Selenium (dzen-bot)</h3>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Публикация в интерфейс Дзена и сбор своей ленты из студии. Режим сбора: только RSS, только Selenium или оба.
+                  </p>
+                  {lastAuthError && (
+                    <Alert variant="error" className="text-sm">
+                      Последняя ошибка бота: {lastAuthError}
+                    </Alert>
+                  )}
+                  <Input
+                    label="Логин Яндекс"
+                    value={yandexLogin}
+                    onChange={(e) => setYandexLogin(e.target.value)}
+                    placeholder="email или логин"
+                    autoComplete="username"
+                  />
+                  <Input
+                    label="Пароль Яндекс"
+                    type="password"
+                    value={yandexPassword}
+                    onChange={(e) => setYandexPassword(e.target.value)}
+                    placeholder="Оставьте пустым, чтобы не менять сохранённый"
+                    autoComplete="current-password"
+                  />
+                  <Input
+                    label="URL студии / списка публикаций"
+                    value={dzenStudioUrl}
+                    onChange={(e) => setDzenStudioUrl(e.target.value)}
+                    placeholder="https://dzen.ru/profile/editor/..."
+                  />
+                  <div className="space-y-2">
+                    <span className="text-sm font-medium text-[var(--text-secondary)] block">Источник сбора в ленту</span>
+                    <div className="flex flex-wrap gap-4">
+                      {(
+                        [
+                          ['rss', 'Только RSS (чужие ленты)'],
+                          ['selenium', 'Только Selenium (своя студия)'],
+                          ['both', 'RSS + Selenium'],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <label key={value} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="collect_source"
+                            checked={collectSource === value}
+                            onChange={() => setCollectSource(value)}
+                            className="w-4 h-4 text-primary-500"
+                          />
+                          <span className="text-[var(--text-primary)] text-sm">{label}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
 

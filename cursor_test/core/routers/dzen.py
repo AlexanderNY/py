@@ -65,6 +65,11 @@ async def get_dzen_profile(x_user_id: Optional[str] = Header(None)):
         "channel_name": None,
         "channels_to_read": [],
         "rss_token": None,
+        "yandex_login": None,
+        "yandex_password": None,
+        "dzen_studio_url": None,
+        "collect_source": "rss",
+        "last_auth_error": None,
     }
 
 

@@ -118,6 +118,8 @@ BOT_SCHEDULE_PROTECTED = [
     "/url-bot/schedule",
     "/th-bot/schedule",
     "/th-bot/reload",
+    "/dzen-bot/publish-once",
+    "/dzen-bot/collect-once",
 ]
 
 # Пути авторизации ботов — требуют JWT

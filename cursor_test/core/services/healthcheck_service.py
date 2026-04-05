@@ -17,6 +17,7 @@ class HealthcheckService:
             "vk-bot": settings.VK_BOT_SERVICE_URL,
             "wp-bot": settings.WP_BOT_SERVICE_URL,
             "url-bot": settings.URL_BOT_SERVICE_URL,
+            "tw-bot": settings.TW_BOT_SERVICE_URL,
             "scheduler": settings.SCHEDULER_SERVICE_URL,
             "collector": settings.COLLECTOR_SERVICE_URL,
             "processor": settings.PROCESSOR_SERVICE_URL,

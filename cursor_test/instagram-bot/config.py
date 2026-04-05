@@ -23,6 +23,19 @@ class Settings(BaseSettings):
 
     SESSION_SAVE_PATH: str = ""
 
+    # Одноразовый код 2FA (если в профиле не задан instagram_verification_code), глобальный fallback.
+    INSTAGRAM_VERIFICATION_CODE: str = ""
+
+    # После сбора постов скачивать URL картинок в S3/MinIO (если storage настроен).
+    COLLECT_MIRROR_IMAGES_TO_S3: bool = True
+
+    # Selenium fallback (см. services/selenium_driver.py).
+    SELENIUM_HEADLESS: bool = True
+    SELENIUM_PAGE_LOAD_TIMEOUT: int = 60
+    SELENIUM_IMPLICIT_WAIT: int = 5
+    CHROME_BIN: str = ""
+    CHROMEDRIVER_PATH: str = ""
+
     # S3-совместимое хранилище (единое с core).
     S3_ENDPOINT_URL: str = ""
     S3_BUCKET: str = "uploads"

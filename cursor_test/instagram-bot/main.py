@@ -7,10 +7,12 @@ import sys
 
 import uvicorn
 from fastapi import FastAPI
+from pydantic import BaseModel, Field
 
 from config import settings
 from database import init_db, close_db
 from services.instagram_bot_service import InstagramBotService
+from services.instagram_session import set_instagram_verification_code
 
 
 logging.basicConfig(
@@ -34,6 +36,20 @@ async def health_check():
         "service": "instagram-bot",
         "server_time": datetime.utcnow().isoformat() + "Z",
     }
+
+
+class InstagramVerifyCodeBody(BaseModel):
+    """Одноразовый код 2FA для следующей попытки входа instagrapi."""
+
+    user_id: int = Field(..., ge=1)
+    code: str = Field(..., min_length=4, max_length=32)
+
+
+@app.post("/instagram/verify-code")
+async def instagram_set_verification_code(body: InstagramVerifyCodeBody):
+    """Сохраняет код 2FA в профиле; бот подхватит его при следующем login и очистит после успеха."""
+    await set_instagram_verification_code(body.user_id, body.code)
+    return {"status": "ok", "message": "Verification code stored for next login"}
 
 
 @app.post("/instagram/reload")

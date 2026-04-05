@@ -1,7 +1,9 @@
 """Сервис для управления профилями пользователей."""
 
 import json
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+
 from database import get_db_connection, release_db_connection
 
 
@@ -314,57 +316,203 @@ class ProfileService:
     
     async def save_tw_profile(self, user_id: int, data: Dict) -> Dict:
         """Сохраняет или обновляет профиль Twitter."""
+        pwd = data.get("twitter_password")
+        if pwd in (None, "", "***"):
+            pwd = None
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                if pwd is None:
+                    await cur.execute(
+                        """
+                        INSERT INTO tw_profiles (
+                            user_id, publish_enabled, collect_enabled, schedule_type,
+                            time_intervals, use_proxy, proxy_user, proxy_pass,
+                            proxy_host, proxy_port, twitter_username,
+                            take_screenshot_collect, screenshot_xpath
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (user_id) DO UPDATE SET
+                            publish_enabled = EXCLUDED.publish_enabled,
+                            collect_enabled = EXCLUDED.collect_enabled,
+                            schedule_type = EXCLUDED.schedule_type,
+                            time_intervals = EXCLUDED.time_intervals,
+                            use_proxy = EXCLUDED.use_proxy,
+                            proxy_user = EXCLUDED.proxy_user,
+                            proxy_pass = EXCLUDED.proxy_pass,
+                            proxy_host = EXCLUDED.proxy_host,
+                            proxy_port = EXCLUDED.proxy_port,
+                            twitter_username = EXCLUDED.twitter_username,
+                            take_screenshot_collect = EXCLUDED.take_screenshot_collect,
+                            screenshot_xpath = EXCLUDED.screenshot_xpath,
+                            updated_at = CURRENT_TIMESTAMP
+                        RETURNING *
+                        """,
+                        (
+                            user_id,
+                            data.get("publish_enabled", False),
+                            data.get("collect_enabled", False),
+                            data.get("schedule_type", "immediate"),
+                            json.dumps(data.get("time_intervals", [])),
+                            data.get("use_proxy", False),
+                            data.get("proxy_user"),
+                            data.get("proxy_pass"),
+                            data.get("proxy_host"),
+                            data.get("proxy_port"),
+                            data.get("twitter_username"),
+                            data.get("take_screenshot_collect", False),
+                            data.get("screenshot_xpath"),
+                        ),
+                    )
+                else:
+                    await cur.execute(
+                        """
+                        INSERT INTO tw_profiles (
+                            user_id, publish_enabled, collect_enabled, schedule_type,
+                            time_intervals, use_proxy, proxy_user, proxy_pass,
+                            proxy_host, proxy_port, twitter_username, twitter_password,
+                            take_screenshot_collect, screenshot_xpath
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (user_id) DO UPDATE SET
+                            publish_enabled = EXCLUDED.publish_enabled,
+                            collect_enabled = EXCLUDED.collect_enabled,
+                            schedule_type = EXCLUDED.schedule_type,
+                            time_intervals = EXCLUDED.time_intervals,
+                            use_proxy = EXCLUDED.use_proxy,
+                            proxy_user = EXCLUDED.proxy_user,
+                            proxy_pass = EXCLUDED.proxy_pass,
+                            proxy_host = EXCLUDED.proxy_host,
+                            proxy_port = EXCLUDED.proxy_port,
+                            twitter_username = EXCLUDED.twitter_username,
+                            twitter_password = EXCLUDED.twitter_password,
+                            take_screenshot_collect = EXCLUDED.take_screenshot_collect,
+                            screenshot_xpath = EXCLUDED.screenshot_xpath,
+                            updated_at = CURRENT_TIMESTAMP
+                        RETURNING *
+                        """,
+                        (
+                            user_id,
+                            data.get("publish_enabled", False),
+                            data.get("collect_enabled", False),
+                            data.get("schedule_type", "immediate"),
+                            json.dumps(data.get("time_intervals", [])),
+                            data.get("use_proxy", False),
+                            data.get("proxy_user"),
+                            data.get("proxy_pass"),
+                            data.get("proxy_host"),
+                            data.get("proxy_port"),
+                            data.get("twitter_username"),
+                            pwd,
+                            data.get("take_screenshot_collect", False),
+                            data.get("screenshot_xpath"),
+                        ),
+                    )
+                row = await cur.fetchone()
+                return self._row_to_tw_profile(row, cur.description)
+        finally:
+            await release_db_connection(conn)
+
+    async def set_tw_oauth_pkce(self, user_id: int, verifier: str, expires_at: datetime) -> None:
+        """Сохраняет PKCE code_verifier до callback OAuth."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO tw_profiles (user_id, oauth_pkce_verifier, oauth_pkce_expires_at)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        oauth_pkce_verifier = EXCLUDED.oauth_pkce_verifier,
+                        oauth_pkce_expires_at = EXCLUDED.oauth_pkce_expires_at,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (user_id, verifier, expires_at),
+                )
+        finally:
+            await release_db_connection(conn)
+
+    async def get_tw_oauth_pkce(self, user_id: int) -> Optional[str]:
+        """Возвращает PKCE verifier если не истёк, иначе None."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT oauth_pkce_verifier, oauth_pkce_expires_at
+                    FROM tw_profiles WHERE user_id = %s
+                    """,
+                    (user_id,),
+                )
+                row = await cur.fetchone()
+                if not row or not row[0]:
+                    return None
+                exp = row[1]
+                if exp and exp < datetime.utcnow():
+                    return None
+                return str(row[0])
+        finally:
+            await release_db_connection(conn)
+
+    async def clear_tw_oauth_pkce(self, user_id: int) -> None:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE tw_profiles SET oauth_pkce_verifier = NULL, oauth_pkce_expires_at = NULL,
+                    updated_at = CURRENT_TIMESTAMP WHERE user_id = %s
+                    """,
+                    (user_id,),
+                )
+        finally:
+            await release_db_connection(conn)
+
+    async def save_tw_oauth_tokens(
+        self,
+        user_id: int,
+        access_token: str,
+        refresh_token: Optional[str],
+        expires_at: Optional[datetime],
+        twitter_rest_id: Optional[str],
+    ) -> None:
+        """Сохраняет токены OAuth 2.0 X после callback."""
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
                     INSERT INTO tw_profiles (
-                        user_id, publish_enabled, collect_enabled, schedule_type,
-                        time_intervals, use_proxy, proxy_user, proxy_pass,
-                        proxy_host, proxy_port, twitter_username, twitter_password
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        user_id, twitter_oauth_access_token, twitter_oauth_refresh_token,
+                        twitter_oauth_expires_at, twitter_rest_id
+                    ) VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
-                        publish_enabled = EXCLUDED.publish_enabled,
-                        collect_enabled = EXCLUDED.collect_enabled,
-                        schedule_type = EXCLUDED.schedule_type,
-                        time_intervals = EXCLUDED.time_intervals,
-                        use_proxy = EXCLUDED.use_proxy,
-                        proxy_user = EXCLUDED.proxy_user,
-                        proxy_pass = EXCLUDED.proxy_pass,
-                        proxy_host = EXCLUDED.proxy_host,
-                        proxy_port = EXCLUDED.proxy_port,
-                        twitter_username = EXCLUDED.twitter_username,
-                        twitter_password = EXCLUDED.twitter_password,
+                        twitter_oauth_access_token = EXCLUDED.twitter_oauth_access_token,
+                        twitter_oauth_refresh_token = EXCLUDED.twitter_oauth_refresh_token,
+                        twitter_oauth_expires_at = EXCLUDED.twitter_oauth_expires_at,
+                        twitter_rest_id = EXCLUDED.twitter_rest_id,
+                        oauth_pkce_verifier = NULL,
+                        oauth_pkce_expires_at = NULL,
                         updated_at = CURRENT_TIMESTAMP
-                    RETURNING *
                     """,
-                    (
-                        user_id,
-                        data.get("publish_enabled", False),
-                        data.get("collect_enabled", False),
-                        data.get("schedule_type", "immediate"),
-                        json.dumps(data.get("time_intervals", [])),
-                        data.get("use_proxy", False),
-                        data.get("proxy_user"),
-                        data.get("proxy_pass"),
-                        data.get("proxy_host"),
-                        data.get("proxy_port"),
-                        data.get("twitter_username"),
-                        data.get("twitter_password"),
-                    )
+                    (user_id, access_token, refresh_token, expires_at, twitter_rest_id),
                 )
-                row = await cur.fetchone()
-                return self._row_to_tw_profile(row, cur.description)
         finally:
             await release_db_connection(conn)
-    
+
     def _row_to_tw_profile(self, row, description) -> Dict:
         """Преобразует строку БД в словарь профиля Twitter."""
         columns = [col.name for col in description]
         profile = dict(zip(columns, row))
         if isinstance(profile.get("time_intervals"), str):
             profile["time_intervals"] = json.loads(profile["time_intervals"])
+        raw_at = profile.get("twitter_oauth_access_token")
+        raw_rt = profile.get("twitter_oauth_refresh_token")
+        profile["twitter_connected"] = bool(raw_at or raw_rt)
+        if raw_at:
+            profile["twitter_oauth_access_token"] = "***"
+        if raw_rt:
+            profile["twitter_oauth_refresh_token"] = "***"
+        if profile.get("twitter_password"):
+            profile["twitter_password"] = "***"
         return profile
     
     # ==================== WordPress ====================
@@ -1078,6 +1226,12 @@ class ProfileService:
         channels_to_read = data.get("channels_to_read", [])
         if not isinstance(channels_to_read, list):
             channels_to_read = []
+        yandex_password = data.get("yandex_password")
+        if yandex_password in (None, "", "***"):
+            yandex_password = None
+        collect_source = (data.get("collect_source") or "rss").strip().lower()
+        if collect_source not in ("rss", "selenium", "both"):
+            collect_source = "rss"
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -1085,8 +1239,9 @@ class ProfileService:
                     """
                     INSERT INTO dzen_profiles (
                         user_id, publish_enabled, collect_enabled, schedule_type,
-                        time_intervals, rss_feed_url, channel_name, channels_to_read, rss_token
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        time_intervals, rss_feed_url, channel_name, channels_to_read, rss_token,
+                        yandex_login, yandex_password, dzen_studio_url, collect_source
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -1096,6 +1251,10 @@ class ProfileService:
                         channel_name = EXCLUDED.channel_name,
                         channels_to_read = EXCLUDED.channels_to_read,
                         rss_token = EXCLUDED.rss_token,
+                        yandex_login = EXCLUDED.yandex_login,
+                        yandex_password = COALESCE(NULLIF(EXCLUDED.yandex_password, ''), dzen_profiles.yandex_password),
+                        dzen_studio_url = EXCLUDED.dzen_studio_url,
+                        collect_source = EXCLUDED.collect_source,
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING *
                     """,
@@ -1109,10 +1268,29 @@ class ProfileService:
                         data.get("channel_name"),
                         json.dumps(channels_to_read),
                         data.get("rss_token"),
+                        data.get("yandex_login"),
+                        yandex_password,
+                        data.get("dzen_studio_url"),
+                        collect_source,
                     )
                 )
                 row = await cur.fetchone()
                 return self._row_to_dzen_profile(row, cur.description)
+        finally:
+            await release_db_connection(conn)
+
+    async def set_dzen_last_auth_error(self, user_id: int, message: Optional[str]) -> None:
+        """Сохраняет текст последней ошибки авторизации/сценария Дзен (dzen-bot)."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE dzen_profiles SET last_auth_error = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s
+                    """,
+                    (message, user_id),
+                )
         finally:
             await release_db_connection(conn)
 
@@ -1130,6 +1308,10 @@ class ProfileService:
                 profile["channels_to_read"] = json.loads(profile["channels_to_read"])
             except (json.JSONDecodeError, TypeError):
                 profile["channels_to_read"] = []
+        if profile.get("yandex_password"):
+            profile["yandex_password"] = "***"
+        if profile.get("collect_source") in (None, ""):
+            profile["collect_source"] = "rss"
         return profile
 
     async def get_all_dzen_profiles(self) -> list[Dict]:
@@ -1171,6 +1353,9 @@ class ProfileService:
             usernames_to_read = []
         process_services = data.get("process_services")
         process_services_json = json.dumps(process_services) if isinstance(process_services, list) else None
+        vcode = data.get("instagram_verification_code")
+        if vcode in (None, "", "***"):
+            vcode = None
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -1181,8 +1366,9 @@ class ProfileService:
                         time_intervals, username, password, usernames_to_read,
                         process_enabled, processing_description, remove_emojis,
                         remove_images, clean_html, process_services,
-                        status_review_after_process, add_static_html, static_html_content
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        status_review_after_process, add_static_html, static_html_content,
+                        instagram_verification_code
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -1200,6 +1386,10 @@ class ProfileService:
                         status_review_after_process = EXCLUDED.status_review_after_process,
                         add_static_html = EXCLUDED.add_static_html,
                         static_html_content = EXCLUDED.static_html_content,
+                        instagram_verification_code = COALESCE(
+                            NULLIF(EXCLUDED.instagram_verification_code, ''),
+                            instagram_profiles.instagram_verification_code
+                        ),
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING *
                     """,
@@ -1221,6 +1411,7 @@ class ProfileService:
                         data.get("status_review_after_process", False),
                         data.get("add_static_html", False),
                         data.get("static_html_content"),
+                        vcode,
                     )
                 )
                 row = await cur.fetchone()
@@ -1244,6 +1435,11 @@ class ProfileService:
                 profile["usernames_to_read"] = []
         if profile.get("password"):
             profile["password"] = "***"
+        vc = profile.get("instagram_verification_code")
+        profile["instagram_verification_pending"] = bool(vc)
+        profile.pop("instagrapi_session", None)
+        profile.pop("instagram_verification_code", None)
+        profile["instagram_verification_code"] = None
         return profile
 
     async def get_all_instagram_profiles(self) -> list[Dict]:

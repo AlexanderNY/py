@@ -108,6 +108,32 @@ async def url_bot_run(request: Request) -> Response:
     return await _forward_to_bot(settings.URL_BOT_SERVICE_URL, "/run", request)
 
 
+# ==================== Dzen Bot ====================
+
+@router.get("/dzen-bot/health")
+async def dzen_bot_health(request: Request) -> Response:
+    """GET /dzen-bot/health -> dzen-bot /health (без JWT)."""
+    return await _forward_to_bot(settings.DZEN_BOT_SERVICE_URL, "/health", request)
+
+
+@router.post("/dzen-bot/publish-once")
+async def dzen_bot_publish_once(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """POST /dzen-bot/publish-once -> dzen-bot. Требует JWT."""
+    return await _forward_to_bot(settings.DZEN_BOT_SERVICE_URL, "/dzen-bot/publish-once", request)
+
+
+@router.post("/dzen-bot/collect-once")
+async def dzen_bot_collect_once(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """POST /dzen-bot/collect-once -> dzen-bot. Требует JWT."""
+    return await _forward_to_bot(settings.DZEN_BOT_SERVICE_URL, "/dzen-bot/collect-once", request)
+
+
 # ==================== Threads Bot ====================
 
 @router.get("/threads-bot/auth/status/{user_id}")
@@ -161,3 +187,23 @@ async def threads_bot_schedule(
         "/schedule",
         request,
     )
+
+
+# ==================== Instagram Bot ====================
+
+@router.post("/instagram-bot/reload")
+async def instagram_bot_reload(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """POST /instagram-bot/reload -> instagram-bot /instagram/reload (один проход сбора)."""
+    return await _forward_to_bot(settings.INSTAGRAM_BOT_SERVICE_URL, "/instagram/reload", request)
+
+
+@router.post("/instagram-bot/verify-code")
+async def instagram_bot_verify_code(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """POST /instagram-bot/verify-code -> instagram-bot /instagram/verify-code (2FA)."""
+    return await _forward_to_bot(settings.INSTAGRAM_BOT_SERVICE_URL, "/instagram/verify-code", request)

@@ -1,24 +1,83 @@
-"""Обёртка над instagrapi для вызова в executor (синхронный API)."""
+"""Обёртка над instagrapi: сессия в БД, 2FA, сохранение settings."""
 
 import asyncio
+import json
 import logging
-from pathlib import Path
+import os
 from typing import Any, Dict, List, Optional
+
+from config import settings
+
+from .instagram_session import (
+    clear_instagram_verification_code,
+    persist_instagram_session,
+    set_instagram_auth_error,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def _run_sync(coro_or_func, *args, **kwargs):
-    """Запускает синхронную функцию в потоке."""
-    import asyncio
-    loop = asyncio.get_event_loop()
-    return loop.run_in_executor(None, lambda: coro_or_func(*args, **kwargs) if not asyncio.iscoroutine(coro_or_func) else None)
+def _session_file_path(user_id: int) -> Optional[str]:
+    base = (getattr(settings, "SESSION_SAVE_PATH", None) or "").strip()
+    if not base:
+        return None
+    os.makedirs(base, exist_ok=True)
+    return os.path.join(base, f"instagram_{user_id}.json")
 
 
-def _login_sync(username: str, password: str, verification_code: Optional[str] = None) -> Any:
-    """Синхронный логин в Instagram через instagrapi."""
+def _load_session_file(user_id: int) -> Optional[Dict[str, Any]]:
+    path = _session_file_path(user_id)
+    if not path or not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except Exception as e:
+        logger.warning("load session file %s: %s", path, e)
+        return None
+
+
+def _dump_session_file(user_id: int, session_dict: Dict[str, Any]) -> None:
+    path = _session_file_path(user_id)
+    if not path:
+        return
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(session_dict, f, default=str)
+    except Exception as e:
+        logger.warning("dump session file %s: %s", path, e)
+
+
+def _normalize_session(raw: Any) -> Optional[Dict[str, Any]]:
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw)
+            return data if isinstance(data, dict) else None
+        except (json.JSONDecodeError, TypeError):
+            return None
+    return None
+
+
+def _login_sync(
+    username: str,
+    password: str,
+    session_dict: Optional[Dict[str, Any]],
+    verification_code: Optional[str],
+) -> Any:
+    """Синхронный логин. Возвращает Client или бросает исключение."""
     from instagrapi import Client
+
     cl = Client()
+    if session_dict:
+        try:
+            cl.set_settings(session_dict)
+        except Exception as e:
+            logger.warning("set_settings failed, full login: %s", e)
     if verification_code:
         cl.login(username, password, verification_code=verification_code)
     else:
@@ -27,7 +86,6 @@ def _login_sync(username: str, password: str, verification_code: Optional[str] =
 
 
 def _user_id_from_username_sync(cl: Any, username: str) -> Optional[int]:
-    """Синхронно получает user_id по username."""
     try:
         return cl.user_id_from_username(username.strip())
     except Exception as e:
@@ -36,7 +94,6 @@ def _user_id_from_username_sync(cl: Any, username: str) -> Optional[int]:
 
 
 def _user_medias_sync(cl: Any, user_id: int, amount: int = 20) -> List[Dict[str, Any]]:
-    """Синхронно получает медиа пользователя. Возвращает список словарей."""
     try:
         medias = cl.user_medias(user_id, amount)
         result = []
@@ -70,7 +127,6 @@ def _user_medias_sync(cl: Any, user_id: int, amount: int = 20) -> List[Dict[str,
 
 
 def _photo_upload_sync(cl: Any, path: str, caption: str = "") -> Optional[str]:
-    """Синхронно загружает фото. Возвращает media_id или code."""
     try:
         return cl.photo_upload(path, caption=caption or "")
     except Exception as e:
@@ -79,7 +135,6 @@ def _photo_upload_sync(cl: Any, path: str, caption: str = "") -> Optional[str]:
 
 
 def _album_upload_sync(cl: Any, paths: List[str], caption: str = "") -> Optional[str]:
-    """Синхронно загружает альбом (карусель). paths — список путей к файлам."""
     try:
         return cl.album_upload(paths, caption=caption or "")
     except Exception as e:
@@ -87,33 +142,83 @@ def _album_upload_sync(cl: Any, paths: List[str], caption: str = "") -> Optional
         return None
 
 
-class InstagramClient:
-    """Асинхронная обёртка над instagrapi Client."""
+def _get_settings_sync(cl: Any) -> Dict[str, Any]:
+    try:
+        return cl.get_settings()
+    except Exception as e:
+        logger.warning("get_settings: %s", e)
+        return {}
 
-    def __init__(self, username: str, password: str, verification_code: Optional[str] = None):
-        self._username = username
-        self._password = password
-        self._verification_code = verification_code
+
+class InstagramClient:
+    """Асинхронная обёртка над instagrapi Client с сохранением сессии."""
+
+    def __init__(
+        self,
+        username: str,
+        password: str,
+        *,
+        user_id: Optional[int] = None,
+        session_dict: Optional[Dict[str, Any]] = None,
+        verification_code: Optional[str] = None,
+    ):
+        self._username = (username or "").strip()
+        self._password = password or ""
+        self._user_id = user_id
+        self._session_dict = _normalize_session(session_dict)
+        self._verification_code = (verification_code or "").strip() or None
+        if not self._verification_code and getattr(settings, "INSTAGRAM_VERIFICATION_CODE", None):
+            self._verification_code = (settings.INSTAGRAM_VERIFICATION_CODE or "").strip() or None
         self._client: Any = None
 
     async def login(self) -> bool:
-        """Выполняет логин. Возвращает True при успехе."""
+        """Логин с учётом сессии из БД/файла. Сохраняет сессию при успехе."""
+        if not self._username or not self._password:
+            await self._auth_error("missing_username_or_password")
+            return False
+
+        session = self._session_dict
+        if session is None and self._user_id is not None:
+            session = _load_session_file(self._user_id)
+
         try:
             self._client = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: _login_sync(
                     self._username,
                     self._password,
+                    session,
                     self._verification_code,
                 ),
             )
-            return self._client is not None
         except Exception as e:
-            logger.error("Instagram login failed: %s", e, exc_info=True)
+            err = f"{type(e).__name__}: {e}"
+            logger.error("Instagram login failed for %s: %s", self._username, err, exc_info=True)
+            await self._auth_error(err)
             return False
 
+        settings_dict = await asyncio.get_event_loop().run_in_executor(
+            None,
+            _get_settings_sync,
+            self._client,
+        )
+        if settings_dict and self._user_id is not None:
+            await persist_instagram_session(self._user_id, settings_dict)
+            _dump_session_file(self._user_id, settings_dict)
+            await clear_instagram_verification_code(self._user_id)
+        elif settings_dict:
+            if self._user_id is not None:
+                _dump_session_file(self._user_id, settings_dict)
+
+        await self._auth_error(None)
+        return self._client is not None
+
+    async def _auth_error(self, message: Optional[str]) -> None:
+        if self._user_id is None:
+            return
+        await set_instagram_auth_error(self._user_id, message)
+
     async def user_id_from_username(self, username: str) -> Optional[int]:
-        """Получает user_id по username."""
         if not self._client:
             if not await self.login():
                 return None
@@ -125,7 +230,6 @@ class InstagramClient:
         )
 
     async def user_medias(self, user_id: int, amount: int = 20) -> List[Dict[str, Any]]:
-        """Получает медиа пользователя."""
         if not self._client:
             if not await self.login():
                 return []
@@ -138,34 +242,47 @@ class InstagramClient:
         )
 
     async def get_self_user_id(self) -> Optional[int]:
-        """ID текущего пользователя после логина."""
         if not self._client:
             if not await self.login():
                 return None
         return getattr(self._client, "user_id", None)
 
     async def photo_upload(self, path: str, caption: str = "") -> Optional[str]:
-        """Загружает одно фото. Возвращает media_id/code или None."""
         if not self._client:
             if not await self.login():
                 return None
-        return await asyncio.get_event_loop().run_in_executor(
+        code = await asyncio.get_event_loop().run_in_executor(
             None,
             _photo_upload_sync,
             self._client,
             path,
             caption,
         )
+        await self._persist_after_action()
+        return code
 
     async def album_upload(self, paths: List[str], caption: str = "") -> Optional[str]:
-        """Загружает альбом (карусель)."""
         if not self._client:
             if not await self.login():
                 return None
-        return await asyncio.get_event_loop().run_in_executor(
+        code = await asyncio.get_event_loop().run_in_executor(
             None,
             _album_upload_sync,
             self._client,
             paths,
             caption,
         )
+        await self._persist_after_action()
+        return code
+
+    async def _persist_after_action(self) -> None:
+        if self._client is None or self._user_id is None:
+            return
+        settings_dict = await asyncio.get_event_loop().run_in_executor(
+            None,
+            _get_settings_sync,
+            self._client,
+        )
+        if settings_dict:
+            await persist_instagram_session(self._user_id, settings_dict)
+            _dump_session_file(self._user_id, settings_dict)

@@ -467,8 +467,17 @@ export function VKontaktePage() {
         <Card className="animate-slide-up border-amber-500/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-amber-400">VK авторизация</CardTitle>
-            <CardDescription>
-              {authStatus?.message ?? 'Пользовательский OAuth нужен для загрузки фото на стену сообщества (photos.getWallUploadServer). Токен сообщества в Profile Settings остаётся для остальных операций.'}
+            <CardDescription className="space-y-2">
+              <span className="block">
+                {authStatus?.message ??
+                  'Пользовательский OAuth нужен для загрузки фото на стену сообщества (photos.getWallUploadServer). Токен сообщества в Profile Settings остаётся для остальных операций.'}
+              </span>
+              <span className="block text-xs text-[var(--text-muted)]">
+                Запрашиваемые scope в Core: <code className="text-[var(--text-secondary)]">wall</code>,{' '}
+                <code className="text-[var(--text-secondary)]">photos</code>,{' '}
+                <code className="text-[var(--text-secondary)]">groups</code>,{' '}
+                <code className="text-[var(--text-secondary)]">offline</code> (классический OAuth VK, не VK ID PKCE).
+              </span>
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -551,6 +560,10 @@ export function VKontaktePage() {
                 </label>
                 <p className="text-xs text-[var(--text-muted)] mb-2">
                   Загрузите фото с компьютера (JPG, PNG, GIF, WebP). Они будут прикреплены к посту.
+                </p>
+                <p className="text-xs text-amber-400/90 mb-2 rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2">
+                  Публикация <strong>с картинками на стену сообщества</strong> в VK требует пользовательский OAuth (
+                  <strong>Авторизация</strong>). Только текст без вложений часто достаточно публиковать с токеном сообщества из Profile Settings.
                 </p>
                 {postImages.some(Boolean) && (
                   <ul className="space-y-2 mb-3">
@@ -777,6 +790,12 @@ export function VKontaktePage() {
                   </label>
                   <div>
                     <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">Access token (VK)</label>
+                    <p className="text-xs text-[var(--text-muted)] mb-2">
+                      Обычно это <strong className="text-[var(--text-secondary)]">токен сообщества</strong> для публикации от имени группы и сбора стены (
+                      <code className="text-[var(--text-muted)]">wall</code>, при необходимости{' '}
+                      <code className="text-[var(--text-muted)]">groups</code>). Для фото на стене группы и личной стены дополнительно нужен пользовательский токен — вкладка{' '}
+                      <strong className="text-amber-400/90">Авторизация</strong> (OAuth). Подробнее: см. docs VK_BOT_POSTING в репозитории.
+                    </p>
                     <input
                       type="password"
                       value={accessToken === '***' ? '' : accessToken}

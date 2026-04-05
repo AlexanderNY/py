@@ -68,5 +68,5 @@ TARGET_TABLES = {
     "to_vk": {"platform": "vk", "table": "vk_posts"},
     "to_dzen": {"platform": "dzen", "table": "dzen_posts"},
     "to_instagram": {"platform": "instagram", "table": "instagram_posts"},
-    # "to_tw": {"platform": "tw", "table": "tw_posts"},
+    "to_tw": {"platform": "tw", "table": "tw_posts"},
 }

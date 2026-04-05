@@ -1,6 +1,6 @@
 import { apiClient, getErrorMessage } from './api-client'
 import axios from 'axios'
-import type { TwitterProfile, TwitterPost } from '@/types/twitter'
+import type { TwitterProfile, TwitterPost, TwPostRow, TwitterOAuthStatus } from '@/types/twitter'
 
 export const twitterService = {
   async getProfile(): Promise<TwitterProfile | null> {
@@ -8,7 +8,6 @@ export const twitterService = {
       const response = await apiClient.get<TwitterProfile>('/tw/profile')
       return response.data
     } catch (error) {
-      // Если профиль не найден, возвращаем null
       if (axios.isAxiosError(error) && error.response?.status === 404) {
         return null
       }
@@ -30,5 +29,26 @@ export const twitterService = {
     } catch (error) {
       throw new Error(getErrorMessage(error))
     }
+  },
+
+  async getPosts(limit = 50, offset = 0): Promise<TwPostRow[]> {
+    try {
+      const response = await apiClient.get<TwPostRow[]>('/tw/posts', {
+        params: { limit, offset },
+      })
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getOAuthUrl(): Promise<string> {
+    const response = await apiClient.get<{ url: string }>('/tw/oauth/url')
+    return response.data.url
+  },
+
+  async getOAuthStatus(): Promise<TwitterOAuthStatus> {
+    const response = await apiClient.get<TwitterOAuthStatus>('/tw/oauth/status')
+    return response.data
   },
 }

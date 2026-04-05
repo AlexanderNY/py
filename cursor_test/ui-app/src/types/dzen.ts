@@ -5,6 +5,8 @@ export interface TimeInterval {
   end?: string
 }
 
+export type DzenCollectSource = 'rss' | 'selenium' | 'both'
+
 export interface DzenProfile {
   publish_enabled: boolean
   collect_enabled: boolean
@@ -14,6 +16,11 @@ export interface DzenProfile {
   channel_name?: string | null
   channels_to_read?: string[]
   rss_token?: string | null
+  yandex_login?: string | null
+  yandex_password?: string | null
+  dzen_studio_url?: string | null
+  collect_source?: DzenCollectSource
+  last_auth_error?: string | null
 }
 
 export interface DzenPost {

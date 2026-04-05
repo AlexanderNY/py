@@ -95,6 +95,7 @@ class DzenRssReaderService:
                     SELECT user_id, channels_to_read
                     FROM dzen_profiles
                     WHERE collect_enabled = TRUE
+                      AND COALESCE(collect_source, 'rss') IN ('rss', 'both')
                       AND channels_to_read IS NOT NULL
                       AND channels_to_read != '[]'
                       AND jsonb_array_length(channels_to_read) > 0

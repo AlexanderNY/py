@@ -10,6 +10,7 @@ class RunRequest(BaseModel):
     url: str = Field(..., description="URL страницы")
     xpath: str = Field(..., description="XPath селектор элемента")
     take_screenshot: bool = Field(False, description="Делать скриншот элемента")
+    user_id: Optional[int] = Field(None, description="Если задан — сохранить скриншот в uploads/url/{user_id}/...")
 
 
 class RunResponse(BaseModel):

@@ -317,6 +317,31 @@ class PostService:
         finally:
             await release_db_connection(conn)
 
+    async def get_tw_posts(
+        self,
+        user_id: int,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """Посты пользователя из tw_posts (очередь / история)."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT *
+                    FROM tw_posts
+                    WHERE user_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (user_id, limit, offset),
+                )
+                rows = await cur.fetchall()
+                return [self._row_to_post(row, cur.description) for row in rows]
+        finally:
+            await release_db_connection(conn)
+
     async def get_cpost_posts(
         self,
         user_id: int,

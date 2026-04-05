@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     VK_BOT_SERVICE_URL: str = "http://172.20.10.5:8005"
     WP_BOT_SERVICE_URL: str = "http://172.20.10.6:8006"
     URL_BOT_SERVICE_URL: str = "http://172.20.10.7:8007"
+    DZEN_BOT_SERVICE_URL: str = "http://172.20.10.12:8012"
+    INSTAGRAM_BOT_SERVICE_URL: str = "http://172.20.10.14:8012"
     SELECTCB_SERVICE_URL: str = "http://172.20.10.8:8008" #"http://localhost:8008"
     
     # CORS настройки (в K8s/Minikube задать через env, например через запятую)
@@ -81,6 +83,10 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/wp-bot/schedule": {"requests": 60, "window_seconds": 60},
     "/vk-bot/schedule": {"requests": 60, "window_seconds": 60},
     "/url-bot/schedule": {"requests": 60, "window_seconds": 60},
+    "/dzen-bot/publish-once": {"requests": 30, "window_seconds": 60},
+    "/dzen-bot/collect-once": {"requests": 30, "window_seconds": 60},
+    "/instagram-bot/reload": {"requests": 20, "window_seconds": 60},
+    "/instagram-bot/verify-code": {"requests": 10, "window_seconds": 300},
     "default": {
         "requests": settings.DEFAULT_RATE_LIMIT_REQUESTS,
         "window_seconds": settings.DEFAULT_RATE_LIMIT_WINDOW_SECONDS
@@ -92,6 +98,7 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
 PUBLIC_ENDPOINTS: list[str] = [
     "/threads/oauth/callback",
     "/vk/oauth/callback",
+    "/dzen-bot/health",
     "/auth/login",
     "/auth/register",
     "/auth/refresh",

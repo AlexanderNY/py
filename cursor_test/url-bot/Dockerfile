@@ -26,9 +26,9 @@ ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
 # Важно для Selenium 4+:
 ENV PATH=/usr/bin:$PATH
 
-COPY requirements.txt .
+COPY url-bot/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY url-bot/ .
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8007"]
