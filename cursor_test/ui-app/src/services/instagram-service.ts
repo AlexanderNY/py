@@ -1,6 +1,7 @@
 import { apiClient, getErrorMessage } from './api-client'
 import axios from 'axios'
 import type {
+  InstagramFollowingUser,
   InstagramProfile,
   InstagramPost,
   InstagramPostListItem,
@@ -22,6 +23,27 @@ export const instagramService = {
 
   async saveProfile(profile: Partial<InstagramProfile>): Promise<InstagramProfile> {
     const response = await apiClient.post<InstagramProfile>('/instagram/profile', profile)
+    return response.data
+  },
+
+  /** Живая проверка входа (instagram-bot); требует JWT, X-User-Id выставляет gateway. */
+  async loginTest(followingLimit = 50): Promise<{
+    ok: boolean
+    message?: string
+    instagram_user_id?: number | null
+    following?: InstagramFollowingUser[]
+    following_count?: number
+  }> {
+    const response = await apiClient.post<{
+      ok: boolean
+      message?: string
+      instagram_user_id?: number | null
+      following?: InstagramFollowingUser[]
+      following_count?: number
+      detail?: string
+    }>('/instagram-bot/login-test', {}, {
+      params: { following_limit: followingLimit },
+    })
     return response.data
   },
 

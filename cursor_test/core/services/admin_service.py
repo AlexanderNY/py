@@ -1,5 +1,7 @@
 """Сервис для админ-эндпоинтов: статус сервисов и обзор таблиц постов."""
 
+import os
+import socket
 import httpx
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
@@ -336,6 +338,109 @@ class AdminService:
         except Exception as e:
             result["hints"] = [f"Ошибка при сборе диагностики: {e!s}"]
         return result
+
+    async def get_runtime_location(self) -> Dict[str, Any]:
+        """Локальный hostname/TZ процесса core, публичный IP (ipify) и гео (ipapi.co, при 429 — ipwho.is)."""
+        hostname = socket.gethostname()
+        tz_env = os.environ.get("TZ")
+        now = datetime.now().astimezone()
+        tzinfo = now.tzinfo
+        if tzinfo is not None:
+            local_tz = getattr(tzinfo, "key", None) or str(tzinfo)
+        else:
+            local_tz = "UTC"
+        offset = now.utcoffset()
+        if offset is not None:
+            total_sec = int(offset.total_seconds())
+            sign = "+" if total_sec >= 0 else "-"
+            total_sec = abs(total_sec)
+            h, m = total_sec // 3600, (total_sec % 3600) // 60
+            local_utc_offset = f"{sign}{h:02d}:{m:02d}"
+        else:
+            local_utc_offset = "+00:00"
+        local_now_iso = now.isoformat(timespec="seconds")
+
+        public_ip: Optional[str] = None
+        public_lookup_error: Optional[str] = None
+        geo_by_ip: Optional[Dict[str, Any]] = None
+        geo_lookup_error: Optional[str] = None
+
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                ip_resp = await client.get("https://api.ipify.org?format=json")
+                if ip_resp.status_code == 200:
+                    body = ip_resp.json()
+                    public_ip = (body.get("ip") or "").strip() or None
+                else:
+                    public_lookup_error = f"ipify HTTP {ip_resp.status_code}"
+                if public_ip:
+                    geo_resp = await client.get(f"https://ipapi.co/{public_ip}/json/")
+                    ipapi_err: Optional[str] = None
+                    if geo_resp.status_code == 200:
+                        data = geo_resp.json()
+                        if data.get("error"):
+                            ipapi_err = str(data.get("reason") or data.get("message") or data.get("error"))
+                        else:
+                            geo_by_ip = {
+                                "country": data.get("country_name") or data.get("country"),
+                                "region": data.get("region"),
+                                "city": data.get("city"),
+                                "timezone": data.get("timezone"),
+                                "isp": data.get("org"),
+                            }
+                    else:
+                        ipapi_err = f"ipapi.co HTTP {geo_resp.status_code}"
+
+                    if geo_by_ip is None:
+                        wh_resp = await client.get(f"https://ipwho.is/{public_ip}")
+                        if wh_resp.status_code == 200:
+                            wd = wh_resp.json()
+                            if wd.get("success"):
+                                tz_raw = wd.get("timezone")
+                                if isinstance(tz_raw, dict):
+                                    tz_id = tz_raw.get("id")
+                                elif isinstance(tz_raw, str):
+                                    tz_id = tz_raw
+                                else:
+                                    tz_id = None
+                                conn = wd.get("connection")
+                                isp = conn.get("isp") if isinstance(conn, dict) else None
+                                geo_by_ip = {
+                                    "country": wd.get("country"),
+                                    "region": wd.get("region"),
+                                    "city": wd.get("city"),
+                                    "timezone": tz_id,
+                                    "isp": isp,
+                                }
+                                geo_lookup_error = None
+                            else:
+                                geo_lookup_error = (
+                                    f"{ipapi_err or 'ipapi.co failed'}; ipwho.is: {wd.get('message', 'success=false')}"
+                                )
+                        else:
+                            geo_lookup_error = (
+                                f"{ipapi_err or 'ipapi.co failed'}; ipwho.is HTTP {wh_resp.status_code}"
+                            )
+        except Exception as e:
+            if public_ip is None:
+                public_lookup_error = str(e)
+            else:
+                geo_lookup_error = str(e)
+
+        aws_region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+
+        return {
+            "hostname": hostname,
+            "tz_environment_variable": tz_env,
+            "local_timezone": local_tz,
+            "local_utc_offset": local_utc_offset,
+            "local_now_iso": local_now_iso,
+            "public_ip": public_ip,
+            "public_lookup_error": public_lookup_error,
+            "geo_by_ip": geo_by_ip,
+            "geo_lookup_error": geo_lookup_error,
+            "cloud_aws_region": aws_region,
+        }
 
 
 def _parse_loop_status(raw: Any) -> Optional[Dict[str, Any]]:

@@ -13,18 +13,23 @@ from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import RedirectResponse
 
 from config import settings
-from schemas import TwitterProfileCreate, TwitterPost
+from schemas import TwitterProfileCreate, TwitterPost, TwitterFollowingResponse, TwitterFollowingUser
 from services.post_service import post_service
 from services.profile_service import profile_service
+from services.twitter_oauth import ensure_user_access_token
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tw", tags=["Twitter"])
 
-TWITTER_SCOPES = "tweet.read tweet.write users.read offline.access"
+TWITTER_SCOPES = "tweet.read tweet.write users.read follows.read offline.access"
 TWITTER_AUTH_URL = "https://x.com/i/oauth2/authorize"
 TWITTER_TOKEN_URL = "https://api.twitter.com/2/oauth2/token"
 TWITTER_API_ME = "https://api.twitter.com/2/users/me"
+
+
+def _following_url(user_rest_id: str) -> str:
+    return f"https://api.twitter.com/2/users/{user_rest_id}/following"
 
 
 def get_user_id_from_header(x_user_id: Optional[str] = Header(None)) -> int:
@@ -157,6 +162,105 @@ async def tw_oauth_status(x_user_id: Optional[str] = Header(None)):
         "twitter_connected": bool(profile.get("twitter_connected")),
         "twitter_rest_id": profile.get("twitter_rest_id"),
     }
+
+
+@router.get("/following", response_model=TwitterFollowingResponse)
+async def tw_following(
+    x_user_id: Optional[str] = Header(None),
+    max_results: int = 50,
+    pagination_token: Optional[str] = None,
+):
+    """Список подписок (following) через X API v2; требует OAuth с scope follows.read."""
+    user_id = get_user_id_from_header(x_user_id)
+    raw = await profile_service.get_tw_oauth_tokens_raw(user_id)
+    if not raw:
+        raise HTTPException(status_code=400, detail="No Twitter profile")
+    rest_id = (raw.get("twitter_rest_id") or "").strip()
+    if not rest_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing X user id; connect OAuth first",
+        )
+
+    mr = max(1, min(max_results, 1000))
+    acc = raw.get("twitter_oauth_access_token")
+    ref = raw.get("twitter_oauth_refresh_token")
+    exp = raw.get("twitter_oauth_expires_at")
+
+    new_acc, new_ref, new_exp = await ensure_user_access_token(acc, ref, exp)
+    if not new_acc:
+        raise HTTPException(
+            status_code=401,
+            detail="No valid OAuth access token; reconnect X",
+        )
+    if new_acc != acc or (new_ref and new_ref != ref) or new_exp != exp:
+        await profile_service.persist_tw_oauth_tokens_refreshed(
+            user_id, new_acc, new_ref, new_exp
+        )
+
+    params: dict[str, Any] = {
+        "max_results": mr,
+        "user.fields": "username,name",
+    }
+    if pagination_token:
+        params["pagination_token"] = pagination_token
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(
+                _following_url(rest_id),
+                headers={"Authorization": f"Bearer {new_acc}"},
+                params=params,
+            )
+            data = resp.json()
+    except Exception as e:
+        logger.exception("Twitter following request: %s", e)
+        raise HTTPException(status_code=502, detail="X API request failed") from e
+
+    if resp.status_code >= 400:
+        err_parts: list[str] = []
+        errs = data.get("errors")
+        if isinstance(errs, list) and errs:
+            e0 = errs[0] if isinstance(errs[0], dict) else {}
+            err_parts.append(
+                str(
+                    e0.get("detail")
+                    or e0.get("message")
+                    or e0.get("title")
+                    or errs[0]
+                )
+            )
+        err = (
+            err_parts[0]
+            if err_parts
+            else (data.get("detail") or data.get("title") or str(data))
+        )
+        if resp.status_code == 403:
+            raise HTTPException(
+                status_code=403,
+                detail=f"X API denied (reconnect OAuth with follows.read): {err}",
+            )
+        raise HTTPException(status_code=resp.status_code, detail=str(err)[:2000])
+
+    rows = data.get("data") or []
+    users_out: list[TwitterFollowingUser] = []
+    if isinstance(rows, list):
+        for u in rows:
+            if not isinstance(u, dict):
+                continue
+            uid = u.get("id")
+            if not uid:
+                continue
+            users_out.append(
+                TwitterFollowingUser(
+                    id=str(uid),
+                    username=u.get("username"),
+                    name=u.get("name"),
+                )
+            )
+    meta = data.get("meta") or {}
+    next_tok = meta.get("next_token") if isinstance(meta, dict) else None
+    return TwitterFollowingResponse(users=users_out, next_token=next_tok)
 
 
 @router.get("/oauth/callback")

@@ -6,6 +6,8 @@ export interface TimeInterval {
 }
 
 export interface ThreadsConfig {
+  /** @username или имя без @ — для подписи; OAuth остаётся единственным способом входа API */
+  instagram_handle?: string | null
   publish_enabled: boolean
   collect_enabled: boolean
   schedule_type?: 'immediate' | 'on_new_messages' | 'by_intervals'
@@ -64,6 +66,33 @@ export interface ThreadsPostFull {
 export interface ThreadsAuthStatus {
   user_id: number
   connected: boolean
+  /** true если есть токен и локальное время истечения ещё не прошло */
+  connected_effective?: boolean
   expires_at?: string | null
+  token_expired_locally?: boolean
+  threads_user_id?: string | null
   message: string
+}
+
+/** Элемент GET /me/permissions (разрешения приложения у пользователя) */
+export interface ThreadsGraphPermission {
+  permission: string
+  status: string
+}
+
+export interface ThreadsAuthVerify {
+  user_id: number
+  valid: boolean
+  message: string
+  threads_user_id?: string | null
+  graph_user_id?: string | null
+  expires_at?: string | null
+  token_expired_locally: boolean
+  persisted_threads_user_id: boolean
+  /** Scopes из ответа debug_token (если настроены App ID / Secret) */
+  scopes?: string[]
+  /** Подписки/разрешения: список из Graph API /me/permissions */
+  permissions?: ThreadsGraphPermission[]
+  /** Текст ошибки, если список разрешений не удалось получить */
+  permissions_error?: string | null
 }

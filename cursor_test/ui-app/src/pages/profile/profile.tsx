@@ -1,5 +1,5 @@
-import { useState, FormEvent, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, FormEvent, useEffect, useMemo, useCallback } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/auth-context'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,16 @@ import { SkeletonCard } from '@/components/ui/skeleton'
 import { useToast } from '@/contexts/toast-context'
 import { authService } from '@/services/auth-service'
 import { decodeJwt, formatTokenDate, getTimeUntilExpiry } from '@/utils/jwt-utils'
+import { StatisticsTabContent } from '@/pages/stubs/statistics'
+import { BillingTabContent } from '@/pages/billing/billing'
+
+type ProfileTab = 'main' | 'billing' | 'statistics' | 'group'
+
+function profileTabFromSearch(searchParams: URLSearchParams): ProfileTab {
+  const t = searchParams.get('tab')
+  if (t === 'billing' || t === 'statistics' || t === 'group') return t
+  return 'main'
+}
 
 // Компонент для отображения токена с возможностью копирования
 function TokenDisplay({ 
@@ -95,7 +105,21 @@ function TokenDisplay({
 export function ProfilePage() {
   const { user, accessToken, refreshToken, updateProfile, logout, logoutAll, refreshUserData } = useAuth()
   const { addToast } = useToast()
-  
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const activeTab = useMemo(() => profileTabFromSearch(searchParams), [searchParams])
+
+  const setTab = useCallback(
+    (tab: ProfileTab) => {
+      if (tab === 'main') {
+        setSearchParams({}, { replace: true })
+      } else {
+        setSearchParams({ tab }, { replace: true })
+      }
+    },
+    [setSearchParams]
+  )
+
   const [isEditing, setIsEditing] = useState(false)
   const [email, setEmail] = useState(user?.email || '')
   const [password, setPassword] = useState('')
@@ -184,8 +208,55 @@ export function ProfilePage() {
   }
 
   return (
-    <PageContainer>
+    <PageContainer maxWidth={activeTab === 'statistics' ? 'wide' : 'default'}>
       <PageHeader title="Profile" description="Manage your account settings and preferences" />
+
+      <div className="flex flex-wrap gap-1 border-b border-[var(--border-color)] mb-4">
+        <button
+          type="button"
+          onClick={() => setTab('main')}
+          className={`px-4 py-2 font-medium text-sm transition-colors ${
+            activeTab === 'main'
+              ? 'text-primary-400 border-b-2 border-primary-400 -mb-px'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          Main
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('billing')}
+          className={`px-4 py-2 font-medium text-sm transition-colors ${
+            activeTab === 'billing'
+              ? 'text-primary-400 border-b-2 border-primary-400 -mb-px'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          Billing
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('statistics')}
+          className={`px-4 py-2 font-medium text-sm transition-colors ${
+            activeTab === 'statistics'
+              ? 'text-primary-400 border-b-2 border-primary-400 -mb-px'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          Statistics
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('group')}
+          className={`px-4 py-2 font-medium text-sm transition-colors ${
+            activeTab === 'group'
+              ? 'text-primary-400 border-b-2 border-primary-400 -mb-px'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          Group
+        </button>
+      </div>
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -199,6 +270,8 @@ export function ProfilePage() {
         </Alert>
       )}
 
+      {activeTab === 'main' && (
+      <>
       <div className="grid gap-6 md:grid-cols-2">
         {/* User Info Card */}
         <Card className="animate-slide-up animate-stagger-1">
@@ -249,7 +322,7 @@ export function ProfilePage() {
             <div className="flex justify-between items-center py-3 border-b border-[var(--border-color)]">
               <span className="text-[var(--text-secondary)]">Tariff</span>
               <Link
-                to="/billing"
+                to="/profile?tab=billing"
                 className="font-medium text-primary-400 hover:text-primary-300 hover:underline focus:outline-none focus:underline"
               >
                 {user?.tariff ?? 'free'}
@@ -410,6 +483,24 @@ export function ProfilePage() {
           </p>
         </CardFooter>
       </Card>
+      </>
+      )}
+
+      {activeTab === 'billing' && <BillingTabContent />}
+
+      {activeTab === 'statistics' && <StatisticsTabContent />}
+
+      {activeTab === 'group' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle>Group</CardTitle>
+            <CardDescription>Раздел в разработке</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-[var(--text-muted)]">Скоро здесь появятся настройки группы.</p>
+          </CardContent>
+        </Card>
+      )}
     </PageContainer>
   )
 }

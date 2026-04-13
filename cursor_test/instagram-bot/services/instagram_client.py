@@ -150,6 +150,41 @@ def _get_settings_sync(cl: Any) -> Dict[str, Any]:
         return {}
 
 
+def _user_following_sync(cl: Any, user_id: int, amount: int) -> List[Dict[str, Any]]:
+    """Аккаунты, на которые подписан user_id (подписки / following)."""
+    if amount <= 0:
+        return []
+    try:
+        raw = cl.user_following(str(user_id), use_cache=False, amount=amount)
+    except Exception as e:
+        logger.warning("user_following %s: %s", user_id, e)
+        return []
+    result: List[Dict[str, Any]] = []
+    if isinstance(raw, dict):
+        for uid, u in raw.items():
+            pk_val = getattr(u, "pk", None)
+            if pk_val is None:
+                try:
+                    pk_val = int(uid)
+                except (TypeError, ValueError):
+                    pk_val = 0
+            result.append({
+                "pk": int(pk_val) if pk_val is not None else 0,
+                "username": (getattr(u, "username", None) or "").strip(),
+                "full_name": (getattr(u, "full_name", None) or "").strip(),
+            })
+    elif isinstance(raw, list):
+        for u in raw:
+            pk_val = getattr(u, "pk", None) or getattr(u, "id", None)
+            result.append({
+                "pk": int(pk_val) if pk_val is not None else 0,
+                "username": (getattr(u, "username", None) or "").strip(),
+                "full_name": (getattr(u, "full_name", None) or "").strip(),
+            })
+    result.sort(key=lambda x: (x.get("username") or "").lower())
+    return result
+
+
 class InstagramClient:
     """Асинхронная обёртка над instagrapi Client с сохранением сессии."""
 
@@ -246,6 +281,22 @@ class InstagramClient:
             if not await self.login():
                 return None
         return getattr(self._client, "user_id", None)
+
+    async def get_self_following(self, amount: int = 50) -> List[Dict[str, Any]]:
+        """Список подписок (following) для текущего аккаунта, до amount записей."""
+        if not self._client:
+            if not await self.login():
+                return []
+        uid = getattr(self._client, "user_id", None)
+        if uid is None:
+            return []
+        return await asyncio.get_event_loop().run_in_executor(
+            None,
+            _user_following_sync,
+            self._client,
+            int(uid),
+            amount,
+        )
 
     async def photo_upload(self, path: str, caption: str = "") -> Optional[str]:
         if not self._client:

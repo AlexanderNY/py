@@ -1,3 +1,9 @@
+export interface InstagramFollowingUser {
+  pk: number
+  username: string
+  full_name: string
+}
+
 export type ScheduleType = 'immediate' | 'intervals'
 
 export interface TimeInterval {
@@ -13,6 +19,11 @@ export interface InstagramProfile {
   username?: string | null
   password?: string | null
   usernames_to_read?: string[]
+  instagram_last_auth_error?: string | null
+  instagram_verification_pending?: boolean
+  has_instagram_session?: boolean
+  /** Отправка при сохранении учётных данных; с сервера не возвращается. */
+  instagram_verification_code?: string | null
 }
 
 export interface InstagramPost {

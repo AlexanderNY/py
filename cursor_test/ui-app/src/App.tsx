@@ -5,10 +5,8 @@ import { SignInPage } from '@/pages/auth/sign-in'
 import { SignUpPage } from '@/pages/auth/sign-up'
 import { ResetPasswordPage } from '@/pages/auth/reset-password'
 import { ProfilePage } from '@/pages/profile/profile'
-import { BillingPage } from '@/pages/billing/billing'
 import { TelegramPage } from '@/pages/telegram/telegram'
 import { ThreadsPage } from '@/pages/threads/threads'
-import { StatisticsPage } from '@/pages/stubs/statistics'
 import { WordPressPage } from '@/pages/stubs/wordpress'
 import { TwitterPage } from '@/pages/twitter'
 import { VKontaktePage } from '@/pages/stubs/vkontakte'
@@ -86,8 +84,8 @@ function App() {
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<Navigate to="/profile" replace />} />
         <Route path="profile" element={<ProfilePage />} />
-        <Route path="billing" element={<BillingPage />} />
-        <Route path="statistics" element={<StatisticsPage />} />
+        <Route path="billing" element={<Navigate to="/profile?tab=billing" replace />} />
+        <Route path="statistics" element={<Navigate to="/profile?tab=statistics" replace />} />
         <Route path="graphs" element={<GraphsPage />} />
         <Route path="telegram" element={<TelegramPage />} />
         <Route path="threads" element={<ThreadsPage />} />

@@ -2,12 +2,11 @@ import { useState } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
-import { PageHeader, PageContainer } from '@/components/ui'
 import { EmptyState, DataTable } from '@/components/ui'
 import { coreService } from '@/services/core-service'
 import type { HealthcheckItem, StatisticsItem } from '@/types/core'
 
-export function StatisticsPage() {
+export function StatisticsTabContent() {
   const [healthcheckData, setHealthcheckData] = useState<HealthcheckItem[]>([])
   const [statisticsData, setStatisticsData] = useState<StatisticsItem[]>([])
   const [isLoadingHealthcheck, setIsLoadingHealthcheck] = useState(false)
@@ -44,10 +43,7 @@ export function StatisticsPage() {
   }
 
   return (
-    <PageContainer maxWidth="wide">
-      <PageHeader title="Statistics" description="View your service usage analytics and metrics" />
-
-      {/* Healthcheck Section */}
+    <div className="space-y-6">
       <Card className="animate-slide-up">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -59,8 +55,8 @@ export function StatisticsPage() {
           <CardDescription>Check the status of all services</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button 
-            onClick={handleHealthcheck} 
+          <Button
+            onClick={handleHealthcheck}
             isLoading={isLoadingHealthcheck}
             className="w-full sm:w-auto"
           >
@@ -87,15 +83,15 @@ export function StatisticsPage() {
                 </thead>
                 <tbody>
                   {healthcheckData.map((item, index) => (
-                    <tr 
-                      key={index} 
+                    <tr
+                      key={index}
                       className="border-b border-[var(--border-color)] hover:bg-[var(--bg-secondary)] transition-colors"
                     >
                       <td className="py-3 px-4 text-[var(--text-secondary)]">{item.service_name}</td>
                       <td className="py-3 px-4">
                         <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${
-                          item.status === 'ok' 
-                            ? 'bg-emerald-500/20 text-emerald-400' 
+                          item.status === 'ok'
+                            ? 'bg-emerald-500/20 text-emerald-400'
                             : 'bg-red-500/20 text-red-400'
                         }`}>
                           {item.status === 'ok' ? (
@@ -134,7 +130,6 @@ export function StatisticsPage() {
         </CardContent>
       </Card>
 
-      {/* Statistics Section */}
       <Card className="animate-slide-up animate-stagger-2">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -146,8 +141,8 @@ export function StatisticsPage() {
           <CardDescription>View statistics for collected, processed, and published posts</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button 
-            onClick={handleStatistics} 
+          <Button
+            onClick={handleStatistics}
             isLoading={isLoadingStatistics}
             className="w-full sm:w-auto"
           >
@@ -187,6 +182,6 @@ export function StatisticsPage() {
           )}
         </CardContent>
       </Card>
-    </PageContainer>
+    </div>
   )
 }

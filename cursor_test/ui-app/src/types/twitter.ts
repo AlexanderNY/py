@@ -47,6 +47,18 @@ export interface TwitterOAuthStatus {
   twitter_rest_id: string | null
 }
 
+export interface TwitterFollowingUser {
+  id: string
+  username?: string | null
+  name?: string | null
+}
+
+export interface TwitterFollowingResponse {
+  users: TwitterFollowingUser[]
+  next_token?: string | null
+  error?: string | null
+}
+
 export interface TimeInterval {
   start: string // HH:MM format
   end: string // HH:MM format

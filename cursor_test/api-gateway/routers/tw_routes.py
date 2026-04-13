@@ -79,3 +79,12 @@ async def create_tw_post(
     Требует JWT аутентификации.
     """
     return await forward_to_core("/tw/post", request)
+
+
+@router.get("/following")
+async def get_tw_following(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Список подписок X (following) из core."""
+    return await forward_to_core("/tw/following", request)

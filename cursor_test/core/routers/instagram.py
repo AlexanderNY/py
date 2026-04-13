@@ -70,6 +70,7 @@ async def get_instagram_profile(x_user_id: Optional[str] = Header(None)):
         "instagram_verification_code": None,
         "instagram_last_auth_error": None,
         "instagram_verification_pending": False,
+        "has_instagram_session": False,
     }
 
 

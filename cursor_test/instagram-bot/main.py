@@ -6,13 +6,18 @@ import signal
 import sys
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from config import settings
 from database import init_db, close_db
 from services.instagram_bot_service import InstagramBotService
-from services.instagram_session import set_instagram_verification_code
+from services.instagram_client import InstagramClient
+from services.instagram_session import (
+    set_instagram_verification_code,
+    fetch_instagram_profile_for_login_test,
+    get_instagram_last_auth_error,
+)
 
 
 logging.basicConfig(
@@ -50,6 +55,63 @@ async def instagram_set_verification_code(body: InstagramVerifyCodeBody):
     """Сохраняет код 2FA в профиле; бот подхватит его при следующем login и очистит после успеха."""
     await set_instagram_verification_code(body.user_id, body.code)
     return {"status": "ok", "message": "Verification code stored for next login"}
+
+
+@app.post("/instagram/login-test")
+async def instagram_login_test(
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+    following_limit: int = Query(
+        50,
+        ge=0,
+        le=200,
+        description="Сколько аккаунтов из списка подписок вернуть при успешном входе (0 — не запрашивать)",
+    ),
+):
+    """Проверяет вход в Instagram по учётным данным из БД, обновляет сессию при успехе."""
+    if not x_user_id or not str(x_user_id).strip():
+        raise HTTPException(status_code=401, detail="X-User-Id header required")
+    try:
+        user_id = int(x_user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid X-User-Id")
+    profile = await fetch_instagram_profile_for_login_test(user_id)
+    if not profile:
+        raise HTTPException(
+            status_code=404,
+            detail="Instagram profile not found. Save username and password in the app first.",
+        )
+    username = (profile.get("username") or "").strip()
+    password = profile.get("password") or ""
+    if not username or not password:
+        raise HTTPException(
+            status_code=400,
+            detail="Username and password must be saved in the profile before login test.",
+        )
+    client = InstagramClient(
+        username,
+        password,
+        user_id=user_id,
+        session_dict=profile.get("instagrapi_session"),
+        verification_code=profile.get("instagram_verification_code"),
+    )
+    ok = await client.login()
+    if ok:
+        ig_uid = await client.get_self_user_id()
+        following: list = []
+        if following_limit > 0:
+            following = await client.get_self_following(min(following_limit, 200))
+        return {
+            "ok": True,
+            "message": "Login successful",
+            "instagram_user_id": ig_uid,
+            "following": following,
+            "following_count": len(following),
+        }
+    err = await get_instagram_last_auth_error(user_id)
+    return {
+        "ok": False,
+        "message": err or "Login failed",
+    }
 
 
 @app.post("/instagram/reload")

@@ -182,6 +182,7 @@ class TelegramPostFull(BaseModel):
 
 class ThreadsProfileBase(BaseModel):
     """Базовая модель профиля Threads (Meta OAuth)."""
+    instagram_handle: Optional[str] = None
     publish_enabled: bool = False
     collect_enabled: bool = False
     schedule_type: Optional[str] = "immediate"
@@ -297,6 +298,20 @@ class TwitterPost(BaseModel):
     to_tw: bool = True
     to_wp: bool = False
     to_vk: bool = False
+
+
+class TwitterFollowingUser(BaseModel):
+    """Пользователь X из списка подписок (following)."""
+    id: str
+    username: Optional[str] = None
+    name: Optional[str] = None
+
+
+class TwitterFollowingResponse(BaseModel):
+    """Ответ GET /tw/following."""
+    users: List[TwitterFollowingUser] = []
+    next_token: Optional[str] = None
+    error: Optional[str] = None
 
 
 # ==================== WordPress ====================
@@ -543,6 +558,7 @@ class InstagramProfile(InstagramProfileBase):
     updated_at: datetime
     instagram_last_auth_error: Optional[str] = None
     instagram_verification_pending: bool = False
+    has_instagram_session: bool = False
 
     class Config:
         from_attributes = True
@@ -965,3 +981,26 @@ class StorageFilesResponse(BaseModel):
 
     class Config:
         populate_by_name = True
+
+
+class RuntimeGeoByIp(BaseModel):
+    """Геоданные по публичному IP (ориентир, не настройка контейнера)."""
+    country: Optional[str] = None
+    region: Optional[str] = None
+    city: Optional[str] = None
+    timezone: Optional[str] = None
+    isp: Optional[str] = None
+
+
+class RuntimeLocationResponse(BaseModel):
+    """Среда выполнения core: hostname, локальный TZ, публичный IP и гео по IP."""
+    hostname: str
+    tz_environment_variable: Optional[str] = None
+    local_timezone: str
+    local_utc_offset: str
+    local_now_iso: str
+    public_ip: Optional[str] = None
+    public_lookup_error: Optional[str] = None
+    geo_by_ip: Optional[RuntimeGeoByIp] = None
+    geo_lookup_error: Optional[str] = None
+    cloud_aws_region: Optional[str] = None

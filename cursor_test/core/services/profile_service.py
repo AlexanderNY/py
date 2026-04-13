@@ -7,6 +7,21 @@ from typing import Any, Dict, List, Optional
 from database import get_db_connection, release_db_connection
 
 
+def _instagram_session_is_non_empty(raw: Any) -> bool:
+    """True если в БД есть нетривиальная сессия instagrapi (JSONB dict)."""
+    if raw is None:
+        return False
+    if isinstance(raw, dict):
+        return len(raw) > 0
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw)
+            return isinstance(data, dict) and len(data) > 0
+        except (json.JSONDecodeError, TypeError):
+            return False
+    return False
+
+
 class ProfileService:
     """Сервис для CRUD операций с профилями всех платформ."""
     
@@ -152,6 +167,10 @@ class ProfileService:
     
     async def save_threads_profile(self, user_id: int, data: Dict) -> Dict:
         """Сохраняет или обновляет профиль Threads (без записи токенов)."""
+        if "instagram_handle" not in data:
+            existing = await self.get_threads_profile(user_id)
+            if existing is not None:
+                data = {**data, "instagram_handle": existing.get("instagram_handle")}
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -160,12 +179,13 @@ class ProfileService:
                 await cur.execute(
                     """
                     INSERT INTO threads_profiles (
-                        user_id, publish_enabled, collect_enabled, schedule_type,
+                        user_id, instagram_handle, publish_enabled, collect_enabled, schedule_type,
                         time_intervals, process_enabled, processing_description,
                         remove_emojis, remove_images, clean_html, process_services,
                         status_review_after_process, add_static_html, static_html_content
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
+                        instagram_handle = EXCLUDED.instagram_handle,
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
                         schedule_type = EXCLUDED.schedule_type,
@@ -184,6 +204,7 @@ class ProfileService:
                     """,
                     (
                         user_id,
+                        (data.get("instagram_handle") or "").strip() or None,
                         data.get("publish_enabled", False),
                         data.get("collect_enabled", False),
                         data.get("schedule_type", "immediate"),
@@ -250,6 +271,7 @@ class ProfileService:
         elif not isinstance(profile.get("process_services"), list):
             profile["process_services"] = []
         profile["threads_connected"] = bool(profile.get("access_token"))
+        profile.setdefault("instagram_handle", None)
         if "access_token" in profile:
             del profile["access_token"]
         if "refresh_token" in profile:
@@ -494,6 +516,58 @@ class ProfileService:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     (user_id, access_token, refresh_token, expires_at, twitter_rest_id),
+                )
+        finally:
+            await release_db_connection(conn)
+
+    async def get_tw_oauth_tokens_raw(
+        self, user_id: int
+    ) -> Optional[Dict[str, Any]]:
+        """Сырые OAuth-токены X для серверных вызовов API (не отдавать клиенту)."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT twitter_oauth_access_token, twitter_oauth_refresh_token,
+                           twitter_oauth_expires_at, twitter_rest_id
+                    FROM tw_profiles WHERE user_id = %s
+                    """,
+                    (user_id,),
+                )
+                row = await cur.fetchone()
+                if not row:
+                    return None
+                return {
+                    "twitter_oauth_access_token": row[0],
+                    "twitter_oauth_refresh_token": row[1],
+                    "twitter_oauth_expires_at": row[2],
+                    "twitter_rest_id": row[3],
+                }
+        finally:
+            await release_db_connection(conn)
+
+    async def persist_tw_oauth_tokens_refreshed(
+        self,
+        user_id: int,
+        access_token: str,
+        refresh_token: Optional[str],
+        expires_at: Optional[datetime],
+    ) -> None:
+        """Обновляет токены после refresh (refresh_token опционально ротируется)."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE tw_profiles SET
+                        twitter_oauth_access_token = %s,
+                        twitter_oauth_refresh_token = COALESCE(%s, twitter_oauth_refresh_token),
+                        twitter_oauth_expires_at = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s
+                    """,
+                    (access_token, refresh_token, expires_at, user_id),
                 )
         finally:
             await release_db_connection(conn)
@@ -1435,6 +1509,8 @@ class ProfileService:
                 profile["usernames_to_read"] = []
         if profile.get("password"):
             profile["password"] = "***"
+        raw_session = profile.get("instagrapi_session")
+        profile["has_instagram_session"] = _instagram_session_is_non_empty(raw_session)
         vc = profile.get("instagram_verification_code")
         profile["instagram_verification_pending"] = bool(vc)
         profile.pop("instagrapi_session", None)

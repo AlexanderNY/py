@@ -1,8 +1,6 @@
 import type { ComponentType } from 'react'
 import {
   UserIcon,
-  CreditCardIcon,
-  ChartBarIcon,
   LineChartIcon,
   TelegramIcon,
   ThreadsIcon,
@@ -26,8 +24,6 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { path: '/profile', label: 'Profile', Icon: UserIcon },
-  { path: '/billing', label: 'Billing', Icon: CreditCardIcon },
-  { path: '/statistics', label: 'Statistics', Icon: ChartBarIcon },
   { path: '/graphs', label: 'Graphs', Icon: LineChartIcon },
   { path: '/telegram', label: 'Telegram', Icon: TelegramIcon },
   { path: '/threads', label: 'Threads', Icon: ThreadsIcon },

@@ -1,6 +1,12 @@
 import { apiClient, getErrorMessage } from './api-client'
 import axios from 'axios'
-import type { TwitterProfile, TwitterPost, TwPostRow, TwitterOAuthStatus } from '@/types/twitter'
+import type {
+  TwitterProfile,
+  TwitterPost,
+  TwPostRow,
+  TwitterOAuthStatus,
+  TwitterFollowingResponse,
+} from '@/types/twitter'
 
 export const twitterService = {
   async getProfile(): Promise<TwitterProfile | null> {
@@ -50,5 +56,22 @@ export const twitterService = {
   async getOAuthStatus(): Promise<TwitterOAuthStatus> {
     const response = await apiClient.get<TwitterOAuthStatus>('/tw/oauth/status')
     return response.data
+  },
+
+  async getFollowing(params?: {
+    max_results?: number
+    pagination_token?: string
+  }): Promise<TwitterFollowingResponse> {
+    try {
+      const response = await apiClient.get<TwitterFollowingResponse>('/tw/following', {
+        params: {
+          max_results: params?.max_results ?? 50,
+          pagination_token: params?.pagination_token,
+        },
+      })
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
   },
 }

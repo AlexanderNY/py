@@ -7,7 +7,7 @@ import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import { apiClient } from '@/services/api-client'
 import { twitterService } from '@/services/twitter-service'
-import type { TwitterProfile, TwitterScheduleType, TwPostRow } from '@/types/twitter'
+import type { TwitterProfile, TwitterScheduleType, TwPostRow, TwitterFollowingUser } from '@/types/twitter'
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
@@ -22,7 +22,7 @@ function screenshotUrl(path: string): string {
 
 export function TwitterPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile'>('create')
+  const [activeTab, setActiveTab] = useState<'create' | 'auth' | 'posts' | 'profile'>('create')
 
   const [publishEnabled, setPublishEnabled] = useState(false)
   const [collectEnabled, setCollectEnabled] = useState(false)
@@ -52,6 +52,10 @@ export function TwitterPage() {
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
   const [isCreatingPost, setIsCreatingPost] = useState(false)
   const [isConnectingOAuth, setIsConnectingOAuth] = useState(false)
+  const [followingUsers, setFollowingUsers] = useState<TwitterFollowingUser[]>([])
+  const [followingNextToken, setFollowingNextToken] = useState<string | null>(null)
+  const [isLoadingFollowing, setIsLoadingFollowing] = useState(false)
+  const [isSavingCredentials, setIsSavingCredentials] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -161,12 +165,7 @@ export function TwitterPage() {
     }
   }
 
-  async function handleSaveProfile(e: FormEvent) {
-    e.preventDefault()
-    setError('')
-    setSuccess('')
-    setIsLoading(true)
-
+  function buildProfilePayload(): Record<string, unknown> {
     const profile: Record<string, unknown> = {
       publish_enabled: publishEnabled,
       collect_enabled: collectEnabled,
@@ -190,9 +189,17 @@ export function TwitterPage() {
     if (twitterPassword.trim()) {
       profile.twitter_password = twitterPassword.trim()
     }
+    return profile
+  }
+
+  async function handleSaveProfile(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    setSuccess('')
+    setIsLoading(true)
 
     try {
-      await twitterService.saveProfile(profile as TwitterProfile)
+      await twitterService.saveProfile(buildProfilePayload() as TwitterProfile)
       setSuccess('Profile settings saved successfully')
       setTwitterPassword('')
       await loadProfile()
@@ -200,6 +207,66 @@ export function TwitterPage() {
       setError(err instanceof Error ? err.message : 'Failed to save profile settings')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  async function handleSaveCredentials(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    setSuccess('')
+    setIsSavingCredentials(true)
+    try {
+      await twitterService.saveProfile(buildProfilePayload() as TwitterProfile)
+      setSuccess('Credentials saved')
+      setTwitterPassword('')
+      await loadProfile()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save credentials')
+    } finally {
+      setIsSavingCredentials(false)
+    }
+  }
+
+  async function refreshFollowing() {
+    setError('')
+    setSuccess('')
+    setIsLoadingFollowing(true)
+    try {
+      const res = await twitterService.getFollowing({ max_results: 50 })
+      setFollowingUsers(res.users)
+      setFollowingNextToken(res.next_token ?? null)
+      setSuccess(
+        res.users.length === 0
+          ? 'Authorization OK, the following list is empty'
+          : 'Subscriptions loaded'
+      )
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load following'
+      setError(msg)
+      setFollowingUsers([])
+      setFollowingNextToken(null)
+    } finally {
+      setIsLoadingFollowing(false)
+    }
+  }
+
+  async function loadMoreFollowing() {
+    if (!followingNextToken) return
+    const token = followingNextToken
+    setError('')
+    setIsLoadingFollowing(true)
+    try {
+      const res = await twitterService.getFollowing({
+        max_results: 50,
+        pagination_token: token,
+      })
+      setFollowingUsers((prev) => [...prev, ...res.users])
+      setFollowingNextToken(res.next_token ?? null)
+      setSuccess('Subscriptions loaded')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load following')
+    } finally {
+      setIsLoadingFollowing(false)
     }
   }
 
@@ -254,6 +321,19 @@ export function TwitterPage() {
         >
           Create Post
           {activeTab === 'create' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
+          )}
+        </button>
+        <button
+          className={`px-6 py-3 text-sm font-medium transition-all relative ${
+            activeTab === 'auth'
+              ? 'text-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+          onClick={() => setActiveTab('auth')}
+        >
+          Авторизация
+          {activeTab === 'auth' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
           )}
         </button>
@@ -344,6 +424,135 @@ export function TwitterPage() {
                 </Button>
               </CardFooter>
             </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'auth' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6 text-primary-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+                />
+              </svg>
+              Авторизация
+            </CardTitle>
+            <CardDescription>
+              OAuth для API X; логин и пароль — для автоматизации (tw-bot / скриншоты), не для REST.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingProfile ? (
+              <div className="text-center py-8 text-[var(--text-muted)]">Loading...</div>
+            ) : (
+              <div className="space-y-8">
+                <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] space-y-3">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Подключение (OAuth 2.0)</h3>
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    Для постинга и проверки подписок нужен OAuth. Redirect URI должен совпадать с{' '}
+                    <code className="text-xs">TWITTER_OAUTH_REDIRECT_URI</code>. После смены scope (
+                    <code className="text-xs">follows.read</code>) выполните подключение заново.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button type="button" onClick={() => void handleConnectX()} isLoading={isConnectingOAuth}>
+                      Подключить X
+                    </Button>
+                    <span className="text-sm text-[var(--text-secondary)]">
+                      {twitterConnected ? (
+                        <>
+                          Подключено
+                          {twitterRestId ? ` (id ${twitterRestId})` : ''}
+                        </>
+                      ) : (
+                        'Не подключено'
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSaveCredentials} className="space-y-4">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Учётные данные</h3>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Официальный API X не принимает пароль. Поля ниже сохраняются для сценариев с браузером / прокси.
+                  </p>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Input
+                      label="Логин X (@handle)"
+                      type="text"
+                      value={twitterUsername}
+                      onChange={(e) => setTwitterUsername(e.target.value)}
+                      placeholder="@handle"
+                      autoComplete="username"
+                    />
+                    <Input
+                      label="Пароль"
+                      type="password"
+                      value={twitterPassword}
+                      onChange={(e) => setTwitterPassword(e.target.value)}
+                      placeholder="Оставьте пустым, чтобы не менять"
+                      autoComplete="current-password"
+                    />
+                  </div>
+                  <Button type="submit" isLoading={isSavingCredentials} variant="secondary">
+                    Сохранить учётные данные
+                  </Button>
+                </form>
+
+                <div className="space-y-4 pt-2 border-t border-[var(--border-color)]">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Проверка авторизации</h3>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Запрашиваем список подписок через X API (нужен OAuth с правом follows.read).
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      type="button"
+                      onClick={() => void refreshFollowing()}
+                      isLoading={isLoadingFollowing}
+                    >
+                      Проверить (список подписок)
+                    </Button>
+                    {followingNextToken && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void loadMoreFollowing()}
+                        isLoading={isLoadingFollowing}
+                      >
+                        Загрузить ещё
+                      </Button>
+                    )}
+                  </div>
+                  {followingUsers.length > 0 && (
+                    <ul className="mt-4 space-y-2 max-h-80 overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] p-3">
+                      {followingUsers.map((u) => (
+                        <li
+                          key={u.id}
+                          className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-[var(--text-primary)] border-b border-[var(--border-color)] border-opacity-50 pb-2 last:border-0 last:pb-0"
+                        >
+                          <span className="font-mono text-primary-400">
+                            @{u.username ?? u.id}
+                          </span>
+                          {u.name && (
+                            <span className="text-[var(--text-secondary)]">{u.name}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -448,36 +657,13 @@ export function TwitterPage() {
               </svg>
               Profile settings
             </CardTitle>
-            <CardDescription>OAuth, publishing, collection, proxy (tw-bot)</CardDescription>
+            <CardDescription>Publishing, collection, proxy (tw-bot). Авторизация — вкладка «Авторизация».</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingProfile ? (
               <div className="text-center py-8 text-[var(--text-muted)]">Loading profile...</div>
             ) : (
               <form onSubmit={handleSaveProfile} className="space-y-8">
-                <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] space-y-3">
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Connection (OAuth 2.0)</h3>
-                  <p className="text-sm text-[var(--text-secondary)]">
-                    Connect your X account for tw-bot posting and timeline read. Redirect URI must match Core{' '}
-                    <code className="text-xs">TWITTER_OAUTH_REDIRECT_URI</code>.
-                  </p>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Button type="button" onClick={() => void handleConnectX()} isLoading={isConnectingOAuth}>
-                      Connect X
-                    </Button>
-                    <span className="text-sm text-[var(--text-secondary)]">
-                      {twitterConnected ? (
-                        <>
-                          Connected
-                          {twitterRestId ? ` (id ${twitterRestId})` : ''}
-                        </>
-                      ) : (
-                        'Not connected'
-                      )}
-                    </span>
-                  </div>
-                </div>
-
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
                     <svg
@@ -693,29 +879,6 @@ export function TwitterPage() {
                       />
                     </div>
                   )}
-                </div>
-
-                <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Legacy (optional)</h3>
-                  <p className="text-xs text-[var(--text-muted)]">
-                    Username/password are not used by OAuth. Leave password empty to keep the stored value unchanged.
-                  </p>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <Input
-                      label="X username (display)"
-                      type="text"
-                      value={twitterUsername}
-                      onChange={(e) => setTwitterUsername(e.target.value)}
-                      placeholder="@handle"
-                    />
-                    <Input
-                      label="New password (rarely needed)"
-                      type="password"
-                      value={twitterPassword}
-                      onChange={(e) => setTwitterPassword(e.target.value)}
-                      placeholder="Only to update stored password"
-                    />
-                  </div>
                 </div>
 
                 <CardFooter className="px-0">

@@ -10,7 +10,7 @@ import { EmptyState } from '@/components/ui'
 import { threadsService } from '@/services/threads-service'
 import { useAuth } from '@/contexts/auth-context'
 import type { ThreadsConfig, ThreadsPostListItem, TimeInterval, PublishScheduleType } from '@/types/threads'
-import type { ThreadsAuthStatus } from '@/types/threads'
+import type { ThreadsAuthStatus, ThreadsAuthVerify } from '@/types/threads'
 
 const AUTH_STATUS_POLL_INTERVAL_MS = 15_000
 const THREADS_TEXT_LIMIT = 500
@@ -31,6 +31,10 @@ export function ThreadsPage() {
   )
 
   const [authStatus, setAuthStatus] = useState<ThreadsAuthStatus | null>(null)
+  const [instagramHandle, setInstagramHandle] = useState('')
+  const [isVerifyingAuth, setIsVerifyingAuth] = useState(false)
+  const [verifyResult, setVerifyResult] = useState<ThreadsAuthVerify | null>(null)
+  const [isSavingAuthHandle, setIsSavingAuthHandle] = useState(false)
 
   const [publishEnabled, setPublishEnabled] = useState(false)
   const [collectEnabled, setCollectEnabled] = useState(false)
@@ -110,6 +114,7 @@ export function ThreadsPage() {
     try {
       const profile = await threadsService.getProfile()
       if (profile) {
+        setInstagramHandle((profile.instagram_handle ?? '').replace(/^@/, ''))
         setPublishEnabled(profile.publish_enabled ?? false)
         setCollectEnabled(profile.collect_enabled ?? false)
         setPublishScheduleType((profile.schedule_type as PublishScheduleType) || 'on_new_messages')
@@ -232,6 +237,7 @@ export function ThreadsPage() {
       : []
     try {
       await threadsService.saveConfig({
+        instagram_handle: instagramHandle.trim().replace(/^@/, '') || undefined,
         publish_enabled: publishEnabled,
         collect_enabled: collectEnabled,
         schedule_type: publishScheduleType,
@@ -257,6 +263,7 @@ export function ThreadsPage() {
       : []
     try {
       await threadsService.saveConfig({
+        instagram_handle: instagramHandle.trim().replace(/^@/, '') || undefined,
         publish_enabled: publishEnabled,
         collect_enabled: collectEnabled,
         schedule_type: publishScheduleType,
@@ -312,7 +319,67 @@ export function ThreadsPage() {
     }
   }
 
-  const showAuthBlock = authStatus && !authStatus.connected
+  async function handleSaveAuthIdentity(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    setSuccess('')
+    setIsSavingAuthHandle(true)
+    const timeIntervals = publishScheduleType === 'by_intervals'
+      ? [{ start: `${String(publishScheduleHour).padStart(2, '0')}:${String(publishScheduleMinute).padStart(2, '0')}` }]
+      : []
+    const raw = instagramHandle.trim().replace(/^@/, '')
+    try {
+      await threadsService.saveConfig({
+        instagram_handle: raw || undefined,
+        publish_enabled: publishEnabled,
+        collect_enabled: collectEnabled,
+        schedule_type: publishScheduleType,
+        time_intervals: timeIntervals,
+        process_enabled: processEnabled,
+        processing_description: processEnabled ? processingDescription || undefined : undefined,
+        remove_emojis: removeEmojis,
+        remove_images: removeImages,
+        clean_html: cleanHtml,
+        process_services: [
+          ...(processServiceWordpress ? ['wordpress'] : []),
+          ...(processServiceTelegram ? ['telegram'] : []),
+          ...(processServiceTwitter ? ['twitter'] : []),
+          ...(processServiceVkontakte ? ['vkontakte'] : []),
+          ...(processServiceThreads ? ['threads'] : []),
+        ],
+        status_review_after_process: statusReviewAfterProcess,
+        add_static_html: addStaticHtml,
+        static_html_content: addStaticHtml ? (staticHtmlContent || undefined)?.slice(0, 1000) : undefined,
+      })
+      await threadsService.reloadBot()
+      setSuccess('Имя пользователя сохранено')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить')
+    } finally {
+      setIsSavingAuthHandle(false)
+    }
+  }
+
+  async function handleVerifyThreadsAuth() {
+    if (!user?.id) return
+    setError('')
+    setVerifyResult(null)
+    setIsVerifyingAuth(true)
+    try {
+      const result = await threadsService.verifyAuth(user.id)
+      setVerifyResult(result)
+      if (result.persisted_threads_user_id) {
+        await loadAuthStatus()
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Проверка не удалась')
+    } finally {
+      setIsVerifyingAuth(false)
+    }
+  }
+
+  const connectedEffective = authStatus?.connected_effective ?? authStatus?.connected
+  const showAuthBlock = authStatus != null && !connectedEffective
 
   return (
     <PageContainer maxWidth="wide">
@@ -369,14 +436,147 @@ export function ThreadsPage() {
             <CardDescription>{authStatus?.message ?? 'Проверка статуса...'}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-tertiary)]">
-              <div className={`w-3 h-3 rounded-full ${authStatus?.connected ? 'bg-green-400' : 'bg-amber-400 animate-pulse'}`} />
-              <span className="text-sm text-[var(--text-secondary)]">
-                {authStatus?.connected ? 'Подключено' : 'Не подключено'}
-              </span>
-              <Button variant="ghost" size="sm" onClick={loadAuthStatus} className="ml-auto">Обновить</Button>
+            <form onSubmit={handleSaveAuthIdentity} className="space-y-4 p-4 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+              <p className="text-sm text-[var(--text-muted)]">
+                Укажите имя пользователя Instagram / Threads (без пароля): оно сохраняется в профиле для подписи.
+                Доступ к API Meta выдаётся только через кнопку «Connect with Threads» (OAuth).
+              </p>
+              <div>
+                <label htmlFor="threads-instagram-handle" className="text-sm font-medium text-[var(--text-secondary)] block mb-2">
+                  Имя пользователя (@username)
+                </label>
+                <Input
+                  id="threads-instagram-handle"
+                  type="text"
+                  autoComplete="username"
+                  placeholder="например: mybrand"
+                  value={instagramHandle}
+                  onChange={(e) => setInstagramHandle(e.target.value)}
+                  className="max-w-md"
+                />
+              </div>
+              <Button type="submit" isLoading={isSavingAuthHandle} variant="secondary" size="sm">
+                Сохранить имя пользователя
+              </Button>
+            </form>
+
+            <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg bg-[var(--bg-tertiary)]">
+              <div
+                className={`w-3 h-3 rounded-full shrink-0 ${
+                  connectedEffective ? 'bg-green-400' : 'bg-amber-400 animate-pulse'
+                }`}
+              />
+              <div className="text-sm text-[var(--text-secondary)] min-w-0 flex-1">
+                <div>
+                  {connectedEffective
+                    ? 'Токен в базе, срок по локальному времени не истёк'
+                    : authStatus?.connected
+                      ? 'Токен сохранён, но помечен как истекший по времени — проверьте у Meta или переподключитесь'
+                      : 'Не подключено'}
+                </div>
+                {authStatus?.expires_at && (
+                  <div className="text-xs text-[var(--text-muted)] mt-1">
+                    Истекает (UTC): {new Date(authStatus.expires_at).toLocaleString()}
+                  </div>
+                )}
+                {authStatus?.threads_user_id && (
+                  <div className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Threads user id: {authStatus.threads_user_id}
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2 ml-auto">
+                <Button variant="ghost" size="sm" type="button" onClick={() => { void loadAuthStatus() }}>
+                  Обновить статус
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  type="button"
+                  isLoading={isVerifyingAuth}
+                  onClick={() => { void handleVerifyThreadsAuth() }}
+                >
+                  Проверить у Meta
+                </Button>
+              </div>
             </div>
-            {!authStatus?.connected && (
+
+            {verifyResult && (
+              <div
+                className={`p-4 rounded-lg border text-sm ${
+                  verifyResult.valid
+                    ? 'border-green-500/40 bg-green-500/5 text-green-400'
+                    : 'border-amber-500/40 bg-amber-500/5 text-amber-200'
+                }`}
+              >
+                <p className="font-medium">{verifyResult.valid ? 'Проверка пройдена' : 'Проверка не пройдена'}</p>
+                <p className="mt-1 text-[var(--text-secondary)]">{verifyResult.message}</p>
+                {verifyResult.graph_user_id && (
+                  <p className="text-xs mt-2 text-[var(--text-muted)]">Graph user id: {verifyResult.graph_user_id}</p>
+                )}
+                {verifyResult.persisted_threads_user_id && (
+                  <p className="text-xs mt-1 text-[var(--text-muted)]">Threads user id записан в профиль из ответа Meta.</p>
+                )}
+
+                {(verifyResult.scopes && verifyResult.scopes.length > 0) && (
+                  <div className="mt-4 text-left">
+                    <p className="text-xs font-medium text-[var(--text-secondary)] mb-2">Scopes (debug_token)</p>
+                    <ul className="flex flex-wrap gap-1.5">
+                      {verifyResult.scopes.map((s) => (
+                        <li
+                          key={s}
+                          className="text-xs px-2 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-primary)]"
+                        >
+                          {s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {verifyResult.permissions_error && (
+                  <p className="text-xs mt-3 text-amber-300/90">
+                    Разрешения не загружены: {verifyResult.permissions_error}
+                  </p>
+                )}
+
+                {verifyResult.permissions && verifyResult.permissions.length > 0 && (
+                  <div className="mt-4 text-left overflow-x-auto">
+                    <p className="text-xs font-medium text-[var(--text-secondary)] mb-2">
+                      Подписки приложения (OAuth permissions)
+                    </p>
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-[var(--border-color)] text-[var(--text-muted)]">
+                          <th className="text-left py-1.5 pr-3 font-medium">Разрешение</th>
+                          <th className="text-left py-1.5 font-medium">Статус</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {verifyResult.permissions.map((row) => (
+                          <tr key={`${row.permission}-${row.status}`} className="border-b border-[var(--border-color)]/60 last:border-0">
+                            <td className="py-1.5 pr-3 font-mono text-[var(--text-primary)]">{row.permission}</td>
+                            <td className="py-1.5">
+                              <span
+                                className={
+                                  row.status === 'granted'
+                                    ? 'text-green-400'
+                                    : 'text-[var(--text-muted)]'
+                                }
+                              >
+                                {row.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!connectedEffective && (
               <div className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/5">
                 <p className="text-sm text-[var(--text-muted)] mb-4">
                   Подключите аккаунт Threads через Meta для публикации постов.
@@ -384,9 +584,9 @@ export function ThreadsPage() {
                 <Button onClick={handleConnectThreads}>Connect with Threads</Button>
               </div>
             )}
-            {authStatus?.connected && (
+            {connectedEffective && (
               <div className="p-4 rounded-lg border border-green-500/30 bg-green-500/5">
-                <p className="text-sm text-green-400">Аккаунт Threads подключен.</p>
+                <p className="text-sm text-green-400">OAuth-токен сохранён; при сбоях публикации нажмите «Проверить у Meta».</p>
               </div>
             )}
           </CardContent>

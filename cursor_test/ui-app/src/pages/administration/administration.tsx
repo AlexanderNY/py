@@ -21,9 +21,10 @@ import type {
   PostingDiagnosticsResponse,
   StorageFileItem,
   StorageFilesResponse,
+  RuntimeLocationResponse,
 } from '@/types/core'
 
-type AdminTab = 'users' | 'groups' | 'statistics' | 'schedule' | 'notifications' | 'services-status' | 'processor' | 'collector' | 'scheduler' | 'posts-tables' | 'posting-diagnostics' | 'storage'
+type AdminTab = 'users' | 'groups' | 'statistics' | 'schedule' | 'notifications' | 'services-status' | 'processor' | 'collector' | 'scheduler' | 'posts-tables' | 'posting-diagnostics' | 'runtime-location' | 'storage'
 
 export function AdministrationPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('users')
@@ -96,6 +97,10 @@ export function AdministrationPage() {
   const [storagePrefix, setStoragePrefix] = useState('')
   const [isLoadingStorageFiles, setIsLoadingStorageFiles] = useState(false)
   const [storageFilesError, setStorageFilesError] = useState('')
+
+  const [runtimeLocation, setRuntimeLocation] = useState<RuntimeLocationResponse | null>(null)
+  const [isLoadingRuntimeLocation, setIsLoadingRuntimeLocation] = useState(false)
+  const [runtimeLocationError, setRuntimeLocationError] = useState('')
 
   const [groupsList, setGroupsList] = useState<GroupResponse[]>([])
   const [isLoadingGroups, setIsLoadingGroups] = useState(false)
@@ -426,6 +431,20 @@ export function AdministrationPage() {
     }
   }
 
+  async function handleLoadRuntimeLocation() {
+    setRuntimeLocationError('')
+    setIsLoadingRuntimeLocation(true)
+    try {
+      const data = await coreService.getRuntimeLocation()
+      setRuntimeLocation(data)
+    } catch (error) {
+      setRuntimeLocationError(error instanceof Error ? error.message : 'Failed to fetch runtime location')
+      setRuntimeLocation(null)
+    } finally {
+      setIsLoadingRuntimeLocation(false)
+    }
+  }
+
   async function handleLoadPostsList() {
     setPostsListError('')
     setIsLoadingPostsList(true)
@@ -619,6 +638,16 @@ export function AdministrationPage() {
           }`}
         >
           Диагностика постинга
+        </button>
+        <button
+          onClick={() => setActiveTab('runtime-location')}
+          className={`px-4 py-2 font-medium text-sm transition-colors ${
+            activeTab === 'runtime-location'
+              ? 'text-primary-400 border-b-2 border-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          IP / регион / TZ
         </button>
         <button
           onClick={() => setActiveTab('storage')}
@@ -2149,6 +2178,105 @@ export function AdministrationPage() {
             {!postingDiagnostics && !isLoadingPostingDiagnostics && !postingDiagnosticsError && (
               <p className="text-[var(--text-muted)] text-center py-8">
                 Нажмите «Запустить диагностику», чтобы получить сводки и подсказки по пайплайну постинга.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Runtime: public IP, geo by IP, container TZ */}
+      {activeTab === 'runtime-location' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              IP, регион и часовой пояс (core)
+            </CardTitle>
+            <CardDescription>
+              Публичный исходящий IP и геоданные по нему — ориентир «откуда виден трафик». Часовой пояс процесса core и переменная TZ — фактическая настройка контейнера.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <Button
+              onClick={handleLoadRuntimeLocation}
+              isLoading={isLoadingRuntimeLocation}
+              className="w-full sm:w-auto"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Обновить
+            </Button>
+
+            {runtimeLocationError && (
+              <Alert variant="error" className="animate-slide-down">{runtimeLocationError}</Alert>
+            )}
+
+            {isLoadingRuntimeLocation && <TableSkeleton rows={4} cols={2} className="mt-2" />}
+
+            {runtimeLocation && !isLoadingRuntimeLocation && (
+              <div className="space-y-6 animate-slide-down">
+                <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+                  <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-3">Публичный IP и гео</h3>
+                  <ul className="text-sm text-[var(--text-secondary)] space-y-2">
+                    <li>
+                      <span className="text-[var(--text-muted)]">Публичный IP: </span>
+                      <span className="font-mono text-[var(--text-primary)]">{runtimeLocation.public_ip ?? '—'}</span>
+                    </li>
+                    {runtimeLocation.public_lookup_error && (
+                      <li className="text-amber-400 text-sm">Ошибка определения IP: {runtimeLocation.public_lookup_error}</li>
+                    )}
+                    {runtimeLocation.geo_by_ip && (
+                      <>
+                        <li><span className="text-[var(--text-muted)]">Страна: </span>{runtimeLocation.geo_by_ip.country ?? '—'}</li>
+                        <li><span className="text-[var(--text-muted)]">Регион: </span>{runtimeLocation.geo_by_ip.region ?? '—'}</li>
+                        <li><span className="text-[var(--text-muted)]">Город: </span>{runtimeLocation.geo_by_ip.city ?? '—'}</li>
+                        <li>
+                          <span className="text-[var(--text-muted)]">Часовой пояс (по IP, ориентир): </span>
+                          <span className="font-mono">{runtimeLocation.geo_by_ip.timezone ?? '—'}</span>
+                        </li>
+                        <li><span className="text-[var(--text-muted)]">Провайдер / org: </span>{runtimeLocation.geo_by_ip.isp ?? '—'}</li>
+                      </>
+                    )}
+                    {runtimeLocation.geo_lookup_error && !runtimeLocation.geo_by_ip && (
+                      <li className="text-amber-400 text-sm">Ошибка геолокации: {runtimeLocation.geo_lookup_error}</li>
+                    )}
+                  </ul>
+                </div>
+
+                <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+                  <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-3">Контейнер / процесс core</h3>
+                  <ul className="text-sm text-[var(--text-secondary)] space-y-2">
+                    <li><span className="text-[var(--text-muted)]">Hostname: </span><span className="font-mono text-[var(--text-primary)]">{runtimeLocation.hostname}</span></li>
+                    <li>
+                      <span className="text-[var(--text-muted)]">TZ (переменная окружения): </span>
+                      <span className="font-mono">{runtimeLocation.tz_environment_variable ?? '—'}</span>
+                    </li>
+                    <li>
+                      <span className="text-[var(--text-muted)]">Локальный часовой пояс: </span>
+                      <span className="font-mono text-[var(--text-primary)]">{runtimeLocation.local_timezone}</span>
+                      {' '}(UTC{runtimeLocation.local_utc_offset})
+                    </li>
+                    <li>
+                      <span className="text-[var(--text-muted)]">Текущее время (core): </span>
+                      {runtimeLocation.local_now_iso}
+                    </li>
+                    {runtimeLocation.cloud_aws_region && (
+                      <li>
+                        <span className="text-[var(--text-muted)]">AWS_REGION / AWS_DEFAULT_REGION: </span>
+                        <span className="font-mono text-[var(--text-primary)]">{runtimeLocation.cloud_aws_region}</span>
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {!runtimeLocation && !isLoadingRuntimeLocation && !runtimeLocationError && (
+              <p className="text-[var(--text-muted)] text-center py-8">
+                Нажмите «Обновить», чтобы запросить данные с сервиса core.
               </p>
             )}
           </CardContent>

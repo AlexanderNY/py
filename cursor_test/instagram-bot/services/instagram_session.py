@@ -76,6 +76,55 @@ async def clear_instagram_verification_code(user_id: int) -> None:
         await release_db_connection(conn)
 
 
+async def fetch_instagram_profile_for_login_test(user_id: int) -> Optional[Dict[str, Any]]:
+    """Поля профиля, нужные для InstagramClient.login (учётные данные и сессия)."""
+    conn = await get_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT username, password, instagrapi_session, instagram_verification_code
+                FROM instagram_profiles
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            row = await cur.fetchone()
+            if not row:
+                return None
+            cols = [c.name for c in cur.description]
+            rec = dict(zip(cols, row))
+            raw_sess = rec.get("instagrapi_session")
+            if isinstance(raw_sess, str):
+                try:
+                    rec["instagrapi_session"] = json.loads(raw_sess) if raw_sess else None
+                except (json.JSONDecodeError, TypeError):
+                    rec["instagrapi_session"] = None
+            elif raw_sess is not None and not isinstance(raw_sess, dict):
+                rec["instagrapi_session"] = None
+            return rec
+    finally:
+        await release_db_connection(conn)
+
+
+async def get_instagram_last_auth_error(user_id: int) -> Optional[str]:
+    """Последняя сохранённая ошибка входа Instagram."""
+    conn = await get_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT instagram_last_auth_error FROM instagram_profiles WHERE user_id = %s",
+                (user_id,),
+            )
+            row = await cur.fetchone()
+            if not row:
+                return None
+            err = row[0]
+            return str(err) if err else None
+    finally:
+        await release_db_connection(conn)
+
+
 async def set_instagram_auth_error(user_id: int, message: Optional[str]) -> None:
     """Сохраняет текст ошибки входа (challenge, неверный пароль и т.д.)."""
     conn = await get_db_connection()

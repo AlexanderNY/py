@@ -150,6 +150,20 @@ async def threads_bot_auth_status(
     )
 
 
+@router.get("/threads-bot/auth/verify/{user_id}")
+async def threads_bot_auth_verify(
+    user_id: int,
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    """GET /threads-bot/auth/verify/{user_id} -> th-bot (проверка токена у Meta)."""
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        f"/threads/auth/verify/{user_id}",
+        request,
+    )
+
+
 @router.get("/threads-bot/auth/url")
 async def threads_bot_auth_url(
     request: Request,
@@ -207,3 +221,12 @@ async def instagram_bot_verify_code(
 ) -> Response:
     """POST /instagram-bot/verify-code -> instagram-bot /instagram/verify-code (2FA)."""
     return await _forward_to_bot(settings.INSTAGRAM_BOT_SERVICE_URL, "/instagram/verify-code", request)
+
+
+@router.post("/instagram-bot/login-test")
+async def instagram_bot_login_test(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """POST /instagram-bot/login-test -> instagram-bot /instagram/login-test (проверка входа)."""
+    return await _forward_to_bot(settings.INSTAGRAM_BOT_SERVICE_URL, "/instagram/login-test", request)

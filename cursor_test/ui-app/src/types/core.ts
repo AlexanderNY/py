@@ -219,3 +219,25 @@ export interface PostingDiagnosticsResponse {
   hints: string[]
   collected_at: string | null
 }
+
+/** Гео по публичному IP (ориентир; TZ контейнера — в local_*). */
+export interface RuntimeGeoByIp {
+  country?: string | null
+  region?: string | null
+  city?: string | null
+  timezone?: string | null
+  isp?: string | null
+}
+
+export interface RuntimeLocationResponse {
+  hostname: string
+  tz_environment_variable?: string | null
+  local_timezone: string
+  local_utc_offset: string
+  local_now_iso: string
+  public_ip?: string | null
+  public_lookup_error?: string | null
+  geo_by_ip?: RuntimeGeoByIp | null
+  geo_lookup_error?: string | null
+  cloud_aws_region?: string | null
+}

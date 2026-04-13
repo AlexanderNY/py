@@ -58,7 +58,7 @@ export function MobileNav() {
                 <p className="text-sm text-[var(--text-muted)] truncate">{user.username}</p>
                 <p className="text-xs text-[var(--text-muted)] truncate">
                   {user.role ?? '—'} ·{' '}
-                  <Link to="/billing" onClick={() => setIsOpen(false)} className="text-primary-400 hover:text-primary-300 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 rounded">
+                  <Link to="/profile?tab=billing" onClick={() => setIsOpen(false)} className="text-primary-400 hover:text-primary-300 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 rounded">
                     {user.tariff ?? 'free'}
                   </Link>
                 </p>

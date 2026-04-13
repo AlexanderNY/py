@@ -5,6 +5,7 @@ import type {
   ThreadsPostListItem,
   ThreadsPostFull,
   ThreadsAuthStatus,
+  ThreadsAuthVerify,
 } from '@/types/threads'
 
 export const threadsService = {
@@ -73,11 +74,19 @@ export const threadsService = {
         return {
           user_id: userId,
           connected: false,
+          connected_effective: false,
           message: 'Profile not found',
         }
       }
       throw new Error(getErrorMessage(error))
     }
+  },
+
+  async verifyAuth(userId: number): Promise<ThreadsAuthVerify> {
+    const response = await apiClient.get<ThreadsAuthVerify>(
+      `/threads-bot/auth/verify/${userId}`
+    )
+    return response.data
   },
 
   async getAuthUrl(): Promise<{ url: string }> {

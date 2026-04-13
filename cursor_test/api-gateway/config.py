@@ -87,6 +87,7 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/dzen-bot/collect-once": {"requests": 30, "window_seconds": 60},
     "/instagram-bot/reload": {"requests": 20, "window_seconds": 60},
     "/instagram-bot/verify-code": {"requests": 10, "window_seconds": 300},
+    "/instagram-bot/login-test": {"requests": 10, "window_seconds": 300},
     "default": {
         "requests": settings.DEFAULT_RATE_LIMIT_REQUESTS,
         "window_seconds": settings.DEFAULT_RATE_LIMIT_WINDOW_SECONDS

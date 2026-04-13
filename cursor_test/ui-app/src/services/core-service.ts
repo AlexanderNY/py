@@ -10,6 +10,7 @@ import type {
   ProcessorRunResponse,
   PostingDiagnosticsResponse,
   StorageFilesResponse,
+  RuntimeLocationResponse,
 } from '@/types/core'
 
 export const coreService = {
@@ -146,6 +147,15 @@ export const coreService = {
       const response = await apiClient.get<StorageFilesResponse>('/core/admin/storage/files', {
         params: params ?? {},
       })
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getRuntimeLocation(): Promise<RuntimeLocationResponse> {
+    try {
+      const response = await apiClient.get<RuntimeLocationResponse>('/core/admin/runtime-location')
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))

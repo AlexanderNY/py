@@ -5,7 +5,12 @@ import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import { instagramService } from '@/services/instagram-service'
-import type { InstagramProfile, InstagramPostListItem, ScheduleType } from '@/types/instagram'
+import type {
+  InstagramFollowingUser,
+  InstagramProfile,
+  InstagramPostListItem,
+  ScheduleType,
+} from '@/types/instagram'
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
@@ -19,7 +24,7 @@ interface DynamicField {
 const INSTAGRAM_CAPTION_MAX = 2200
 
 export function InstagramPage() {
-  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile'>('create')
+  const [activeTab, setActiveTab] = useState<'auth' | 'create' | 'posts' | 'profile'>('create')
 
   const [publishEnabled, setPublishEnabled] = useState(false)
   const [collectEnabled, setCollectEnabled] = useState(false)
@@ -29,7 +34,12 @@ export function InstagramPage() {
   ])
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [verificationCode, setVerificationCode] = useState('')
   const [usernamesToRead, setUsernamesToRead] = useState<DynamicField[]>([{ id: generateId(), value: '' }])
+
+  const [hasInstagramSession, setHasInstagramSession] = useState(false)
+  const [instagramLastAuthError, setInstagramLastAuthError] = useState<string | null>(null)
+  const [instagramVerificationPending, setInstagramVerificationPending] = useState(false)
 
   const [postCaption, setPostCaption] = useState('')
   const [toTg, setToTg] = useState(false)
@@ -47,6 +57,9 @@ export function InstagramPage() {
 
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
   const [isSavingProfile, setIsSavingProfile] = useState(false)
+  const [isSavingAuth, setIsSavingAuth] = useState(false)
+  const [isLoginTesting, setIsLoginTesting] = useState(false)
+  const [followingPreview, setFollowingPreview] = useState<InstagramFollowingUser[]>([])
   const [isCreatingPost, setIsCreatingPost] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -72,6 +85,10 @@ export function InstagramPage() {
         }
         setUsername(profile.username ?? '')
         setPassword('')
+        setVerificationCode('')
+        setHasInstagramSession(profile.has_instagram_session ?? false)
+        setInstagramLastAuthError(profile.instagram_last_auth_error ?? null)
+        setInstagramVerificationPending(profile.instagram_verification_pending ?? false)
         const ur = profile.usernames_to_read
         if (Array.isArray(ur) && ur.length > 0) {
           setUsernamesToRead(ur.map((u) => ({ id: generateId(), value: String(u) })))
@@ -183,13 +200,13 @@ export function InstagramPage() {
     }
   }
 
-  function buildProfilePayload(): Partial<InstagramProfile> {
+  function buildProfilePayload(options?: { includeVerificationCode?: boolean }): Partial<InstagramProfile> {
     const timeIntervalsPayload =
       scheduleType === 'intervals'
         ? timeIntervals.filter((i) => i.start && i.end).map(({ start, end }) => ({ start, end }))
         : []
     const usernamesPayload = usernamesToRead.map((f) => f.value.trim()).filter(Boolean)
-    return {
+    const payload: Partial<InstagramProfile> = {
       publish_enabled: publishEnabled,
       collect_enabled: collectEnabled,
       schedule_type: scheduleType,
@@ -198,6 +215,10 @@ export function InstagramPage() {
       password: password || undefined,
       usernames_to_read: usernamesPayload,
     }
+    if (options?.includeVerificationCode && verificationCode.trim()) {
+      payload.instagram_verification_code = verificationCode.trim()
+    }
+    return payload
   }
 
   async function handleSaveProfile(e: FormEvent) {
@@ -208,10 +229,54 @@ export function InstagramPage() {
     try {
       await instagramService.saveProfile(buildProfilePayload())
       setSuccess('Profile settings saved successfully')
+      await loadProfile()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save profile settings')
     } finally {
       setIsSavingProfile(false)
+    }
+  }
+
+  async function handleSaveAuth(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    setSuccess('')
+    setIsSavingAuth(true)
+    try {
+      await instagramService.saveProfile(buildProfilePayload({ includeVerificationCode: true }))
+      setSuccess('Учётные данные сохранены')
+      setVerificationCode('')
+      await loadProfile()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить учётные данные')
+    } finally {
+      setIsSavingAuth(false)
+    }
+  }
+
+  async function handleLoginTest() {
+    setError('')
+    setSuccess('')
+    setFollowingPreview([])
+    setIsLoginTesting(true)
+    try {
+      const result = await instagramService.loginTest(50)
+      if (result.ok) {
+        const n = result.following?.length ?? result.following_count ?? 0
+        setFollowingPreview(result.following ?? [])
+        setSuccess(
+          result.instagram_user_id != null
+            ? `Вход выполнен (Instagram user id: ${result.instagram_user_id})${n > 0 ? ` · загружено подписок: ${n}` : ''}`
+            : `Вход выполнен успешно${n > 0 ? ` · загружено подписок: ${n}` : ''}`
+        )
+      } else {
+        setError(result.message || 'Вход не выполнен')
+      }
+      await loadProfile()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Проверка входа не удалась')
+    } finally {
+      setIsLoginTesting(false)
     }
   }
 
@@ -259,8 +324,9 @@ export function InstagramPage() {
         </Alert>
       )}
 
-      <div className="flex border-b border-[var(--border-color)]">
+      <div className="flex border-b border-[var(--border-color)] flex-wrap gap-1">
         {[
+          { id: 'auth' as const, label: 'Авторизация' },
           { id: 'create' as const, label: 'Create post' },
           { id: 'posts' as const, label: 'Posts' },
           { id: 'profile' as const, label: 'Profile' },
@@ -280,32 +346,122 @@ export function InstagramPage() {
         ))}
       </div>
 
+      {activeTab === 'auth' && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Авторизация Instagram</CardTitle>
+            <CardDescription>
+              Логин и пароль для instagrapi. Сессия хранится на сервере; пароль после сохранения не
+              отображается.
+            </CardDescription>
+          </CardHeader>
+          <form onSubmit={handleSaveAuth}>
+            <CardContent className="space-y-4">
+              {isLoadingProfile ? (
+                <p className="text-sm text-[var(--muted)]">Загрузка…</p>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="font-medium">Сессия в базе:</span>
+                    <span
+                      className={
+                        hasInstagramSession
+                          ? 'text-green-600 dark:text-green-400'
+                          : 'text-[var(--muted)]'
+                      }
+                    >
+                      {hasInstagramSession ? 'да' : 'нет'}
+                    </span>
+                    {instagramVerificationPending && (
+                      <span className="text-amber-600 dark:text-amber-400">
+                        Ожидается код 2FA — введите его ниже и сохраните, затем снова «Проверить сейчас».
+                      </span>
+                    )}
+                  </div>
+                  {instagramLastAuthError && (
+                    <p className="text-sm text-red-600 dark:text-red-400 break-words">
+                      Последняя ошибка входа: {instagramLastAuthError}
+                    </p>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Имя пользователя (логин)</label>
+                    <Input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="instagram_username"
+                      autoComplete="username"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Пароль</label>
+                    <Input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Оставьте пустым, чтобы не менять сохранённый пароль"
+                      autoComplete="current-password"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Код 2FA (если требует Instagram)</label>
+                    <Input
+                      type="text"
+                      value={verificationCode}
+                      onChange={(e) => setVerificationCode(e.target.value)}
+                      placeholder="Одноразовый код из приложения-аутентификатора"
+                      autoComplete="one-time-code"
+                    />
+                  </div>
+                </>
+              )}
+            </CardContent>
+            <CardFooter className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={isSavingAuth || isLoadingProfile}>
+                {isSavingAuth ? 'Сохранение…' : 'Сохранить учётные данные'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isLoginTesting || isLoadingProfile}
+                onClick={() => void handleLoginTest()}
+              >
+                {isLoginTesting ? 'Проверка…' : 'Проверить сейчас'}
+              </Button>
+            </CardFooter>
+          </form>
+          {followingPreview.length > 0 && (
+            <CardContent className="border-t border-[var(--border-color)] pt-4">
+              <p className="text-sm font-medium mb-2">Подписки (аккаунты, на которые вы подписаны)</p>
+              <p className="text-xs text-[var(--muted)] mb-2">
+                Показано до 50 записей после успешной проверки входа.
+              </p>
+              <ul
+                className="max-h-64 overflow-y-auto text-sm border border-[var(--border-color)] rounded-md divide-y divide-[var(--border-color)]"
+                aria-label="Список подписок Instagram"
+              >
+                {followingPreview.map((u) => (
+                  <li key={u.pk || u.username} className="px-3 py-2 flex flex-col gap-0.5">
+                    <span className="font-medium">@{u.username || '—'}</span>
+                    {u.full_name ? (
+                      <span className="text-[var(--muted)]">{u.full_name}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          )}
+        </Card>
+      )}
+
       {activeTab === 'profile' && (
         <Card className="mt-6">
           <CardHeader>
             <CardTitle>Instagram profile</CardTitle>
-            <CardDescription>Login and accounts to collect posts from</CardDescription>
+            <CardDescription>Расписание, публикация, сбор и список аккаунтов для чтения</CardDescription>
           </CardHeader>
           <form onSubmit={handleSaveProfile}>
             <CardContent className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Username</label>
-                <Input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="instagram_username"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Password</label>
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Leave blank to keep current"
-                />
-              </div>
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"

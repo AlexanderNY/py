@@ -16,6 +16,7 @@ from schemas import (
     PostingDiagnosticsResponse,
     StorageFileItem,
     StorageFilesResponse,
+    RuntimeLocationResponse,
 )
 
 
@@ -82,6 +83,14 @@ async def get_posting_diagnostics():
     """Цикл диагностики постинга: сводки tg_posts/posts по статусам и подсказки для администратора."""
     data = await admin_service.run_posting_diagnostics()
     return PostingDiagnosticsResponse(**data)
+
+
+@router.get("/runtime-location", response_model=RuntimeLocationResponse)
+async def get_runtime_location(admin_user: Dict[str, Any] = Depends(get_admin_user)):
+    """Публичный IP, гео по IP и локальный часовой пояс процесса core (контейнера). Только admin."""
+    del admin_user
+    data = await admin_service.get_runtime_location()
+    return RuntimeLocationResponse(**data)
 
 
 @router.get("/storage/files", response_model=StorageFilesResponse)

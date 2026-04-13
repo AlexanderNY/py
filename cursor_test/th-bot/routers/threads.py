@@ -10,6 +10,7 @@ from services.threads_service import (
     build_oauth_url,
     get_pending_posts_for_user,
     set_post_status,
+    verify_threads_auth,
 )
 from services.publish_service import publish_text_post, publish_image_post
 
@@ -31,6 +32,12 @@ def _get_user_id(x_user_id: Optional[str] = Header(None)) -> int:
 async def auth_status(user_id: int):
     """Статус OAuth: connected, expires_at."""
     return await get_auth_status(user_id)
+
+
+@router.get("/auth/verify/{user_id}")
+async def auth_verify(user_id: int):
+    """Проверка токена у Meta (debug_token или GET /me)."""
+    return await verify_threads_auth(user_id)
 
 
 @router.get("/auth/url")

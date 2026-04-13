@@ -19,7 +19,7 @@ export function Sidebar() {
             <p className="text-xs text-[var(--text-muted)] mt-0.5 truncate">
               {user.role ?? '—'} ·{' '}
               <Link
-                to="/billing"
+                to="/profile?tab=billing"
                 className="text-primary-400 hover:text-primary-300 hover:underline focus:outline-none focus:underline focus-visible:ring-2 focus-visible:ring-primary-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)] rounded"
               >
                 {user.tariff ?? 'free'}

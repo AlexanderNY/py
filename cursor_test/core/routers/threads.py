@@ -38,6 +38,7 @@ async def get_threads_profile(x_user_id: Optional[str] = Header(None)):
     if profile:
         return profile
     return {
+        "instagram_handle": None,
         "publish_enabled": False,
         "collect_enabled": False,
         "schedule_type": "immediate",

@@ -659,6 +659,7 @@ CREATE TABLE IF NOT EXISTS threads_profiles (
     refresh_token VARCHAR(512),
     token_expires_at TIMESTAMP,
     threads_user_id VARCHAR(100),
+    instagram_handle VARCHAR(255),
     process_enabled BOOLEAN DEFAULT FALSE,
     processing_description TEXT,
     remove_emojis BOOLEAN DEFAULT FALSE,
@@ -733,6 +734,15 @@ END $$;
 DO $$
 BEGIN
   ALTER TABLE url_posts ADD COLUMN to_threads BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+"""
+
+# Миграция: instagram_handle для threads_profiles (отображаемый @username, без пароля)
+THREADS_PROFILES_INSTAGRAM_HANDLE_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE threads_profiles ADD COLUMN instagram_handle VARCHAR(255);
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 """
@@ -1231,6 +1241,7 @@ ALL_TABLES = [
     THREADS_POSTS_TABLE,
     THREADS_POSTS_INDEXES,
     TO_THREADS_MIGRATION,
+    THREADS_PROFILES_INSTAGRAM_HANDLE_MIGRATION,
     DZEN_PROFILES_TABLE,
     DZEN_PROFILES_MIGRATION,
     DZEN_PROFILES_SELENIUM_MIGRATION,
