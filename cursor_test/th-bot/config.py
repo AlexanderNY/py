@@ -1,4 +1,9 @@
-"""Конфигурация Threads Bot сервиса."""
+"""Конфигурация Threads Bot сервиса.
+
+Режим Selenium (fallback при сбое OAuth):
+- Вариант A (реализуемый): только диагностика веб-входа Meta; не выдаёт Graph API access_token
+  и не заменяет OAuth для публикации в Threads API.
+"""
 
 from pydantic_settings import BaseSettings
 
@@ -21,6 +26,21 @@ class Settings(BaseSettings):
     META_APP_SECRET: str = ""
     THREADS_OAUTH_REDIRECT_URI: str = ""
     THREADS_OAUTH_SCOPE: str = "threads_basic,threads_content_publish"
+
+    # Selenium: резервный веб-вход (явно включать в prod)
+    ENABLE_THREADS_SELENIUM_FALLBACK: bool = False
+    SELENIUM_HEADLESS: bool = True
+    SELENIUM_PAGE_LOAD_TIMEOUT: int = 45
+    SELENIUM_IMPLICIT_WAIT: int = 5
+    META_WEB_LOGIN_URL: str = "https://www.facebook.com/login/"
+    THREADS_SELENIUM_RATE_LIMIT_SECONDS: int = 300
+
+    # MinIO / S3 для диагностических скриншотов Selenium (ключи содержат подстроку diag)
+    S3_ENDPOINT_URL: str = ""
+    S3_BUCKET: str = ""
+    S3_ACCESS_KEY: str = ""
+    S3_SECRET_KEY: str = ""
+    S3_USE_SSL: bool = False
 
     class Config:
         env_file = ".env"

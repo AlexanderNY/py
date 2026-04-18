@@ -14,12 +14,11 @@ import { DzenPage } from '@/pages/stubs/dzen'
 import { InstagramPage } from '@/pages/stubs/instagram'
 import { CustomURLPage } from '@/pages/stubs/custom-url'
 import { CreatePostPage } from '@/pages/create-post'
-import { TestPage } from '@/pages/test'
 import { AdministrationPage } from '@/pages/administration'
 import { GroupPage } from '@/pages/group'
 import { FigmaPreviewPage } from '@/pages/figma-preview'
 import { AboutPage } from '@/pages/about/about'
-import { GraphsPage } from '@/pages/graphs'
+import { PricingPage } from '@/pages/pricing/pricing'
 import { RouteLoader } from '@/components/route-loader'
 
 interface ProtectedRouteProps {
@@ -86,7 +85,6 @@ function App() {
         <Route path="profile" element={<ProfilePage />} />
         <Route path="billing" element={<Navigate to="/profile?tab=billing" replace />} />
         <Route path="statistics" element={<Navigate to="/profile?tab=statistics" replace />} />
-        <Route path="graphs" element={<GraphsPage />} />
         <Route path="telegram" element={<TelegramPage />} />
         <Route path="threads" element={<ThreadsPage />} />
         <Route path="wordpress" element={<WordPressPage />} />
@@ -97,10 +95,10 @@ function App() {
         <Route path="custom-url" element={<CustomURLPage />} />
         <Route path="posts" element={<CreatePostPage />} />
         <Route path="create-post" element={<Navigate to="/posts" replace />} />
-        <Route path="test" element={<TestPage />} />
         <Route path="group" element={<GroupPage />} />
         <Route path="administration" element={<AdminRoute><AdministrationPage /></AdminRoute>} />
         <Route path="about" element={<AboutPage />} />
+        <Route path="pricing" element={<PricingPage />} />
       </Route>
 
       <Route path="figma-preview" element={<FigmaPreviewPage />} />

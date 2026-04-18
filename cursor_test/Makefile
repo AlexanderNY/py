@@ -43,7 +43,7 @@ apply-all: apply-base
 	kubectl apply -f $(K8S_DIR)/collector
 	kubectl apply -f $(K8S_DIR)/processor
 	kubectl apply -f $(K8S_DIR)/th-bot
-	kubectl apply -f $(K8S_DIR)/test
+	kubectl apply -f $(K8S_DIR)/selectcb
 	kubectl apply -f $(K8S_DIR)/ingress.yaml
 
 # Full deploy: build images then apply (after creating secret.yaml)

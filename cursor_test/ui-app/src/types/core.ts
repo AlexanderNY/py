@@ -150,8 +150,11 @@ export interface PlatformMetric {
   platform: string
   table: string
   collected_count: number
+  created_count?: number
   ready_count: number
   processing_count: number
+  /** Счётчики по всем статусам строк в *_posts (включая редкие из БД). */
+  status_counts?: Record<string, number>
 }
 
 export interface PostsTablesResponse {
@@ -188,6 +191,8 @@ export interface PostRow {
   to_wp: boolean
   to_vk: boolean
   to_threads?: boolean
+  to_dzen?: boolean
+  to_instagram?: boolean
   created_at?: string | null
   updated_at?: string | null
   source_platform?: string | null
@@ -209,6 +214,20 @@ export interface StorageFilesResponse {
   enabled: boolean
   objects: StorageFileItem[]
   next_continuation_token?: string | null
+  /** Подстрока фильтра по ключу (например diag) */
+  filter_applied?: string | null
+  pages_scanned?: number | null
+  filter_truncated?: boolean
+}
+
+export interface StoragePresignedUrlResponse {
+  url: string
+  expires_in: number
+}
+
+export interface StorageDeleteResponse {
+  ok: boolean
+  key: string
 }
 
 export interface PostingDiagnosticsResponse {

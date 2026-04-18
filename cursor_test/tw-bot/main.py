@@ -6,11 +6,12 @@ import signal
 import sys
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from config import settings
 from database import close_db, init_db
 from services.tw_bot_service import TwBotService
+from services.x_selenium_verify import verify_x_for_user
 
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
@@ -33,6 +34,38 @@ async def health_check():
         "service": "tw-bot",
         "server_time": datetime.utcnow().isoformat() + "Z",
     }
+
+
+@app.post("/schedule")
+async def schedule_from_scheduler():
+    """Оповещение от scheduler: один проход публикации и сбора ленты."""
+    global bot_service
+    bs = bot_service
+    if not bs:
+        return {"status": "error", "message": "Bot service not initialized"}
+
+    async def _run() -> None:
+        try:
+            result = await bs.run_schedule_pass()
+            logger.info("Schedule pass: %s", result)
+        except Exception as e:
+            logger.exception("Schedule pass failed: %s", e)
+
+    asyncio.create_task(_run())
+    return {"status": "ok", "message": "tw-bot schedule pass started"}
+
+
+@app.post("/tw/verify-selenium")
+async def tw_verify_selenium(request: Request):
+    """Проверка входа X через Selenium и список following (учётные данные из БД). Требует X-User-Id."""
+    uid_hdr = request.headers.get("x-user-id") or request.headers.get("X-User-Id")
+    if not uid_hdr:
+        return {"ok": False, "method": "selenium", "users": [], "error": "Отсутствует X-User-Id"}
+    try:
+        user_id = int(uid_hdr)
+    except ValueError:
+        return {"ok": False, "method": "selenium", "users": [], "error": "Некорректный X-User-Id"}
+    return await verify_x_for_user(user_id)
 
 
 async def run_api_server():

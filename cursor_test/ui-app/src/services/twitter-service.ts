@@ -6,6 +6,7 @@ import type {
   TwPostRow,
   TwitterOAuthStatus,
   TwitterFollowingResponse,
+  TwitterSeleniumVerifyResponse,
 } from '@/types/twitter'
 
 export const twitterService = {
@@ -69,6 +70,20 @@ export const twitterService = {
           pagination_token: params?.pagination_token,
         },
       })
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  /** Проверка входа через Selenium (tw-bot); учётные данные только из БД; до ~5 мин. */
+  async verifySelenium(): Promise<TwitterSeleniumVerifyResponse> {
+    try {
+      const response = await apiClient.post<TwitterSeleniumVerifyResponse>(
+        '/tw-bot/verify-selenium',
+        {},
+        { timeout: 300_000 }
+      )
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))

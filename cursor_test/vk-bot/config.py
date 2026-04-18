@@ -32,6 +32,21 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: str = ""
     S3_USE_SSL: bool = False
 
+    # Selenium (резервный вход VK, веб-парсинг сообществ — цель A плана)
+    CHROME_BIN: str = ""
+    CHROMEDRIVER_PATH: str = ""
+    SELENIUM_HEADLESS: bool = True
+    SELENIUM_PAGE_LOAD_TIMEOUT: int = 90
+    SELENIUM_IMPLICIT_WAIT: int = 5
+    VK_SELENIUM_LOGIN_URL: str = "https://vk.com/"
+    VK_SELENIUM_GROUPS_URL: str = "https://vk.com/groups"
+    VK_SELENIUM_SCROLL_TIMES: int = 4
+    VK_SELENIUM_SCROLL_PAUSE_SEC: float = 1.2
+    VK_SELENIUM_GROUP_LINK_SELECTORS: str = (
+        "a[href*='/club'], a[href*='/public'], "
+        ".groups_row_title a, .ui_crumb_group a"
+    )
+
     class Config:
         env_file = ".env"
         case_sensitive = True

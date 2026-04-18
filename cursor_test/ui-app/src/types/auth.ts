@@ -7,12 +7,60 @@ export interface User {
   role: UserRole
   tariff?: string
   is_email_verified: boolean
+  /** Аккаунт заблокирован администратором (нет входа и API). */
+  is_blocked?: boolean
   created_at: string
   access_token?: string
   refresh_token?: string
   group_id?: number | null
   group_name?: string | null
   role_in_group?: 'manager' | 'author' | null
+  /** Все группы пользователя (если API отдал список). */
+  groups?: Array<{ group_id: number; group_name: string; role_in_group: 'manager' | 'author' }> | null
+  billing_provider?: string | null
+  billing_customer_id?: string | null
+  billing_subscription_id?: string | null
+  subscription_status?: string | null
+  subscription_current_period_end?: string | null
+}
+
+export interface BillingPlanDefinition {
+  code: string
+  display_name: string
+  description: string
+  monthly_posts_limit: number
+  storage_gb_limit: number
+  max_connected_platforms: number
+  features: Record<string, boolean>
+  sort_order: number
+}
+
+export interface BillingMeResponse {
+  tariff: string
+  plan: BillingPlanDefinition | null
+  billing_provider?: string | null
+  billing_customer_id?: string | null
+  billing_subscription_id?: string | null
+  subscription_status?: string | null
+  subscription_current_period_end?: string | null
+  stripe_portal_available: boolean
+}
+
+export interface BillingEventRow {
+  id: number
+  provider: string
+  event_type: string
+  created_at: string
+}
+
+export interface AdminAuditLogEntry {
+  id: number
+  admin_user_id: number
+  action: string
+  target_type?: string | null
+  target_id?: string | null
+  details_json?: Record<string, unknown> | null
+  created_at: string
 }
 
 export interface GroupMemberResponse {
@@ -27,6 +75,7 @@ export interface GroupMemberResponse {
 export interface GroupResponse {
   id: number
   name: string
+  description?: string | null
   created_at: string
   created_by_user_id?: number | null
   role_in_group?: 'manager' | 'author' | null

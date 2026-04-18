@@ -10,6 +10,8 @@ import type {
   ProcessorRunResponse,
   PostingDiagnosticsResponse,
   StorageFilesResponse,
+  StorageDeleteResponse,
+  StoragePresignedUrlResponse,
   RuntimeLocationResponse,
 } from '@/types/core'
 
@@ -142,10 +144,37 @@ export const coreService = {
     }
   },
 
-  async getStorageFiles(params?: { prefix?: string; limit?: number; continuation_token?: string }): Promise<StorageFilesResponse> {
+  async getStorageFiles(params?: {
+    prefix?: string
+    limit?: number
+    continuation_token?: string
+    key_contains?: string
+  }): Promise<StorageFilesResponse> {
     try {
       const response = await apiClient.get<StorageFilesResponse>('/core/admin/storage/files', {
         params: params ?? {},
+      })
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getStoragePresignedUrl(key: string, expiresIn = 3600): Promise<StoragePresignedUrlResponse> {
+    try {
+      const response = await apiClient.get<StoragePresignedUrlResponse>('/core/admin/storage/presigned-url', {
+        params: { key, expires_in: expiresIn },
+      })
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async deleteStorageFile(key: string): Promise<StorageDeleteResponse> {
+    try {
+      const response = await apiClient.delete<StorageDeleteResponse>('/core/admin/storage/files', {
+        params: { key },
       })
       return response.data
     } catch (error) {

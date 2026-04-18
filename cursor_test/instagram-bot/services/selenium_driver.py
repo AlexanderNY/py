@@ -1,8 +1,8 @@
-"""Фабрика WebDriver для Chromium — fallback для ручного входа в Instagram в браузере.
+"""Фабрика WebDriver для Chromium — fallback вход через веб-форму (см. selenium_instagram_login).
 
-Использование: открыть instagram.com, пройти challenge/2FA вручную, затем при необходимости
-экспортировать cookies отдельным скриптом. Автоматический UI-постинг не реализован —
-основной путь: instagrapi + сессия в БД (см. instagram_client).
+При неудаче instagrapi и включённом INSTAGRAM_SELENIUM_FALLBACK_ENABLED выполняется
+автоматический ввод логина/пароля; challenge/2FA по-прежнему требуют ручного шага.
+Основной путь: instagrapi + сессия в БД (см. instagram_client).
 """
 
 import logging

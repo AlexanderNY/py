@@ -80,6 +80,26 @@ export interface ThreadsGraphPermission {
   status: string
 }
 
+/** Результат POST /threads-bot/selenium/attempt (диагностика, не OAuth token) */
+export interface ThreadsSeleniumAttemptResult {
+  session_id: number
+  user_id: number
+  status: string
+  message: string
+  /** Ключ объекта в S3 (подстрока diag), если скрин сохранён при сбое */
+  diagnostic_s3_key?: string | null
+  disclaimer?: string
+}
+
+export interface ThreadsSeleniumSessionRow {
+  id: number
+  user_id: number
+  status: string
+  detail_message?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
 export interface ThreadsAuthVerify {
   user_id: number
   valid: boolean

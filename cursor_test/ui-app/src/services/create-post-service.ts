@@ -14,6 +14,8 @@ export interface CreatePostProfile {
     vk?: boolean
     wp?: boolean
     threads?: boolean
+    instagram?: boolean
+    dzen?: boolean
   }
 }
 
@@ -50,6 +52,8 @@ interface CpostPostPayload {
   to_wp: boolean
   to_vk: boolean
   to_threads: boolean
+  to_dzen: boolean
+  to_instagram: boolean
 }
 
 export const createPostService = {
@@ -59,7 +63,7 @@ export const createPostService = {
       const data = response.data
       if (!data) return null
       const platforms = 'default_platforms' in data ? data.default_platforms : (data as CreatePostProfile).social_networks
-      const sn = platforms ?? { tg: false, tw: false, vk: false, wp: false, threads: false }
+      const sn = platforms ?? { tg: false, tw: false, vk: false, wp: false, threads: false, instagram: false, dzen: false }
       return {
         social_networks: {
           tg: sn.tg ?? false,
@@ -67,6 +71,8 @@ export const createPostService = {
           vk: sn.vk ?? false,
           wp: sn.wp ?? false,
           threads: sn.threads ?? false,
+          instagram: sn.instagram ?? false,
+          dzen: sn.dzen ?? false,
         },
       }
     } catch (error) {
@@ -86,6 +92,8 @@ export const createPostService = {
           wp: profile.social_networks.wp ?? false,
           vk: profile.social_networks.vk ?? false,
           threads: profile.social_networks.threads ?? false,
+          instagram: profile.social_networks.instagram ?? false,
+          dzen: profile.social_networks.dzen ?? false,
         },
       })
     } catch (error) {
@@ -116,6 +124,8 @@ export const createPostService = {
       to_wp: post.social_networks.wp ?? false,
       to_vk: post.social_networks.vk ?? false,
       to_threads: post.social_networks.threads ?? false,
+      to_dzen: post.social_networks.dzen ?? false,
+      to_instagram: post.social_networks.instagram ?? false,
     }
     try {
       await apiClient.post('/cpost/post', payload)
@@ -157,6 +167,8 @@ export const createPostService = {
       to_wp: data.to_wp,
       to_vk: data.to_vk,
       to_threads: data.to_threads,
+      to_dzen: data.to_dzen,
+      to_instagram: data.to_instagram,
     })
   },
 

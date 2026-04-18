@@ -7,6 +7,19 @@ export interface TimeInterval {
 
 export type DzenCollectSource = 'rss' | 'selenium' | 'both'
 
+export interface DzenSubscriptionItem {
+  title: string
+  url: string
+}
+
+/** Ответ dzen-bot POST /dzen-bot/verify-yandex */
+export interface DzenVerifyResponse {
+  ok: boolean
+  subscriptions: DzenSubscriptionItem[]
+  error?: string
+  message?: string
+}
+
 export interface DzenProfile {
   publish_enabled: boolean
   collect_enabled: boolean
@@ -33,6 +46,8 @@ export interface DzenPost {
   to_wp?: boolean
   to_vk?: boolean
   to_dzen?: boolean
+  to_threads?: boolean
+  to_instagram?: boolean
 }
 
 export interface DzenPostListItem {

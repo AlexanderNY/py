@@ -8,9 +8,20 @@ import { PageHeader, PageContainer } from '@/components/ui'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui'
 import { threadsService } from '@/services/threads-service'
+import { getErrorMessage } from '@/services/api-client'
+import {
+  TargetSocialNetworksWidget,
+  createDefaultTargets,
+  type TargetSocialNetworks,
+} from '@/components/target-social-networks'
 import { useAuth } from '@/contexts/auth-context'
 import type { ThreadsConfig, ThreadsPostListItem, TimeInterval, PublishScheduleType } from '@/types/threads'
-import type { ThreadsAuthStatus, ThreadsAuthVerify } from '@/types/threads'
+import type {
+  ThreadsAuthStatus,
+  ThreadsAuthVerify,
+  ThreadsSeleniumAttemptResult,
+  ThreadsSeleniumSessionRow,
+} from '@/types/threads'
 
 const AUTH_STATUS_POLL_INTERVAL_MS = 15_000
 const THREADS_TEXT_LIMIT = 500
@@ -35,6 +46,11 @@ export function ThreadsPage() {
   const [isVerifyingAuth, setIsVerifyingAuth] = useState(false)
   const [verifyResult, setVerifyResult] = useState<ThreadsAuthVerify | null>(null)
   const [isSavingAuthHandle, setIsSavingAuthHandle] = useState(false)
+  const [seleniumEmail, setSeleniumEmail] = useState('')
+  const [seleniumPassword, setSeleniumPassword] = useState('')
+  const [isSeleniumLoading, setIsSeleniumLoading] = useState(false)
+  const [seleniumAttemptResult, setSeleniumAttemptResult] = useState<ThreadsSeleniumAttemptResult | null>(null)
+  const [seleniumLastSession, setSeleniumLastSession] = useState<ThreadsSeleniumSessionRow | null>(null)
 
   const [publishEnabled, setPublishEnabled] = useState(false)
   const [collectEnabled, setCollectEnabled] = useState(false)
@@ -56,6 +72,9 @@ export function ThreadsPage() {
   const [staticHtmlContent, setStaticHtmlContent] = useState('')
 
   const [postText, setPostText] = useState('')
+  const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
+    createDefaultTargets('threads')
+  )
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
 
@@ -103,6 +122,22 @@ export function ThreadsPage() {
     const interval = setInterval(loadAuthStatus, AUTH_STATUS_POLL_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [user?.id, loadAuthStatus])
+
+  const loadSeleniumLastSession = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      const data = await threadsService.getSeleniumLastSession()
+      setSeleniumLastSession(data.session)
+    } catch {
+      setSeleniumLastSession(null)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (activeTab === 'auth' && user?.id) {
+      void loadSeleniumLastSession()
+    }
+  }, [activeTab, user?.id, loadSeleniumLastSession])
 
   useEffect(() => {
     if (activeTab === 'posts' && !hasLoadedPosts) loadPosts()
@@ -214,7 +249,7 @@ export function ThreadsPage() {
         setImagePreview(null)
         loadPosts()
       } else {
-        await threadsService.createPost(postText, imageFile || undefined)
+        await threadsService.createPost(postText, imageFile || undefined, postTargets)
         setSuccess('Post created successfully')
         setPostText('')
         setImageFile(null)
@@ -380,6 +415,28 @@ export function ThreadsPage() {
 
   const connectedEffective = authStatus?.connected_effective ?? authStatus?.connected
   const showAuthBlock = authStatus != null && !connectedEffective
+
+  async function handleSeleniumAttempt(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    setSeleniumAttemptResult(null)
+    const email = seleniumEmail.trim()
+    if (!email || !seleniumPassword) {
+      setError('Укажите email/телефон и пароль Meta')
+      return
+    }
+    setIsSeleniumLoading(true)
+    try {
+      const r = await threadsService.seleniumAttempt(email, seleniumPassword)
+      setSeleniumAttemptResult(r)
+      setSeleniumPassword('')
+      await loadSeleniumLastSession()
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setIsSeleniumLoading(false)
+    }
+  }
 
   return (
     <PageContainer maxWidth="wide">
@@ -589,6 +646,72 @@ export function ThreadsPage() {
                 <p className="text-sm text-green-400">OAuth-токен сохранён; при сбоях публикации нажмите «Проверить у Meta».</p>
               </div>
             )}
+
+            <div className="p-4 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] space-y-3">
+              <CardTitle className="text-base text-[var(--text-primary)]">Резервный диагностический вход (Selenium)</CardTitle>
+              <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                Если OAuth не срабатывает, можно проверить веб-вход Meta в headless-браузере на сервере. Это не выдаёт Graph API
+                токен и не включает публикацию через API — только диагностика. Возможны блокировки со стороны Meta (ToS).
+                На сервере должно быть включено: ENABLE_THREADS_SELENIUM_FALLBACK=true.
+              </p>
+              <form onSubmit={(ev) => { void handleSeleniumAttempt(ev) }} className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2 max-w-2xl">
+                  <div>
+                    <label htmlFor="threads-selenium-email" className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
+                      Email или телефон Meta
+                    </label>
+                    <Input
+                      id="threads-selenium-email"
+                      type="text"
+                      autoComplete="username"
+                      value={seleniumEmail}
+                      onChange={(e) => setSeleniumEmail(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="threads-selenium-pass" className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
+                      Пароль (не сохраняется)
+                    </label>
+                    <Input
+                      id="threads-selenium-pass"
+                      type="password"
+                      autoComplete="current-password"
+                      value={seleniumPassword}
+                      onChange={(e) => setSeleniumPassword(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+                <Button type="submit" variant="secondary" size="sm" isLoading={isSeleniumLoading}>
+                  Запустить проверку в браузере
+                </Button>
+              </form>
+              {seleniumAttemptResult && (
+                <div className="text-sm rounded-md bg-[var(--bg-tertiary)] p-3 space-y-1">
+                  <p className="font-medium text-[var(--text-primary)]">Статус: {seleniumAttemptResult.status}</p>
+                  <p className="text-[var(--text-secondary)]">{seleniumAttemptResult.message}</p>
+                  {seleniumAttemptResult.diagnostic_s3_key && (
+                    <p className="text-xs font-mono text-amber-300/90 mt-2 break-all">
+                      Диагностика в S3: {seleniumAttemptResult.diagnostic_s3_key}
+                    </p>
+                  )}
+                  {seleniumAttemptResult.disclaimer && (
+                    <p className="text-xs text-[var(--text-muted)] mt-2">{seleniumAttemptResult.disclaimer}</p>
+                  )}
+                </div>
+              )}
+              {seleniumLastSession && (
+                <div className="text-xs text-[var(--text-muted)] border-t border-[var(--border-color)] pt-3">
+                  <p className="font-medium text-[var(--text-secondary)] mb-1">Последняя сессия в журнале</p>
+                  <p>#{seleniumLastSession.id} — {seleniumLastSession.status}</p>
+                  {seleniumLastSession.detail_message && <p className="mt-0.5">{seleniumLastSession.detail_message}</p>}
+                  {seleniumLastSession.updated_at && (
+                    <p className="mt-1">{new Date(seleniumLastSession.updated_at).toLocaleString()}</p>
+                  )}
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -628,6 +751,9 @@ export function ThreadsPage() {
                   </div>
                 )}
               </div>
+              {editingPostId === null && (
+                <TargetSocialNetworksWidget value={postTargets} onChange={setPostTargets} />
+              )}
               <CardFooter className="px-0">
                 <Button type="submit" isLoading={isCreatingPost} className="w-full sm:w-auto">
                   {editingPostId !== null ? 'Update Post' : 'Create Post'}

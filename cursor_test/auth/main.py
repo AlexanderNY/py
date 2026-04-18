@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from database import init_db, close_db
-from routers import profile, auth, security, groups
+from routers import profile, auth, security, groups, billing
 
 
 @asynccontextmanager
@@ -38,6 +38,7 @@ app.include_router(auth.router)
 app.include_router(profile.router)
 app.include_router(groups.router)
 app.include_router(security.router)
+app.include_router(billing.router)
 
 
 @app.get("/")

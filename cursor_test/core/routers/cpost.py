@@ -36,7 +36,10 @@ async def get_cpost_profile(x_user_id: Optional[str] = Header(None)):
             "tg": False,
             "tw": False,
             "wp": False,
-            "vk": False
+            "vk": False,
+            "threads": False,
+            "dzen": False,
+            "instagram": False,
         }
     }
 
@@ -85,6 +88,7 @@ async def create_manual_post(
             to_vk=data.to_vk,
             to_threads=data.to_threads,
             to_dzen=data.to_dzen,
+            to_instagram=data.to_instagram,
             status=data.status,
             domain=data.domain,
             url=data.url,
@@ -152,6 +156,7 @@ async def update_cpost_post(
         to_vk=data.to_vk,
         to_threads=data.to_threads,
         to_dzen=data.to_dzen,
+        to_instagram=data.to_instagram,
         domain=data.domain,
         url=data.url,
         author=data.author,

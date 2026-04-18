@@ -79,6 +79,11 @@ async def get_all_threads_profiles():
 async def create_threads_post(
     text: str = Form(..., max_length=500),
     image: Optional[UploadFile] = File(None),
+    to_tg: bool = Form(False),
+    to_tw: bool = Form(False),
+    to_wp: bool = Form(False),
+    to_vk: bool = Form(False),
+    to_threads: bool = Form(True),
     x_user_id: Optional[str] = Header(None),
 ):
     """Создает пост для Threads (max 500 символов) с поддержкой изображений. Файлы — в S3 или локально."""
@@ -103,6 +108,11 @@ async def create_threads_post(
             user_id=user_id,
             text=text,
             images=images if images else None,
+            to_tg=to_tg,
+            to_tw=to_tw,
+            to_wp=to_wp,
+            to_vk=to_vk,
+            to_threads=to_threads,
         )
         return post
     except ValueError as e:

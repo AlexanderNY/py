@@ -184,6 +184,17 @@ class S3Storage:
             next_token = resp.get("NextContinuationToken")
         return {"objects": result, "next_continuation_token": next_token}
 
+    async def delete_object(self, key: str) -> None:
+        """Удаляет объект по ключу. Ошибка, если ключ пустой."""
+        key = key.lstrip("/")
+        if not key:
+            raise ValueError("Storage key cannot be empty")
+        aioboto3 = _get_aioboto3()
+        session = aioboto3.Session()
+        async with session.client(**self._client_kwargs()) as client:
+            await client.delete_object(Bucket=self.bucket, Key=key)
+        logger.info("Deleted object s3://%s/%s", self.bucket, key)
+
 
 # Глобальный экземпляр (инициализируется из конфига при первом обращении)
 _storage_instance: Optional[S3Storage] = None

@@ -46,6 +46,11 @@ async def get_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User not found"
             )
+        if user.get("is_blocked"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account has been blocked"
+            )
         
         return user
     except TokenExpiredError:

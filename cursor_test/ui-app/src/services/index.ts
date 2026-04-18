@@ -9,7 +9,6 @@ export { dzenService } from './dzen-service'
 export { instagramService } from './instagram-service'
 export { customURLService } from './custom-url-service'
 export { createPostService } from './create-post-service'
-export { testService } from './test-service'
 export { notificationsService } from './notifications-service'
 
 

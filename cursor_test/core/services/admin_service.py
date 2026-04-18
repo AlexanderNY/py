@@ -119,6 +119,7 @@ class AdminService:
                             "created_count": p.get("created_count", 0),
                             "ready_count": p.get("ready_count", 0),
                             "processing_count": p.get("processing_count", 0),
+                            "status_counts": p.get("status_counts") or {},
                         })
                     pt = data.get("posts_table")
                     if isinstance(pt, dict):

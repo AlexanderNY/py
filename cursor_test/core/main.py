@@ -1,11 +1,13 @@
 from datetime import datetime
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 from database import init_db, close_db
 from models import ALL_TABLES
+from exceptions import QuotaExceededError
 from routers import (
     healthcheck,
     statistics,
@@ -65,6 +67,19 @@ app.include_router(cpost.router)
 app.include_router(notifications.router)
 app.include_router(admin.router)
 app.include_router(threads.router)
+
+
+@app.exception_handler(QuotaExceededError)
+async def quota_exceeded_handler(request: Request, exc: QuotaExceededError) -> JSONResponse:
+    return JSONResponse(
+        status_code=402,
+        content={
+            "detail": "Monthly post quota exceeded for your plan",
+            "resource": exc.resource,
+            "limit": exc.limit,
+            "used": exc.used,
+        },
+    )
 
 
 @app.get("/")

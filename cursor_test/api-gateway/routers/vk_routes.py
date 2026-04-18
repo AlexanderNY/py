@@ -164,3 +164,12 @@ async def vk_oauth_status(
 ) -> Response:
     """GET /vk/oauth/status -> core (JWT)."""
     return await forward_to_core("/vk/oauth/status", request)
+
+
+@router.get("/subscriptions")
+async def vk_subscriptions(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """GET /vk/subscriptions — подписки VK (core, JWT)."""
+    return await forward_to_core("/vk/subscriptions", request)

@@ -19,7 +19,9 @@ from config import settings
 from database import get_db_connection, release_db_connection
 from storage_helper import get_storage
 
+from .selenium_diag import capture_selenium_error_to_s3
 from .selenium_driver import create_chrome_driver
+from .selenium_errors import format_selenium_exception
 from .yandex_auth import YandexAuthError, ensure_dzen_session, login_yandex_passport
 
 logger = logging.getLogger(__name__)
@@ -301,10 +303,16 @@ def _publish_sync(post: Dict[str, Any]) -> tuple[bool, Optional[str], Optional[s
             return True, final_url, None
         return False, None, "Публикация не подтверждена по URL страницы"
     except YandexAuthError as e:
+        capture_selenium_error_to_s3(
+            driver, "publish_post_yandex_auth", user_id=post.get("user_id")
+        )
         return False, None, str(e)
     except Exception as e:
+        capture_selenium_error_to_s3(
+            driver, "publish_post_exception", user_id=post.get("user_id")
+        )
         logger.exception("Dzen publish post %s: %s", post_id, e)
-        return False, None, str(e)
+        return False, None, format_selenium_exception(e)
     finally:
         if driver:
             try:

@@ -4,8 +4,19 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
+import {
+  TargetSocialNetworksWidget,
+  createDefaultTargets,
+  type TargetSocialNetworks,
+} from '@/components/target-social-networks'
 import { dzenService } from '@/services/dzen-service'
-import type { DzenProfile, DzenPostListItem, DzenCollectSource, ScheduleType } from '@/types/dzen'
+import type {
+  DzenProfile,
+  DzenPostListItem,
+  DzenCollectSource,
+  ScheduleType,
+  DzenSubscriptionItem,
+} from '@/types/dzen'
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
@@ -19,7 +30,7 @@ interface DynamicField {
 const DZEN_MAX_LENGTH = 1500
 
 export function DzenPage() {
-  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile'>('create')
+  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'auth'>('create')
 
   const [publishEnabled, setPublishEnabled] = useState(false)
   const [collectEnabled, setCollectEnabled] = useState(false)
@@ -39,10 +50,9 @@ export function DzenPage() {
 
   const [postText, setPostText] = useState('')
   const [postTitle, setPostTitle] = useState('')
-  const [toTg, setToTg] = useState(false)
-  const [toWp, setToWp] = useState(false)
-  const [toVk, setToVk] = useState(false)
-  const [toDzen, setToDzen] = useState(true)
+  const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
+    createDefaultTargets('dzen')
+  )
   const [imageFiles, setImageFiles] = useState<FileList | null>(null)
   const [videoFiles, setVideoFiles] = useState<FileList | null>(null)
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
@@ -54,6 +64,9 @@ export function DzenPage() {
 
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
   const [isSavingProfile, setIsSavingProfile] = useState(false)
+  const [isVerifyingAuth, setIsVerifyingAuth] = useState(false)
+  const [verifySubscriptions, setVerifySubscriptions] = useState<DzenSubscriptionItem[]>([])
+  const [verifyInfoMessage, setVerifyInfoMessage] = useState<string | null>(null)
   const [isCreatingPost, setIsCreatingPost] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -161,10 +174,13 @@ export function DzenPage() {
           await dzenService.createPost({
             text: postText,
             title: postTitle || undefined,
-            to_tg: toTg,
-            to_wp: toWp,
-            to_vk: toVk,
-            to_dzen: toDzen,
+            to_tg: postTargets.tg,
+            to_tw: postTargets.tw,
+            to_wp: postTargets.wp,
+            to_vk: postTargets.vk,
+            to_dzen: postTargets.dzen,
+            to_threads: postTargets.threads,
+            to_instagram: postTargets.instagram,
           })
         }
         setSuccess('Post created successfully')
@@ -248,6 +264,54 @@ export function DzenPage() {
     }
   }
 
+  async function handleSaveCredentials(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    setSuccess('')
+    setVerifyInfoMessage(null)
+    setVerifySubscriptions([])
+    setIsSavingProfile(true)
+    try {
+      await dzenService.saveProfile(buildProfilePayload())
+      setSuccess('Учётные данные и остальные настройки профиля сохранены')
+      await loadProfile()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить профиль')
+    } finally {
+      setIsSavingProfile(false)
+    }
+  }
+
+  async function handleVerifyAuth() {
+    setError('')
+    setSuccess('')
+    setVerifyInfoMessage(null)
+    setIsVerifyingAuth(true)
+    try {
+      const res = await dzenService.verifyYandex()
+      await loadProfile()
+      if (res.ok) {
+        setVerifySubscriptions(res.subscriptions ?? [])
+        setVerifyInfoMessage(res.message ?? null)
+        if (res.subscriptions?.length) {
+          setSuccess('Авторизация подтверждена, список подписок загружен.')
+        } else if (res.message) {
+          setSuccess('Вход выполнен.')
+        } else {
+          setSuccess('Авторизация подтверждена.')
+        }
+      } else {
+        setVerifySubscriptions([])
+        setError(res.error ?? 'Не удалось проверить авторизацию')
+      }
+    } catch (err) {
+      setVerifySubscriptions([])
+      setError(err instanceof Error ? err.message : 'Ошибка проверки авторизации')
+    } finally {
+      setIsVerifyingAuth(false)
+    }
+  }
+
   function addChannelToRead() {
     setChannelsToRead((prev) => [...prev, { id: generateId(), value: '' }])
   }
@@ -297,6 +361,7 @@ export function DzenPage() {
           { key: 'create' as const, label: 'Создать пост' },
           { key: 'posts' as const, label: 'Посты' },
           { key: 'profile' as const, label: 'Настройки' },
+          { key: 'auth' as const, label: 'Авторизация' },
         ].map(({ key, label }) => (
           <button
             key={key}
@@ -373,27 +438,7 @@ export function DzenPage() {
                       className="block w-full text-sm text-[var(--text-secondary)] file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-primary-500 file:text-white"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <span className="text-sm font-medium text-[var(--text-secondary)] block">Публиковать в</span>
-                    <div className="flex flex-wrap gap-4">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={toTg} onChange={(e) => setToTg(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
-                        <span className="text-[var(--text-primary)]">Telegram</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={toWp} onChange={(e) => setToWp(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
-                        <span className="text-[var(--text-primary)]">WordPress</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={toVk} onChange={(e) => setToVk(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
-                        <span className="text-[var(--text-primary)]">VKontakte</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={toDzen} onChange={(e) => setToDzen(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
-                        <span className="text-[var(--text-primary)]">Дзен</span>
-                      </label>
-                    </div>
-                  </div>
+                  <TargetSocialNetworksWidget value={postTargets} onChange={setPostTargets} />
                 </>
               )}
               <CardFooter className="px-0">
@@ -489,7 +534,7 @@ export function DzenPage() {
         <Card className="animate-slide-up">
           <CardHeader>
             <CardTitle>Настройки канала Дзен</CardTitle>
-            <CardDescription>RSS, учётные данные Яндекса для dzen-bot, вычитка каналов, расписание</CardDescription>
+            <CardDescription>RSS, Selenium (студия), вычитка каналов, расписание. Логин Яндекса — во вкладке «Авторизация».</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingProfile ? (
@@ -549,26 +594,9 @@ export function DzenPage() {
                   <p className="text-xs text-[var(--text-muted)]">
                     Публикация в интерфейс Дзена и сбор своей ленты из студии. Режим сбора: только RSS, только Selenium или оба.
                   </p>
-                  {lastAuthError && (
-                    <Alert variant="error" className="text-sm">
-                      Последняя ошибка бота: {lastAuthError}
-                    </Alert>
-                  )}
-                  <Input
-                    label="Логин Яндекс"
-                    value={yandexLogin}
-                    onChange={(e) => setYandexLogin(e.target.value)}
-                    placeholder="email или логин"
-                    autoComplete="username"
-                  />
-                  <Input
-                    label="Пароль Яндекс"
-                    type="password"
-                    value={yandexPassword}
-                    onChange={(e) => setYandexPassword(e.target.value)}
-                    placeholder="Оставьте пустым, чтобы не менять сохранённый"
-                    autoComplete="current-password"
-                  />
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    Логин и пароль Яндекса задаются во вкладке «Авторизация».
+                  </p>
                   <Input
                     label="URL студии / списка публикаций"
                     value={dzenStudioUrl}
@@ -641,6 +669,87 @@ export function DzenPage() {
                   </Button>
                 </CardFooter>
               </form>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'auth' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle>Авторизация Яндекс</CardTitle>
+            <CardDescription>
+              Учётные данные для dzen-bot (Selenium). Пароль с сервера не подставляется — введите заново, чтобы сменить.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingProfile ? (
+              <div className="text-center py-8 text-[var(--text-muted)]">Загрузка...</div>
+            ) : (
+              <div className="space-y-6">
+                {lastAuthError && (
+                  <Alert variant="error" className="text-sm">
+                    Последняя ошибка бота: {lastAuthError}
+                  </Alert>
+                )}
+                <form onSubmit={handleSaveCredentials} className="space-y-4">
+                  <Input
+                    label="Логин Яндекс"
+                    value={yandexLogin}
+                    onChange={(e) => setYandexLogin(e.target.value)}
+                    placeholder="email или логин"
+                    autoComplete="username"
+                  />
+                  <Input
+                    label="Пароль Яндекс"
+                    type="password"
+                    value={yandexPassword}
+                    onChange={(e) => setYandexPassword(e.target.value)}
+                    placeholder="Оставьте пустым в настройках, чтобы не менять сохранённый"
+                    autoComplete="current-password"
+                  />
+                  <div className="flex flex-wrap gap-3">
+                    <Button type="submit" isLoading={isSavingProfile}>
+                      Сохранить учётные данные
+                    </Button>
+                    <Button type="button" variant="secondary" isLoading={isVerifyingAuth} onClick={() => void handleVerifyAuth()}>
+                      Проверить авторизацию
+                    </Button>
+                  </div>
+                </form>
+                {verifyInfoMessage && (
+                  <Alert variant="warning" className="text-sm">
+                    {verifyInfoMessage}
+                  </Alert>
+                )}
+                {verifySubscriptions.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">Подписки (проверка)</h3>
+                    <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-[var(--border-color)] text-left text-[var(--text-secondary)]">
+                            <th className="py-2 px-3 font-medium">Название</th>
+                            <th className="py-2 px-3 font-medium">Ссылка</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {verifySubscriptions.map((s, i) => (
+                            <tr key={`${s.url}-${i}`} className="border-b border-[var(--border-color)] last:border-0">
+                              <td className="py-2 px-3 text-[var(--text-primary)] align-top">{s.title}</td>
+                              <td className="py-2 px-3 align-top">
+                                <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline break-all">
+                                  {s.url}
+                                </a>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>

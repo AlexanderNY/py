@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from typing import Any, Dict, List, Optional
 
 from config import settings
@@ -63,6 +64,47 @@ def _normalize_session(raw: Any) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _new_instagrapi_client() -> Any:
+    """Создаёт instagrapi.Client с прокси и задержками из настроек."""
+    from instagrapi import Client
+
+    proxy_raw = (getattr(settings, "INSTAGRAM_HTTP_PROXY", None) or "").strip()
+    proxy = proxy_raw or None
+    dmin = int(getattr(settings, "INSTAGRAM_DELAY_RANGE_MIN", 1))
+    dmax = int(getattr(settings, "INSTAGRAM_DELAY_RANGE_MAX", 4))
+    if dmin > dmax:
+        dmin, dmax = dmax, dmin
+    delay_range = [dmin, dmax]
+    return Client(proxy=proxy, delay_range=delay_range)
+
+
+def _client_from_settings_dict(settings_dict: Dict[str, Any]) -> Any:
+    """Восстанавливает Client из сохранённого get_settings() (в т.ч. после Selenium)."""
+    cl = _new_instagrapi_client()
+    cl.set_settings(settings_dict)
+    return cl
+
+
+def _is_retryable_instagram_network_error(exc: BaseException) -> bool:
+    """Ошибки сети/TLS, при которых имеет смысл повторить попытку входа."""
+    text = f"{type(exc).__name__}: {exc}".lower()
+    needles = (
+        "ssl",
+        "sslerror",
+        "connection",
+        "eof",
+        "timeout",
+        "reset",
+        "broken pipe",
+        "temporarily",
+        "unavailable",
+        "network",
+        "max retries",
+        "bad handshake",
+    )
+    return any(n in text for n in needles)
+
+
 def _login_sync(
     username: str,
     password: str,
@@ -70,19 +112,36 @@ def _login_sync(
     verification_code: Optional[str],
 ) -> Any:
     """Синхронный логин. Возвращает Client или бросает исключение."""
-    from instagrapi import Client
+    retries = max(1, int(getattr(settings, "INSTAGRAM_LOGIN_RETRIES", 3)))
+    retry_pause = float(getattr(settings, "INSTAGRAM_LOGIN_RETRY_DELAY_SEC", 4.0))
 
-    cl = Client()
-    if session_dict:
+    for attempt in range(retries):
         try:
-            cl.set_settings(session_dict)
+            cl = _new_instagrapi_client()
+            if session_dict:
+                try:
+                    cl.set_settings(session_dict)
+                except Exception as e:
+                    logger.warning("set_settings failed, full login: %s", e)
+            if verification_code:
+                cl.login(username, password, verification_code=verification_code)
+            else:
+                cl.login(username, password)
+            return cl
         except Exception as e:
-            logger.warning("set_settings failed, full login: %s", e)
-    if verification_code:
-        cl.login(username, password, verification_code=verification_code)
-    else:
-        cl.login(username, password)
-    return cl
+            is_last = attempt >= retries - 1
+            if is_last or not _is_retryable_instagram_network_error(e):
+                raise
+            wait = retry_pause * (attempt + 1)
+            logger.warning(
+                "Instagram login attempt %s/%s failed (%s: %s), retry in %.1fs",
+                attempt + 1,
+                retries,
+                type(e).__name__,
+                e,
+                wait,
+            )
+            time.sleep(wait)
 
 
 def _user_id_from_username_sync(cl: Any, username: str) -> Optional[int]:
@@ -205,6 +264,19 @@ class InstagramClient:
         if not self._verification_code and getattr(settings, "INSTAGRAM_VERIFICATION_CODE", None):
             self._verification_code = (settings.INSTAGRAM_VERIFICATION_CODE or "").strip() or None
         self._client: Any = None
+
+    async def load_from_saved_settings(self, settings_dict: Dict[str, Any]) -> bool:
+        """Использовать готовую сессию instagrapi (например после Selenium) без password login."""
+        try:
+            self._client = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: _client_from_settings_dict(settings_dict),
+            )
+            return self._client is not None
+        except Exception as e:
+            logger.error("load_from_saved_settings: %s", e, exc_info=True)
+            await self._auth_error(str(e))
+            return False
 
     async def login(self) -> bool:
         """Логин с учётом сессии из БД/файла. Сохраняет сессию при успехе."""

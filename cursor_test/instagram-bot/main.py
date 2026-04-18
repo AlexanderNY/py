@@ -17,6 +17,14 @@ from services.instagram_session import (
     set_instagram_verification_code,
     fetch_instagram_profile_for_login_test,
     get_instagram_last_auth_error,
+    persist_instagram_session,
+    set_instagram_auth_error,
+)
+from services.selenium_fallback_policy import should_attempt_selenium_fallback
+from services.selenium_instagram_login import attempt_instagram_login_via_selenium
+from services.instagram_cookie_bridge import (
+    client_from_browser_cookies,
+    verify_client_and_get_settings,
 )
 
 
@@ -95,6 +103,9 @@ async def instagram_login_test(
         verification_code=profile.get("instagram_verification_code"),
     )
     ok = await client.login()
+    auth_method = "instagrapi"
+    selenium_status: str | None = None
+
     if ok:
         ig_uid = await client.get_self_user_id()
         following: list = []
@@ -106,11 +117,87 @@ async def instagram_login_test(
             "instagram_user_id": ig_uid,
             "following": following,
             "following_count": len(following),
+            "auth_method": auth_method,
+            "selenium_status": selenium_status,
         }
+
     err = await get_instagram_last_auth_error(user_id)
+
+    if should_attempt_selenium_fallback(err):
+        loop = asyncio.get_event_loop()
+        sel_result = await loop.run_in_executor(
+            None,
+            lambda: attempt_instagram_login_via_selenium(username, password),
+        )
+        selenium_status = sel_result.status
+        if not sel_result.ok or not sel_result.cookie_dict:
+            fail_body: dict = {
+                "ok": False,
+                "message": sel_result.message or err or "Login failed",
+                "auth_method": "instagrapi",
+                "selenium_status": selenium_status,
+            }
+            if sel_result.diagnostic_s3_key:
+                fail_body["selenium_diagnostic_s3_key"] = sel_result.diagnostic_s3_key
+            return fail_body
+        try:
+            ig_cl = client_from_browser_cookies(sel_result.cookie_dict)
+            v_ok, settings_dict, verr = verify_client_and_get_settings(ig_cl)
+            if not v_ok or not settings_dict:
+                fail_detail = verr or "selenium_session_verify_failed"
+                await set_instagram_auth_error(user_id, fail_detail)
+                return {
+                    "ok": False,
+                    "message": fail_detail,
+                    "auth_method": "instagrapi",
+                    "selenium_status": selenium_status,
+                }
+            await persist_instagram_session(user_id, settings_dict)
+            await set_instagram_auth_error(user_id, None)
+            ig_client = InstagramClient(
+                username,
+                password,
+                user_id=user_id,
+                session_dict=settings_dict,
+            )
+            loaded = await ig_client.load_from_saved_settings(settings_dict)
+            if not loaded:
+                await set_instagram_auth_error(user_id, "load_from_saved_settings_failed")
+                return {
+                    "ok": False,
+                    "message": "load_from_saved_settings_failed",
+                    "auth_method": "instagrapi",
+                    "selenium_status": selenium_status,
+                }
+            auth_method = "selenium"
+            ig_uid = await ig_client.get_self_user_id()
+            following: list = []
+            if following_limit > 0:
+                following = await ig_client.get_self_following(min(following_limit, 200))
+            return {
+                "ok": True,
+                "message": "Login successful (Selenium web session → instagrapi)",
+                "instagram_user_id": ig_uid,
+                "following": following,
+                "following_count": len(following),
+                "auth_method": auth_method,
+                "selenium_status": "success",
+            }
+        except Exception as ex:
+            logger.exception("Selenium bridge failed: %s", ex)
+            await set_instagram_auth_error(user_id, f"Selenium bridge: {ex!s}")
+            return {
+                "ok": False,
+                "message": f"Selenium bridge: {ex!s}",
+                "auth_method": "instagrapi",
+                "selenium_status": selenium_status,
+            }
+
     return {
         "ok": False,
         "message": err or "Login failed",
+        "auth_method": auth_method,
+        "selenium_status": selenium_status,
     }
 
 
@@ -122,6 +209,16 @@ async def reload_collect():
         return {"status": "error", "message": "Bot service not initialized"}
     asyncio.create_task(bot_service.run_collect_once())
     return {"status": "ok", "message": "Collect started"}
+
+
+@app.post("/schedule")
+async def schedule_from_scheduler():
+    """Оповещение от scheduler: один проход сбора (как /instagram/reload)."""
+    global bot_service
+    if not bot_service:
+        return {"status": "error", "message": "Bot service not initialized"}
+    asyncio.create_task(bot_service.run_collect_once())
+    return {"status": "ok", "message": "instagram-bot schedule pass started"}
 
 
 async def run_api_server():

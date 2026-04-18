@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     
     # Password Reset Token Expiry (in hours)
     PASSWORD_RESET_TOKEN_EXPIRE_HOURS: int = 1
+
+    # Stripe (опционально; без STRIPE_WEBHOOK_SECRET вебхук отклоняется)
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PRICE_BASIC: str = ""
+    STRIPE_PRICE_PREMIUM: str = ""
+    BILLING_PORTAL_RETURN_URL: str = "http://localhost:5173/profile?tab=billing"
     
     class Config:
         env_file = ".env"

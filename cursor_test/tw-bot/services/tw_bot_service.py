@@ -80,3 +80,9 @@ class TwBotService:
 
     def is_running(self) -> bool:
         return self._running
+
+    async def run_schedule_pass(self) -> dict[str, int]:
+        """Один проход публикации и сбора по запросу scheduler."""
+        published = await self._publisher.publish_ready_posts()
+        collected = await self._collector.run_collect()
+        return {"published": published, "collected": collected}

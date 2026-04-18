@@ -45,7 +45,7 @@ class RateLimiter:
             return RATE_LIMITS_CONFIG[endpoint_path]
         
         # Для путей с параметрами ищем по префиксу
-        # Например, /test/search/123 -> /test/search
+        # Например, /core/schedule/42 -> /core/schedule
         path_parts = endpoint_path.rstrip('/').split('/')
         if len(path_parts) > 1:
             # Пробуем найти конфиг по префиксу (без последнего сегмента)

@@ -8,6 +8,10 @@ import type {
   ProfileUpdate,
   RoleTariffHistoryEntry,
   GroupResponse,
+  BillingPlanDefinition,
+  BillingMeResponse,
+  BillingEventRow,
+  AdminAuditLogEntry,
 } from '@/types'
 
 export const authService = {
@@ -101,18 +105,65 @@ export const authService = {
     }
   },
 
-  async getUsers(): Promise<User[]> {
+  async getUsers(params?: { tariff?: string; subscription_status?: string }): Promise<User[]> {
     try {
-      const response = await apiClient.get<User[]>('/auth/users')
+      const response = await apiClient.get<User[]>('/auth/users', { params })
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))
     }
   },
 
+  async exportUsersCsv(params?: { tariff?: string; subscription_status?: string }): Promise<void> {
+    try {
+      const response = await apiClient.get('/auth/users/export', {
+        params,
+        responseType: 'blob',
+      })
+      const blob = response.data as Blob
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'users_export.csv'
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getAdminAuditLog(limit = 100): Promise<AdminAuditLogEntry[]> {
+    const response = await apiClient.get<AdminAuditLogEntry[]>('/auth/admin/audit-log', {
+      params: { limit },
+    })
+    return response.data
+  },
+
+  async getBillingPlans(): Promise<BillingPlanDefinition[]> {
+    const response = await apiClient.get<{ plans: BillingPlanDefinition[] }>('/auth/billing/plans')
+    return response.data.plans
+  },
+
+  async getBillingMe(): Promise<BillingMeResponse> {
+    const response = await apiClient.get<BillingMeResponse>('/auth/billing/me')
+    return response.data
+  },
+
+  async getBillingEvents(limit = 50): Promise<BillingEventRow[]> {
+    const response = await apiClient.get<BillingEventRow[]>('/auth/billing/events', {
+      params: { limit },
+    })
+    return response.data
+  },
+
+  async createBillingPortalSession(): Promise<string> {
+    const response = await apiClient.post<{ url: string }>('/auth/billing/customer-portal', {})
+    return response.data.url
+  },
+
   async updateUser(
     userId: number,
-    data: { role?: UserRole; tariff?: string }
+    data: { role?: UserRole; tariff?: string; is_blocked?: boolean }
   ): Promise<User> {
     try {
       const response = await apiClient.patch<User>(`/auth/users/${userId}`, data)
@@ -138,19 +189,39 @@ export const authService = {
     return response.data
   },
 
-  async createGroup(name: string): Promise<GroupResponse> {
-    const response = await apiClient.post<GroupResponse>('/auth/groups', { name })
+  async createGroup(name: string, description?: string): Promise<GroupResponse> {
+    const response = await apiClient.post<GroupResponse>('/auth/groups', {
+      name,
+      ...(description?.trim() ? { description: description.trim() } : {}),
+    })
     return response.data
   },
 
-  async updateGroup(groupId: number, name: string): Promise<GroupResponse> {
-    const response = await apiClient.patch<GroupResponse>(`/auth/groups/${groupId}`, { name })
+  async createGroupAsAdmin(name: string, description?: string): Promise<GroupResponse> {
+    const response = await apiClient.post<GroupResponse>('/auth/groups/admin', {
+      name,
+      ...(description?.trim() ? { description: description.trim() } : {}),
+    })
     return response.data
   },
 
-  async addGroupMember(groupId: number, email: string): Promise<GroupResponse> {
-    await apiClient.post(`/auth/groups/${groupId}/members`, { email })
-    return this.getMyGroup()
+  async updateGroup(
+    groupId: number,
+    data: { name?: string; description?: string | null }
+  ): Promise<GroupResponse> {
+    const payload: Record<string, string> = {}
+    if (data.name !== undefined) payload.name = data.name
+    if (data.description !== undefined) payload.description = data.description ?? ''
+    const response = await apiClient.patch<GroupResponse>(`/auth/groups/${groupId}`, payload)
+    return response.data
+  },
+
+  async addGroupMember(
+    groupId: number,
+    email: string,
+    role_in_group: 'manager' | 'author' = 'author'
+  ): Promise<void> {
+    await apiClient.post(`/auth/groups/${groupId}/members`, { email, role_in_group })
   },
 
   async removeGroupMember(groupId: number, userId: number): Promise<void> {

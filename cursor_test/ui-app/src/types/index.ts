@@ -9,6 +9,5 @@ export * from './instagram'
 export * from './custom-url'
 export * from './create-post'
 export * from './threads'
-export * from './test'
 
 

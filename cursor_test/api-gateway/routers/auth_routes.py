@@ -155,6 +155,15 @@ async def get_users(
     return await forward_to_auth("/users", request)
 
 
+@router.get("/users/export")
+async def export_users_csv(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Экспорт пользователей CSV (админ)."""
+    return await forward_to_auth("/users/export", request)
+
+
 @router.patch("/users/{user_id}")
 async def update_user(
     request: Request,
@@ -181,6 +190,54 @@ async def get_role_tariff_history(
     Админ — любой user_id, иначе только свой.
     """
     return await forward_to_auth(f"/users/{user_id}/role-tariff-history", request)
+
+
+@router.get("/admin/audit-log")
+async def admin_audit_log(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Журнал действий администраторов."""
+    return await forward_to_auth("/admin/audit-log", request)
+
+
+@router.get("/billing/plans")
+async def billing_plans(request: Request) -> Response:
+    """Матрица тарифов (публично)."""
+    return await forward_to_auth("/billing/plans", request)
+
+
+@router.get("/billing/me")
+async def billing_me(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Текущий план и подписка."""
+    return await forward_to_auth("/billing/me", request)
+
+
+@router.post("/billing/customer-portal")
+async def billing_customer_portal(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Stripe Customer Portal."""
+    return await forward_to_auth("/billing/customer-portal", request)
+
+
+@router.get("/billing/events")
+async def billing_events(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """События биллинга пользователя."""
+    return await forward_to_auth("/billing/events", request)
+
+
+@router.post("/billing/webhooks/stripe")
+async def stripe_webhook(request: Request) -> Response:
+    """Stripe webhook (без JWT)."""
+    return await forward_to_auth("/billing/webhooks/stripe", request)
 
 
 @router.api_route("/groups/{path:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"])

@@ -13,10 +13,18 @@ from middleware.jwt_validator import get_current_user
 router = APIRouter(tags=["Bot Proxy"])
 
 
-async def _forward_to_bot(service_url: str, path: str, request: Request) -> Response:
+async def _forward_to_bot(
+    service_url: str,
+    path: str,
+    request: Request,
+    *,
+    timeout_seconds: Optional[float] = None,
+) -> Response:
     proxy = get_proxy_service()
     target = proxy.build_target_url(service_url.rstrip("/"), path)
-    return await proxy.forward_request(target, request.method, request)
+    return await proxy.forward_request(
+        target, request.method, request, timeout=timeout_seconds
+    )
 
 
 @router.post("/tg-bot/auth/code")
@@ -102,6 +110,33 @@ async def url_bot_schedule(
     return await _forward_to_bot(settings.URL_BOT_SERVICE_URL, "/schedule", request)
 
 
+@router.post("/tw-bot/schedule")
+async def tw_bot_schedule(
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    """POST /tw-bot/schedule -> tw-bot /schedule. Требует JWT."""
+    return await _forward_to_bot(settings.TW_BOT_SERVICE_URL, "/schedule", request)
+
+
+@router.post("/dzen-bot/schedule")
+async def dzen_bot_schedule(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """POST /dzen-bot/schedule -> dzen-bot /schedule. Требует JWT."""
+    return await _forward_to_bot(settings.DZEN_BOT_SERVICE_URL, "/schedule", request)
+
+
+@router.post("/instagram-bot/schedule")
+async def instagram_bot_schedule(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """POST /instagram-bot/schedule -> instagram-bot /schedule. Требует JWT."""
+    return await _forward_to_bot(settings.INSTAGRAM_BOT_SERVICE_URL, "/schedule", request)
+
+
 @router.post("/url-bot/run")
 async def url_bot_run(request: Request) -> Response:
     """POST /url-bot/run -> url-bot /run. Тестовый запуск скрапинга по запросу (без JWT)."""
@@ -132,6 +167,48 @@ async def dzen_bot_collect_once(
 ) -> Response:
     """POST /dzen-bot/collect-once -> dzen-bot. Требует JWT."""
     return await _forward_to_bot(settings.DZEN_BOT_SERVICE_URL, "/dzen-bot/collect-once", request)
+
+
+@router.post("/dzen-bot/verify-yandex")
+async def dzen_bot_verify_yandex(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """POST /dzen-bot/verify-yandex -> dzen-bot: Selenium-вход и список подписок. Долгий таймаут."""
+    return await _forward_to_bot(
+        settings.DZEN_BOT_SERVICE_URL,
+        "/dzen-bot/verify-yandex",
+        request,
+        timeout_seconds=180.0,
+    )
+
+
+@router.post("/tw-bot/verify-selenium")
+async def tw_bot_verify_selenium(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """POST /tw-bot/verify-selenium -> tw-bot: Selenium-вход и список following. Долгий таймаут."""
+    return await _forward_to_bot(
+        settings.TW_BOT_SERVICE_URL,
+        "/tw/verify-selenium",
+        request,
+        timeout_seconds=300.0,
+    )
+
+
+@router.post("/vk-bot/verify-selenium")
+async def vk_bot_verify_selenium(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """POST /vk-bot/verify-selenium -> vk-bot: резервный Selenium-вход и веб-список сообществ. Долгий таймаут."""
+    return await _forward_to_bot(
+        settings.VK_BOT_SERVICE_URL,
+        "/vk-bot/verify-selenium",
+        request,
+        timeout_seconds=240.0,
+    )
 
 
 # ==================== Threads Bot ====================
@@ -195,10 +272,150 @@ async def threads_bot_schedule(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
-    """POST /th-bot/schedule -> th-bot."""
+    """POST /threads-bot/schedule -> th-bot /threads/schedule."""
     return await _forward_to_bot(
         settings.THREADS_BOT_SERVICE_URL,
-        "/schedule",
+        "/threads/schedule",
+        request,
+    )
+
+
+@router.post("/threads-bot/selenium/attempt")
+async def threads_bot_selenium_attempt(
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    """POST -> th-bot /threads/selenium/attempt (диагностический веб-вход Meta, долгий таймаут)."""
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        "/threads/selenium/attempt",
+        request,
+        timeout_seconds=180.0,
+    )
+
+
+@router.get("/threads-bot/selenium/session/last")
+async def threads_bot_selenium_session_last(
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        "/threads/selenium/session/last",
+        request,
+    )
+
+
+@router.get("/threads-bot/selenium/session/{session_id}")
+async def threads_bot_selenium_session_get(
+    session_id: int,
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        f"/threads/selenium/session/{session_id}",
+        request,
+    )
+
+
+# Алиасы /th-bot/... (в jwt_validator и лимитах); то же проксирование, что и /threads-bot/...
+@router.get("/th-bot/auth/status/{user_id}")
+async def th_bot_auth_status(
+    user_id: int,
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        f"/threads/auth/status/{user_id}",
+        request,
+    )
+
+
+@router.get("/th-bot/auth/verify/{user_id}")
+async def th_bot_auth_verify(
+    user_id: int,
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        f"/threads/auth/verify/{user_id}",
+        request,
+    )
+
+
+@router.get("/th-bot/auth/url")
+async def th_bot_auth_url(
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        "/threads/auth/url",
+        request,
+    )
+
+
+@router.post("/th-bot/reload")
+async def th_bot_reload(
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        "/threads/reload",
+        request,
+    )
+
+
+@router.post("/th-bot/schedule")
+async def th_bot_schedule(
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        "/threads/schedule",
+        request,
+    )
+
+
+@router.post("/th-bot/selenium/attempt")
+async def th_bot_selenium_attempt(
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        "/threads/selenium/attempt",
+        request,
+        timeout_seconds=180.0,
+    )
+
+
+@router.get("/th-bot/selenium/session/last")
+async def th_bot_selenium_session_last(
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        "/threads/selenium/session/last",
+        request,
+    )
+
+
+@router.get("/th-bot/selenium/session/{session_id}")
+async def th_bot_selenium_session_get(
+    session_id: int,
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    return await _forward_to_bot(
+        settings.THREADS_BOT_SERVICE_URL,
+        f"/threads/selenium/session/{session_id}",
         request,
     )
 
@@ -228,5 +445,13 @@ async def instagram_bot_login_test(
     request: Request,
     current_user: dict = Depends(get_current_user),
 ) -> Response:
-    """POST /instagram-bot/login-test -> instagram-bot /instagram/login-test (проверка входа)."""
-    return await _forward_to_bot(settings.INSTAGRAM_BOT_SERVICE_URL, "/instagram/login-test", request)
+    """POST /instagram-bot/login-test -> instagram-bot /instagram/login-test (проверка входа).
+
+    Долгий таймаут: instagrapi + опционально Selenium fallback и загрузка подписок.
+    """
+    return await _forward_to_bot(
+        settings.INSTAGRAM_BOT_SERVICE_URL,
+        "/instagram/login-test",
+        request,
+        timeout_seconds=300.0,
+    )

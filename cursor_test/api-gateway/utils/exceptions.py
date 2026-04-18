@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -26,10 +28,13 @@ class TokenValidationException(GatewayException):
 
 
 class ServiceUnavailableException(GatewayException):
-    """Целевой сервис недоступен."""
-    
-    def __init__(self, service_name: str = "unknown"):
-        message = f"Service '{service_name}' is currently unavailable."
+    """Целевой сервис недоступен (нет соединения, таймаут и т.д.)."""
+
+    def __init__(self, service_name: str = "unknown", detail: Optional[str] = None):
+        if detail:
+            message = detail
+        else:
+            message = f"Service '{service_name}' is currently unavailable."
         super().__init__(message=message, status_code=503)
 
 

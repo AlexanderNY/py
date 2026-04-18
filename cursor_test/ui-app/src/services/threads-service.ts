@@ -6,7 +6,10 @@ import type {
   ThreadsPostFull,
   ThreadsAuthStatus,
   ThreadsAuthVerify,
+  ThreadsSeleniumAttemptResult,
+  ThreadsSeleniumSessionRow,
 } from '@/types/threads'
+import type { TargetSocialNetworks } from '@/components/target-social-networks'
 
 export const threadsService = {
   async getProfile(): Promise<ThreadsConfig | null> {
@@ -25,11 +28,18 @@ export const threadsService = {
     await apiClient.post('/threads/profile', config)
   },
 
-  async createPost(text: string, imageFile?: File): Promise<void> {
+  async createPost(text: string, imageFile?: File, targets?: TargetSocialNetworks): Promise<void> {
     const formData = new FormData()
     formData.append('text', text)
     if (imageFile) {
       formData.append('image', imageFile)
+    }
+    if (targets) {
+      formData.append('to_tg', String(targets.tg))
+      formData.append('to_tw', String(targets.tw))
+      formData.append('to_wp', String(targets.wp))
+      formData.append('to_vk', String(targets.vk))
+      formData.append('to_threads', String(targets.threads))
     }
     await apiClient.post('/threads/post', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -100,5 +110,21 @@ export const threadsService = {
     } catch (error) {
       console.warn('th-bot reload failed (non-critical):', getErrorMessage(error))
     }
+  },
+
+  async seleniumAttempt(username: string, password: string): Promise<ThreadsSeleniumAttemptResult> {
+    const response = await apiClient.post<ThreadsSeleniumAttemptResult>(
+      '/threads-bot/selenium/attempt',
+      { username, password },
+      { timeout: 180_000 }
+    )
+    return response.data
+  },
+
+  async getSeleniumLastSession(): Promise<{ user_id: number; session: ThreadsSeleniumSessionRow | null }> {
+    const response = await apiClient.get<{ user_id: number; session: ThreadsSeleniumSessionRow | null }>(
+      '/threads-bot/selenium/session/last'
+    )
+    return response.data
   },
 }

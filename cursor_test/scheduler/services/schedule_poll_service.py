@@ -14,7 +14,16 @@ from database import get_db_connection
 
 logger = logging.getLogger(__name__)
 
-BOT_PLATFORMS = ["tg", "wp", "vk", "url", "threads"]
+BOT_PLATFORMS = [
+    "tg",
+    "wp",
+    "vk",
+    "tw",
+    "url",
+    "threads",
+    "dzen",
+    "instagram",
+]
 
 # Для /status: время последнего успешного цикла опроса
 _last_poll_at: Optional[Any] = None
@@ -64,13 +73,7 @@ async def _fetch_profiles_parallel(token: str) -> dict[str, list[dict[str, Any]]
         token: JWT токен авторизации
         
     Returns:
-        Словарь с данными профилей по платформам:
-        {
-            "wp": [...],
-            "tg": [...],
-            "tw": [...],
-            "vk": [...]
-        }
+        Словарь с данными профилей по платформам (wp, tg, tw, vk, threads, dzen, instagram).
     """
     base = settings.API_GATEWAY_URL.rstrip("/")
     headers = {"Authorization": f"Bearer {token}"}
@@ -97,6 +100,8 @@ async def _fetch_profiles_parallel(token: str) -> dict[str, list[dict[str, Any]]
         fetch_platform_profiles("tw"),
         fetch_platform_profiles("vk"),
         fetch_platform_profiles("threads"),
+        fetch_platform_profiles("dzen"),
+        fetch_platform_profiles("instagram"),
         return_exceptions=True
     )
     
@@ -235,12 +240,19 @@ async def _store_snapshot(schedules: list[dict[str, Any]]) -> None:
             cur.close()
 
 
+def _bot_schedule_gateway_path(platform: str) -> str:
+    """Путь на API Gateway для POST оповещения бота о расписании."""
+    if platform == "threads":
+        return "/threads-bot/schedule"
+    return f"/{platform}-bot/schedule"
+
+
 async def _notify_bot(
     platform: str, schedules: list[dict[str, Any]], token: str
 ) -> dict[str, Any] | None:
     """Оповещает бота. Возвращает JSON ответа при успехе (для url — details для сохранения в Core)."""
     base = settings.API_GATEWAY_URL.rstrip("/")
-    url = f"{base}/{platform}-bot/schedule"
+    url = f"{base}{_bot_schedule_gateway_path(platform)}"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     payload = {"schedules": schedules}
     async with httpx.AsyncClient(timeout=60.0) as client:

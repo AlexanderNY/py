@@ -7,6 +7,11 @@ import { PageHeader, PageContainer } from '@/components/ui'
 import { TipTapEditor } from '@/components/ui/tiptap-editor'
 import { createPostService } from '@/services/create-post-service'
 import { coreService } from '@/services/core-service'
+import {
+  TargetSocialNetworksWidget,
+  EMPTY_TARGET_SOCIAL_NETWORKS,
+  type TargetSocialNetworks,
+} from '@/components/target-social-networks'
 import type { CpostPostListItem } from '@/types/create-post'
 import type { PostRow } from '@/types/core'
 
@@ -73,12 +78,8 @@ type TabId = 'create' | 'posts' | 'posts-review' | 'profile'
 export function CreatePostPage() {
   const [activeTab, setActiveTab] = useState<TabId>('create')
 
-  const [socialNetworks, setSocialNetworks] = useState({
-    tg: false,
-    tw: false,
-    vk: false,
-    wp: false,
-    threads: false,
+  const [socialNetworks, setSocialNetworks] = useState<TargetSocialNetworks>({
+    ...EMPTY_TARGET_SOCIAL_NETWORKS,
   })
   const [postTitle, setPostTitle] = useState('')
   const [postContent, setPostContent] = useState('')
@@ -119,10 +120,14 @@ export function CreatePostPage() {
         const profile = await createPostService.getProfile()
         if (profile) {
           setSocialNetworks({
+            ...EMPTY_TARGET_SOCIAL_NETWORKS,
             tg: profile.social_networks.tg ?? false,
             tw: profile.social_networks.tw ?? false,
             vk: profile.social_networks.vk ?? false,
             wp: profile.social_networks.wp ?? false,
+            threads: profile.social_networks.threads ?? false,
+            instagram: profile.social_networks.instagram ?? false,
+            dzen: profile.social_networks.dzen ?? false,
           })
         }
       } catch (err) {
@@ -178,11 +183,14 @@ export function CreatePostPage() {
       setIsAd(post.is_ad ?? false)
       setStatus(post.status ?? 'collected')
       setSocialNetworks({
+        ...EMPTY_TARGET_SOCIAL_NETWORKS,
         tg: post.to_tg ?? false,
         tw: post.to_tw ?? false,
         vk: post.to_vk ?? false,
         wp: post.to_wp ?? false,
         threads: post.to_threads ?? false,
+        instagram: post.to_instagram ?? false,
+        dzen: post.to_dzen ?? false,
       })
       setEditingPostId(postId)
       setActiveTab('create')
@@ -245,6 +253,8 @@ export function CreatePostPage() {
     { key: 'to_wp', label: 'To WP' },
     { key: 'to_vk', label: 'To VK' },
     { key: 'to_threads', label: 'To Threads' },
+    { key: 'to_dzen', label: 'To Dzen' },
+    { key: 'to_instagram', label: 'To Instagram' },
     { key: 'created_at', label: 'Created At' },
     { key: 'updated_at', label: 'Updated At' },
     { key: 'source_platform', label: 'Source Platform' },
@@ -270,13 +280,6 @@ export function CreatePostPage() {
       return v ? <span className="text-emerald-400">true</span> : <span className="text-[var(--text-muted)]">false</span>
     }
     return <span className="text-[var(--text-secondary)]">{String(v)}</span>
-  }
-
-  function toggleSocialNetwork(network: keyof typeof socialNetworks) {
-    setSocialNetworks(prev => ({
-      ...prev,
-      [network]: !prev[network],
-    }))
   }
 
   async function handleSaveProfile(e: FormEvent) {
@@ -348,6 +351,8 @@ export function CreatePostPage() {
       to_wp: socialNetworks.wp,
       to_vk: socialNetworks.vk,
       to_threads: socialNetworks.threads,
+      to_dzen: socialNetworks.dzen,
+      to_instagram: socialNetworks.instagram,
     }
 
     try {
@@ -405,12 +410,23 @@ export function CreatePostPage() {
                   to_wp: socialNetworks.wp,
                   to_vk: socialNetworks.vk,
                   to_threads: socialNetworks.threads,
+                  to_dzen: socialNetworks.dzen,
+                  to_instagram: socialNetworks.instagram,
                 }
               : p
           )
         )
       } else {
-        const { to_tg: _tg, to_tw: _tw, to_wp: _wp, to_vk: _vk, to_threads: _threads, ...createFields } = basePayload
+        const {
+          to_tg: _tg,
+          to_tw: _tw,
+          to_wp: _wp,
+          to_vk: _vk,
+          to_threads: _threads,
+          to_dzen: _dz,
+          to_instagram: _ig,
+          ...createFields
+        } = basePayload
         await createPostService.createPost({
           social_networks: socialNetworks,
           ...createFields,
@@ -750,41 +766,7 @@ export function CreatePostPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">
-                  Target social networks
-                </label>
-                <div className="grid grid-cols-2 gap-4">
-                  {(['tg', 'tw', 'vk', 'wp', 'threads'] as const).map((network) => (
-                    <label
-                      key={network}
-                      className="flex items-center gap-3 cursor-pointer group p-4 rounded-xl border border-[var(--border-color)] hover:border-primary-500/50 transition-colors"
-                    >
-                      <div className="relative">
-                        <input
-                          type="checkbox"
-                          checked={socialNetworks[network]}
-                          onChange={() => toggleSocialNetwork(network)}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                        <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                      </div>
-                      <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors font-medium">
-                        {network === 'tg'
-                          ? 'Telegram'
-                          : network === 'tw'
-                            ? 'Twitter'
-                            : network === 'vk'
-                              ? 'VKontakte'
-                              : network === 'wp'
-                                ? 'WordPress'
-                                : 'Threads'}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+              <TargetSocialNetworksWidget value={socialNetworks} onChange={setSocialNetworks} />
 
               <CardFooter className="px-0">
                 <Button type="submit" isLoading={isCreating} className="w-full sm:w-auto">
@@ -902,6 +884,8 @@ export function CreatePostPage() {
                       <th className="py-2 pr-2 font-medium">to_wp</th>
                       <th className="py-2 pr-2 font-medium">to_vk</th>
                       <th className="py-2 pr-2 font-medium">to_threads</th>
+                      <th className="py-2 pr-2 font-medium">to_dzen</th>
+                      <th className="py-2 pr-2 font-medium">to_instagram</th>
                       <th className="py-2 pr-2 font-medium">created_at</th>
                       <th className="py-2 pr-2 font-medium">updated_at</th>
                       <th className="py-2 pr-2 font-medium w-32 text-right">Actions</th>
@@ -955,6 +939,8 @@ export function CreatePostPage() {
                         <td className="py-2 pr-2">{cellValue(post.to_wp)}</td>
                         <td className="py-2 pr-2">{cellValue(post.to_vk)}</td>
                         <td className="py-2 pr-2">{cellValue(post.to_threads)}</td>
+                        <td className="py-2 pr-2">{cellValue(post.to_dzen)}</td>
+                        <td className="py-2 pr-2">{cellValue(post.to_instagram)}</td>
                         <td className="py-2 pr-2 text-[var(--text-muted)]">
                           {formatDate(post.created_at)}
                         </td>
@@ -1069,42 +1055,23 @@ export function CreatePostPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSaveProfile} className="space-y-6">
-              <div className="space-y-4">
-                <label className="text-sm font-medium text-[var(--text-secondary)] block">
-                  Target social networks
-                </label>
-                <div className="grid grid-cols-2 gap-4">
-                  {(['tg', 'tw', 'vk', 'wp', 'threads'] as const).map((network) => (
-                    <label
-                      key={network}
-                      className="flex items-center gap-3 cursor-pointer group p-4 rounded-xl border border-[var(--border-color)] hover:border-primary-500/50 transition-colors"
-                    >
-                      <div className="relative">
-                        <input
-                          type="checkbox"
-                          checked={socialNetworks[network]}
-                          onChange={() => toggleSocialNetwork(network)}
-                          className="sr-only peer"
-                          disabled={isLoadingProfile}
-                        />
-                        <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                        <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                      </div>
-                      <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors font-medium">
-                        {network === 'tg'
-                          ? 'Telegram'
-                          : network === 'tw'
-                            ? 'Twitter'
-                            : network === 'vk'
-                              ? 'VKontakte'
-                              : network === 'wp'
-                                ? 'WordPress'
-                                : 'Threads'}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+              <TargetSocialNetworksWidget
+                value={socialNetworks}
+                onChange={setSocialNetworks}
+                disabled={
+                  isLoadingProfile
+                    ? {
+                        tg: true,
+                        vk: true,
+                        instagram: true,
+                        threads: true,
+                        wp: true,
+                        dzen: true,
+                        tw: true,
+                      }
+                    : {}
+                }
+              />
               <CardFooter className="px-0">
                 <Button type="submit" className="w-full">
                   Save Profile Settings

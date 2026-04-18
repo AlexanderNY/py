@@ -6,6 +6,11 @@ import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import { TipTapEditor } from '@/components/ui/tiptap-editor'
 import { wordpressService } from '@/services/wordpress-service'
+import {
+  TargetSocialNetworksWidget,
+  createDefaultTargets,
+  type TargetSocialNetworks,
+} from '@/components/target-social-networks'
 import type { WordPressPost, WordPressPostListItem, PostStatus, PublishScheduleType } from '@/types/wordpress'
 
 function generateId(): string {
@@ -69,6 +74,9 @@ export function WordPressPage() {
   const [postSlug, setPostSlug] = useState('')
   const [featuredMedia, setFeaturedMedia] = useState('')
   const [postMeta, setPostMeta] = useState('')
+  const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
+    createDefaultTargets('wp')
+  )
 
   // Posts list state
   const [posts, setPosts] = useState<WordPressPostListItem[]>([])
@@ -370,6 +378,13 @@ export function WordPressPage() {
     }
 
     const post: WordPressPost = {
+      to_tg: postTargets.tg,
+      to_tw: postTargets.tw,
+      to_wp: postTargets.wp,
+      to_vk: postTargets.vk,
+      to_threads: postTargets.threads,
+      to_dzen: postTargets.dzen,
+      to_instagram: postTargets.instagram,
       post: {
         title: postTitle,
         content: postContent,
@@ -380,7 +395,7 @@ export function WordPressPage() {
         slug: postSlug || undefined,
         featured_media: featuredMedia ? Number(featuredMedia) : undefined,
         meta: Object.keys(metaObj).length > 0 ? metaObj : undefined,
-      }
+      },
     }
 
     try {
@@ -723,6 +738,10 @@ export function WordPressPage() {
                   Enter JSON object for additional post metadata
                 </p>
               </div>
+
+              {editingPostId === null && (
+                <TargetSocialNetworksWidget value={postTargets} onChange={setPostTargets} />
+              )}
 
               <CardFooter className="px-0">
                 {editingPostId !== null ? (

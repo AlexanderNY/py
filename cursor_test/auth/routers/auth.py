@@ -92,14 +92,20 @@ async def refresh_token(request: RefreshTokenRequest) -> TokenResponse:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User not found"
             )
+        if user.get("is_blocked"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Account has been blocked"
+            )
         
         user_role = user.get("role", "guest")
+        blocked = bool(user.get("is_blocked", False))
         
         # Отзыв старого refresh токена
         await revoke_refresh_token(refresh_token)
         
         # Создание новой пары токенов с актуальной ролью
-        new_access_token = create_access_token(user_id, user_role)
+        new_access_token = create_access_token(user_id, user_role, is_blocked=blocked)
         new_refresh_token = create_refresh_token(user_id, user_role)
         
         # Сохранение нового refresh токена

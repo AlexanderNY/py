@@ -6,6 +6,8 @@ import type {
   VKontaktePostListItem,
   VKontaktePostFull,
   VKAuthStatus,
+  VKSubscriptionsResult,
+  VKSeleniumVerifyResponse,
 } from '@/types/vkontakte'
 
 export const vkontakteService = {
@@ -78,6 +80,22 @@ export const vkontakteService = {
   /** Статус сохранённого пользовательского OAuth-токена VK. */
   async getAuthStatus(_userId?: number): Promise<VKAuthStatus> {
     const response = await apiClient.get<VKAuthStatus>('/vk/oauth/status')
+    return response.data
+  },
+
+  /** Подписки на сообщества (OAuth) или проверка групп по токену сообщества (groups.getById). */
+  async getSubscriptions(): Promise<VKSubscriptionsResult> {
+    const response = await apiClient.get<VKSubscriptionsResult>('/vk/subscriptions')
+    return response.data
+  },
+
+  /** Резервный вход: Selenium + веб-парсинг сообществ (vk-bot). Пароль не хранится на клиенте после запроса. */
+  async verifySelenium(login: string, password: string): Promise<VKSeleniumVerifyResponse> {
+    const response = await apiClient.post<VKSeleniumVerifyResponse>(
+      '/vk-bot/verify-selenium',
+      { login, password },
+      { timeout: 240_000 }
+    )
     return response.data
   },
 }

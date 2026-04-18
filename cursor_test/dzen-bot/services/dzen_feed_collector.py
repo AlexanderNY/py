@@ -13,7 +13,9 @@ from selenium.webdriver.common.by import By
 from config import settings
 from database import get_db_connection, release_db_connection
 
+from .selenium_diag import capture_selenium_error_to_s3
 from .selenium_driver import create_chrome_driver
+from .selenium_errors import format_selenium_exception
 from .yandex_auth import YandexAuthError, login_yandex_passport
 
 logger = logging.getLogger(__name__)
@@ -128,10 +130,14 @@ def _collect_links_sync(profile: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], 
         ]
         return items, None
     except YandexAuthError as e:
+        uid = profile.get("user_id")
+        capture_selenium_error_to_s3(driver, "feed_collect_yandex_auth", user_id=uid)
         return [], str(e)
     except Exception as e:
+        uid = profile.get("user_id")
+        capture_selenium_error_to_s3(driver, "feed_collect_exception", user_id=uid)
         logger.exception("Dzen feed collect: %s", e)
-        return [], str(e)
+        return [], format_selenium_exception(e)
     finally:
         if driver:
             try:

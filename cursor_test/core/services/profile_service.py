@@ -937,6 +937,40 @@ class ProfileService:
         finally:
             await release_db_connection(conn)
 
+    async def get_vk_profile_tokens_raw(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Внутренний доступ к токенам VK без маскирования (только серверные вызовы VK API)."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT access_token, user_access_token, vk_user_id, group_to_post, groups_to_read
+                    FROM vk_profiles WHERE user_id = %s
+                    """,
+                    (user_id,),
+                )
+                row = await cur.fetchone()
+                if not row:
+                    return None
+                access_token, user_access_token, vk_user_id, group_to_post, groups_to_read = row
+                gr = groups_to_read
+                if isinstance(gr, str):
+                    try:
+                        gr = json.loads(gr)
+                    except (json.JSONDecodeError, TypeError):
+                        gr = []
+                if not isinstance(gr, list):
+                    gr = []
+                return {
+                    "access_token": access_token,
+                    "user_access_token": user_access_token,
+                    "vk_user_id": vk_user_id,
+                    "group_to_post": group_to_post,
+                    "groups_to_read": gr,
+                }
+        finally:
+            await release_db_connection(conn)
+
     async def save_vk_oauth_tokens(
         self,
         user_id: int,
@@ -1180,7 +1214,20 @@ class ProfileService:
                     """,
                     (
                         user_id,
-                        json.dumps(data.get("default_platforms", {"tg": False, "tw": False, "wp": False, "vk": False, "threads": False})),
+                        json.dumps(
+                            data.get(
+                                "default_platforms",
+                                {
+                                    "tg": False,
+                                    "tw": False,
+                                    "wp": False,
+                                    "vk": False,
+                                    "threads": False,
+                                    "dzen": False,
+                                    "instagram": False,
+                                },
+                            )
+                        ),
                     )
                 )
                 row = await cur.fetchone()

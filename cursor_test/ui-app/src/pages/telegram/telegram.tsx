@@ -9,6 +9,11 @@ import { SkeletonCard } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui'
 import { apiClient } from '@/services/api-client'
 import { telegramService, type TgAuthStatus } from '@/services/telegram-service'
+import {
+  TargetSocialNetworksWidget,
+  createDefaultTargets,
+  type TargetSocialNetworks,
+} from '@/components/target-social-networks'
 import { useAuth } from '@/contexts/auth-context'
 import type { TelegramConfig, TelegramPostListItem, TimeInterval, PublishScheduleType } from '@/types/telegram'
 
@@ -70,6 +75,9 @@ export function TelegramPage() {
 
   // Post state
   const [postText, setPostText] = useState('')
+  const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
+    createDefaultTargets('tg')
+  )
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
 
@@ -276,7 +284,7 @@ export function TelegramPage() {
         setImagePreview(null)
         loadPosts()
       } else {
-        await telegramService.createPost(postText, imageFile || undefined)
+        await telegramService.createPost(postText, imageFile || undefined, postTargets)
         setSuccess('Post created successfully')
         setPostText('')
         setImageFile(null)
@@ -580,6 +588,60 @@ export function TelegramPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {isLoadingProfile ? (
+              <div className="p-4 rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)] text-center text-sm text-[var(--text-muted)]">
+                Загрузка настроек профиля...
+              </div>
+            ) : (
+              <form onSubmit={handleSaveProfile} className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-amber-500/25">
+                <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                  Настройки профиля Telegram
+                </h3>
+                <Input
+                  label="API ID"
+                  type="text"
+                  value={apiId}
+                  onChange={(e) => setApiId(e.target.value)}
+                  placeholder="e.g., 0157230167"
+                />
+                <Input
+                  label="API Hash"
+                  type="text"
+                  value={apiHash}
+                  onChange={(e) => setApiHash(e.target.value)}
+                  placeholder="e.g., afd10c198eaa94bc4fe3f82415eb46ee67"
+                />
+                <Input
+                  label="Логин в Telegram"
+                  type="text"
+                  value={telegramUsername}
+                  onChange={(e) => setTelegramUsername(e.target.value)}
+                  placeholder="e.g., @username"
+                />
+                <Input
+                  label="Номер телефона для авторизации"
+                  type="text"
+                  value={authPhoneNumber}
+                  onChange={(e) => setAuthPhoneNumber(e.target.value)}
+                  placeholder="e.g., +79001234567"
+                />
+                <p className="text-xs text-[var(--text-muted)]">
+                  Получите API credentials на my.telegram.org. Номер телефона нужен для первой авторизации в Telegram.
+                </p>
+                <div className="pt-2">
+                  <Button type="submit" isLoading={isSavingProfile} className="w-full sm:w-auto">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Сохранить настройки профиля
+                  </Button>
+                </div>
+              </form>
+            )}
+
             {/* Status indicator */}
             <div className="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-tertiary)]">
               <div className={`w-3 h-3 rounded-full ${
@@ -667,8 +729,8 @@ export function TelegramPage() {
             {authStatus?.auth_state === 'failed' && (
               <div className="p-4 rounded-lg border border-red-500/30 bg-red-500/5">
                 <p className="text-sm text-red-400">
-                  Авторизация не удалась. Обновите настройки профиля Telegram (API ID, API Hash, номер телефона)
-                  и сохраните — код будет запрошен автоматически.
+                  Авторизация не удалась. Укажите API ID, API Hash и номер телефона в блоке «Настройки профиля Telegram»
+                  выше и сохраните — код будет запрошен автоматически.
                 </p>
               </div>
             )}
@@ -687,10 +749,55 @@ export function TelegramPage() {
               <div className="p-4 rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)]">
                 <p className="text-sm text-[var(--text-muted)]">
                   Статус авторизации загружается... Если статус не появляется,
-                  проверьте что в настройках профиля указаны API ID, API Hash и номер телефона.
+                  проверьте, что в блоке выше указаны API ID, API Hash и номер телефона.
                 </p>
               </div>
             )}
+
+            <div className="p-4 rounded-lg border border-amber-500/20 bg-[var(--bg-tertiary)] space-y-3">
+              <h3 className="text-sm font-medium text-[var(--text-secondary)]">Доступные каналы</h3>
+              <p className="text-xs text-[var(--text-muted)]">
+                После успешной авторизации можно проверить список каналов, к которым у аккаунта есть доступ.
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={async () => {
+                    if (!user?.id) return
+                    setChannelsError('')
+                    setAvailableChannels([])
+                    setIsCheckingChannels(true)
+                    try {
+                      const list = await telegramService.getAvailableChannels(user.id)
+                      setAvailableChannels(list)
+                    } catch (err) {
+                      setChannelsError(err instanceof Error ? err.message : 'Ошибка проверки каналов')
+                    } finally {
+                      setIsCheckingChannels(false)
+                    }
+                  }}
+                  disabled={isCheckingChannels}
+                >
+                  {isCheckingChannels ? 'Проверка...' : 'Проверить доступные каналы'}
+                </Button>
+                {channelsError && (
+                  <span className="text-sm text-red-400">{channelsError}</span>
+                )}
+              </div>
+              {availableChannels.length > 0 && (
+                <div className="pt-2 border-t border-[var(--border-color)]">
+                  <p className="text-sm font-medium text-[var(--text-secondary)] mb-2">Доступные каналы (id : название):</p>
+                  <ul className="text-sm text-[var(--text-primary)] space-y-1 max-h-48 overflow-y-auto bg-[var(--bg-secondary)] rounded-lg p-3">
+                    {availableChannels.map((ch) => (
+                      <li key={ch.id} className="font-mono">
+                        {ch.id} : {ch.title}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -766,6 +873,10 @@ export function TelegramPage() {
                   </div>
                 )}
               </div>
+
+              {editingPostId === null && (
+                <TargetSocialNetworksWidget value={postTargets} onChange={setPostTargets} />
+              )}
 
               <CardFooter className="px-0">
                 {editingPostId !== null ? (
@@ -911,85 +1022,6 @@ export function TelegramPage() {
               <div className="text-center py-8 text-[var(--text-muted)]">Loading profile...</div>
             ) : (
               <form onSubmit={handleSaveProfile} className="space-y-8">
-                {/* Настройки профиля (всегда наверху, без скрытия) */}
-                <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                    Настройки профиля Telegram
-                  </h3>
-                  <Input
-                    label="API ID"
-                    type="text"
-                    value={apiId}
-                    onChange={(e) => setApiId(e.target.value)}
-                    placeholder="e.g., 0157230167"
-                  />
-                  <Input
-                    label="API Hash"
-                    type="text"
-                    value={apiHash}
-                    onChange={(e) => setApiHash(e.target.value)}
-                    placeholder="e.g., afd10c198eaa94bc4fe3f82415eb46ee67"
-                  />
-                  <Input
-                    label="Логин в Telegram"
-                    type="text"
-                    value={telegramUsername}
-                    onChange={(e) => setTelegramUsername(e.target.value)}
-                    placeholder="e.g., @username"
-                  />
-                  <Input
-                    label="Номер телефона для авторизации"
-                    type="text"
-                    value={authPhoneNumber}
-                    onChange={(e) => setAuthPhoneNumber(e.target.value)}
-                    placeholder="e.g., +79001234567"
-                  />
-                  <p className="text-xs text-[var(--text-muted)]">
-                    Получите API credentials на my.telegram.org. Номер телефона нужен для первой авторизации в Telegram.
-                  </p>
-                  <div className="flex flex-wrap items-center gap-3 pt-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={async () => {
-                        if (!user?.id) return
-                        setChannelsError('')
-                        setAvailableChannels([])
-                        setIsCheckingChannels(true)
-                        try {
-                          const list = await telegramService.getAvailableChannels(user.id)
-                          setAvailableChannels(list)
-                        } catch (err) {
-                          setChannelsError(err instanceof Error ? err.message : 'Ошибка проверки каналов')
-                        } finally {
-                          setIsCheckingChannels(false)
-                        }
-                      }}
-                      disabled={isCheckingChannels}
-                    >
-                      {isCheckingChannels ? 'Проверка...' : 'Проверить доступные каналы'}
-                    </Button>
-                    {channelsError && (
-                      <span className="text-sm text-red-400">{channelsError}</span>
-                    )}
-                  </div>
-                  {availableChannels.length > 0 && (
-                    <div className="pt-2 border-t border-[var(--border-color)]">
-                      <p className="text-sm font-medium text-[var(--text-secondary)] mb-2">Доступные каналы (id : название):</p>
-                      <ul className="text-sm text-[var(--text-primary)] space-y-1 max-h-48 overflow-y-auto bg-[var(--bg-tertiary)] rounded-lg p-3">
-                        {availableChannels.map((ch) => (
-                          <li key={ch.id} className="font-mono">
-                            {ch.id} : {ch.title}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-
                 {/* Post profile (publishing) */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
@@ -1112,7 +1144,9 @@ export function TelegramPage() {
 
                   {collectEnabled && (
                     <div className="space-y-6 animate-slide-down">
-                      <p className="text-sm text-[var(--text-muted)]">Access token is set in Publishing section above. Here you configure which groups to read from.</p>
+                      <p className="text-sm text-[var(--text-muted)]">
+                        Учётные данные API задаются на вкладке «Авторизация». Здесь настраиваются чаты для чтения.
+                      </p>
                       <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
                         <h4 className="text-sm font-semibold text-[var(--text-primary)]">Chats to Read</h4>
                         {chatsToRead.map((field, index) => (

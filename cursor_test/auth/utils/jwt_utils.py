@@ -5,13 +5,14 @@ from config import settings
 from utils.exceptions import TokenExpiredError, TokenInvalidError
 
 
-def create_access_token(user_id: int, role: str = "guest") -> str:
+def create_access_token(user_id: int, role: str = "guest", is_blocked: bool = False) -> str:
     """Создание access токена для пользователя."""
     now = datetime.utcnow()
     expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
         "user_id": user_id,
         "role": role,
+        "is_blocked": bool(is_blocked),
         "type": "access",
         "iat": now,
         "exp": expire

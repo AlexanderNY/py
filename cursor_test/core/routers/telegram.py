@@ -107,6 +107,13 @@ async def get_all_tg_profiles():
 async def create_tg_post(
     text: str = Form(..., max_length=4096),
     image: Optional[UploadFile] = File(None),
+    to_tg: bool = Form(True),
+    to_tw: bool = Form(False),
+    to_wp: bool = Form(False),
+    to_vk: bool = Form(False),
+    to_threads: bool = Form(False),
+    to_dzen: bool = Form(False),
+    to_instagram: bool = Form(False),
     x_user_id: Optional[str] = Header(None)
 ):
     """Создает пост для Telegram (max 4096 символов) с поддержкой изображений.
@@ -138,7 +145,14 @@ async def create_tg_post(
         post = await post_service.create_tg_post_record(
             user_id=user_id,
             text=text,
-            images=images if images else None
+            images=images if images else None,
+            to_tg=to_tg,
+            to_tw=to_tw,
+            to_wp=to_wp,
+            to_vk=to_vk,
+            to_threads=to_threads,
+            to_dzen=to_dzen,
+            to_instagram=to_instagram,
         )
         return post
     except ValueError as e:

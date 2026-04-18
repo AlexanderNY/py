@@ -123,7 +123,7 @@ async def get_schedules(
     """Получает расписания из профилей через API Gateway и сохраняет в schedule_snapshots.
     
     Выполняет:
-    1. Параллельные запросы профилей через API Gateway (GET /wp/profiles, /tg/profiles, /vk/profiles, /tw/profiles)
+    1. Параллельные запросы профилей через API Gateway (wp, tg, tw, vk, threads, dzen, instagram)
     2. Преобразование профилей в формат расписаний
     3. Сохранение в таблицу schedule_snapshots
     4. Возврат собранных расписаний
@@ -168,8 +168,8 @@ async def start_bot(
     try:
         token = await get_auth_token(credentials)
         
-        # Валидация платформ
-        valid_platforms = ["wp", "tg", "tw", "vk"]
+        # Валидация платформ (совпадает с BOT_PLATFORMS в schedule_poll_service)
+        valid_platforms = list(BOT_PLATFORMS)
         invalid_platforms = [p for p in request.platforms if p not in valid_platforms]
         if invalid_platforms:
             raise HTTPException(

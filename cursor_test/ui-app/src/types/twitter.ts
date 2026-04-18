@@ -25,6 +25,9 @@ export interface TwitterPost {
   to_tw?: boolean
   to_wp?: boolean
   to_vk?: boolean
+  to_threads?: boolean
+  to_dzen?: boolean
+  to_instagram?: boolean
 }
 
 export interface TwPostRow {
@@ -57,6 +60,17 @@ export interface TwitterFollowingResponse {
   users: TwitterFollowingUser[]
   next_token?: string | null
   error?: string | null
+}
+
+/** Ответ tw-bot POST /tw-bot/verify-selenium (fallback браузером) */
+export interface TwitterSeleniumVerifyResponse {
+  ok: boolean
+  method: 'selenium'
+  users: TwitterFollowingUser[]
+  error?: string
+  message?: string
+  /** Ключ в S3 при ошибке Selenium (имя содержит «diag») */
+  diag_s3_key?: string
 }
 
 export interface TimeInterval {

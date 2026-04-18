@@ -82,7 +82,10 @@ export function Sidebar() {
 
       <div className="p-4 border-t border-[var(--border-color)]">
         <p className="text-xs text-[var(--text-muted)] text-center">
-          © 2026 Control Panel · <Link to="/about" className="text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 rounded">About</Link>
+          © 2026 Control Panel ·{' '}
+          <Link to="/about" className="text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 rounded">About</Link>
+          {' · '}
+          <Link to="/pricing" className="text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 rounded">Pricing</Link>
         </p>
       </div>
     </aside>

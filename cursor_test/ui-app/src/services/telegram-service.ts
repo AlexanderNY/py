@@ -1,6 +1,7 @@
 import { apiClient, getErrorMessage } from './api-client'
 import axios from 'axios'
 import type { TelegramConfig, TelegramPost, TelegramPostListItem, TelegramPostFull } from '@/types/telegram'
+import type { TargetSocialNetworks } from '@/components/target-social-networks'
 
 export interface TgAuthStatus {
   user_id: number
@@ -37,14 +38,23 @@ export const telegramService = {
     }
   },
 
-  async createPost(text: string, imageFile?: File): Promise<void> {
+  async createPost(text: string, imageFile?: File, targets?: TargetSocialNetworks): Promise<void> {
     try {
       const formData = new FormData()
       formData.append('text', text)
       if (imageFile) {
         formData.append('image', imageFile)
       }
-      
+      if (targets) {
+        formData.append('to_tg', String(targets.tg))
+        formData.append('to_tw', String(targets.tw))
+        formData.append('to_wp', String(targets.wp))
+        formData.append('to_vk', String(targets.vk))
+        formData.append('to_threads', String(targets.threads))
+        formData.append('to_dzen', String(targets.dzen))
+        formData.append('to_instagram', String(targets.instagram))
+      }
+
       await apiClient.post('/tg/post', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',

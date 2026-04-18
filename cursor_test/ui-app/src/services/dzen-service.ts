@@ -5,6 +5,7 @@ import type {
   DzenPost,
   DzenPostListItem,
   DzenPostFull,
+  DzenVerifyResponse,
 } from '@/types/dzen'
 
 export const dzenService = {
@@ -57,6 +58,11 @@ export const dzenService = {
 
   async deletePost(id: number): Promise<DzenPostFull> {
     const response = await apiClient.delete<DzenPostFull>(`/dzen/post/${id}`)
+    return response.data
+  },
+
+  async verifyYandex(): Promise<DzenVerifyResponse> {
+    const response = await apiClient.post<DzenVerifyResponse>('/dzen-bot/verify-yandex', {}, { timeout: 180_000 })
     return response.data
   },
 }

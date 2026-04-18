@@ -25,7 +25,8 @@ class ProxyService:
         target_url: str,
         method: str,
         request: Request,
-        override_method: Optional[str] = None
+        override_method: Optional[str] = None,
+        timeout: Optional[float] = None,
     ) -> Response:
         """Перенаправляет запрос на целевой сервис.
         
@@ -59,7 +60,8 @@ class ProxyService:
                 pass
         request_body = await request.body()
         query_params = dict(request.query_params)
-        
+        timeout_seconds = timeout if timeout is not None else 30.0
+
         try:
             response = await self.http_client.request(
                 method=actual_method,
@@ -67,7 +69,7 @@ class ProxyService:
                 headers=request_headers,
                 content=request_body if request_body else None,
                 params=query_params if query_params else None,
-                timeout=30.0
+                timeout=timeout_seconds,
             )
             
             # Подготовка headers для ответа
@@ -81,12 +83,23 @@ class ProxyService:
             )
             
         except httpx.ConnectError as error:
+            name = self.extract_service_name(target_url)
             raise ServiceUnavailableException(
-                service_name=self.extract_service_name(target_url)
+                detail=(
+                    f"Cannot connect to upstream service at '{name}'. "
+                    "Check that the service is running and the URL in API gateway settings "
+                    f"(e.g. INSTAGRAM_BOT_SERVICE_URL) is correct. ({error!s})"
+                ),
             ) from error
         except httpx.TimeoutException as error:
+            name = self.extract_service_name(target_url)
             raise ServiceUnavailableException(
-                service_name=self.extract_service_name(target_url)
+                detail=(
+                    f"Request to '{name}' timed out after {timeout_seconds:.0f}s. "
+                    "If this is a long Selenium/bot operation, the route may need a higher timeout; "
+                    "otherwise ensure the upstream service is running and DZEN_BOT_SERVICE_URL (or the relevant URL) is correct. "
+                    f"({error!s})"
+                ),
             ) from error
         except httpx.HTTPError as error:
             raise BadGatewayException(

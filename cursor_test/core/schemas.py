@@ -298,6 +298,9 @@ class TwitterPost(BaseModel):
     to_tw: bool = True
     to_wp: bool = False
     to_vk: bool = False
+    to_threads: bool = False
+    to_dzen: bool = False
+    to_instagram: bool = False
 
 
 class TwitterFollowingUser(BaseModel):
@@ -409,6 +412,13 @@ class WordPressPost(BaseModel):
     tagIdList: Optional[List[int]] = None
     categoriesIdList: Optional[List[int]] = None
     post: WordPressPostContent
+    to_tg: bool = False
+    to_tw: bool = False
+    to_wp: bool = True
+    to_vk: bool = False
+    to_threads: bool = False
+    to_dzen: bool = False
+    to_instagram: bool = False
 
 
 # ==================== VKontakte ====================
@@ -462,6 +472,9 @@ class VKontaktePost(BaseModel):
     to_tw: bool = False
     to_wp: bool = False
     to_vk: bool = True
+    to_threads: bool = False
+    to_dzen: bool = False
+    to_instagram: bool = False
     images: Optional[List[str]] = None
 
 
@@ -511,6 +524,8 @@ class DzenPost(BaseModel):
     to_wp: bool = False
     to_vk: bool = False
     to_dzen: bool = True
+    to_threads: bool = False
+    to_instagram: bool = False
 
 
 class DzenPostUpdate(BaseModel):
@@ -677,6 +692,7 @@ class DefaultPlatforms(BaseModel):
     vk: bool = False
     threads: bool = False
     dzen: bool = False
+    instagram: bool = False
 
 
 class CpostProfileBase(BaseModel):
@@ -724,6 +740,7 @@ class CpostPost(BaseModel):
     to_vk: bool = False
     to_threads: bool = False
     to_dzen: bool = False
+    to_instagram: bool = False
 
 
 class CpostPostUpdate(BaseModel):
@@ -750,6 +767,7 @@ class CpostPostUpdate(BaseModel):
     to_vk: Optional[bool] = None
     to_threads: Optional[bool] = None
     to_dzen: Optional[bool] = None
+    to_instagram: Optional[bool] = None
 
 
 # ==================== Post (общая модель) ====================
@@ -887,6 +905,7 @@ class PlatformMetric(BaseModel):
     created_count: int = 0
     ready_count: int = 0
     processing_count: int = 0
+    status_counts: Dict[str, int] = Field(default_factory=dict)
 
 
 class PostsTablesResponse(BaseModel):
@@ -978,9 +997,24 @@ class StorageFilesResponse(BaseModel):
     enabled: bool = False
     objects: List[StorageFileItem] = Field(default_factory=list, alias="objects")
     next_continuation_token: Optional[str] = None
+    filter_applied: Optional[str] = None
+    """Подстрока фильтра по ключу (например diag для скринов Selenium)."""
+    pages_scanned: Optional[int] = None
+    """Сколько страниц list_objects_v2 просмотрено (только при фильтре по ключу)."""
+    filter_truncated: bool = False
+    """True если в бакете могли остаться ещё объекты, подходящие под фильтр (лимит страниц/размера выборки)."""
 
-    class Config:
-        populate_by_name = True
+
+class StoragePresignedUrlResponse(BaseModel):
+    """Временная ссылка на скачивание/просмотр объекта в S3."""
+    url: str
+    expires_in: int = 3600
+
+
+class StorageDeleteResponse(BaseModel):
+    """Результат удаления объекта в S3 (админ)."""
+    ok: bool = True
+    key: str
 
 
 class RuntimeGeoByIp(BaseModel):

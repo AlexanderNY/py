@@ -7,6 +7,35 @@ export interface VKAuthStatus {
   vk_user_id?: number | null
 }
 
+/** Элемент списка подписок / групп (VK API) */
+export interface VKSubscriptionItem {
+  id?: number
+  name?: string | null
+  screen_name?: string | null
+  type?: string | null
+  /** Ссылка (например из Selenium) */
+  url?: string | null
+}
+
+export interface VKSubscriptionsResult {
+  ok: boolean
+  source: 'user_oauth' | 'community_token'
+  subscriptions: VKSubscriptionItem[]
+  count: number
+  message?: string
+}
+
+/** Ответ gateway POST /vk-bot/verify-selenium (резервный веб-парсинг) */
+export interface VKSeleniumVerifyResponse {
+  ok: boolean
+  source: 'selenium_web'
+  subscriptions: VKSubscriptionItem[]
+  message?: string
+  error?: string
+  /** Ключ PNG в S3 при ошибке Selenium (имя содержит `diag`) */
+  diagnostic_s3_key?: string | null
+}
+
 export interface TimeInterval {
   start: string // HH:MM
   end?: string
@@ -53,6 +82,9 @@ export interface VKontaktePost {
   to_tw?: boolean
   to_wp?: boolean
   to_vk?: boolean
+  to_threads?: boolean
+  to_dzen?: boolean
+  to_instagram?: boolean
   /** URLs or paths of images to attach */
   images?: string[]
 }

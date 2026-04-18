@@ -41,10 +41,23 @@ SOURCE_TABLES = [
     {"platform": "wp", "table": "wp_posts"},
     {"platform": "url", "table": "url_posts"},
     {"platform": "vk", "table": "vk_posts"},
+    {"platform": "tw", "table": "tw_posts"},
+    {"platform": "threads", "table": "threads_posts"},
     {"platform": "instagram", "table": "instagram_posts"},
     {"platform": "dzen", "table": "dzen_posts"},
     {"platform": "cpost", "table": "cpost_posts"},
-    {"platform": "tw", "table": "tw_posts"},
+]
+
+# Колонки в админке «Platform tables»: все типичные статусы строк в *_posts; редкие из БД добавляются справа.
+PLATFORM_POST_STATUSES_ORDERED = [
+    "collected",
+    "created",
+    "processing",
+    "ready",
+    "review",
+    "published",
+    "failed",
+    "skipped",
 ]
 
 # Описания функций для админки (id, name_ru, description)
@@ -52,7 +65,7 @@ COLLECTOR_FUNCTIONS_FOR_ADMIN = [
     {
         "id": "collect_posts",
         "name_ru": "Запуск сбора постов для сервисов",
-        "description": "Периодический сбор постов из платформенных таблиц (tg_posts, wp_posts, url_posts, vk_posts, instagram_posts, dzen_posts, cpost_posts, tw_posts) в центральную таблицу posts. Посты со статусом «collected» переносятся для дальнейшей обработки процессором.",
+        "description": "Периодический сбор постов из платформенных таблиц (tg_posts, wp_posts, url_posts, vk_posts, tw_posts, threads_posts, instagram_posts, dzen_posts, cpost_posts) в центральную таблицу posts. Посты со статусом «collected» переносятся для дальнейшей обработки процессором.",
     },
     {
         "id": "distribute_posts",

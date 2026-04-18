@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from typing import Dict, List, Optional
 from database import get_db_connection, release_db_connection
+from services.quota_service import ensure_monthly_post_quota
 
 
 class PostService:
@@ -59,7 +60,9 @@ class PostService:
         limit = self.PLATFORM_LIMITS.get(platform, 150000)
         if len(text) > limit:
             raise ValueError(f"Text exceeds {platform} limit of {limit} characters")
-        
+
+        await ensure_monthly_post_quota(user_id)
+
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -116,6 +119,14 @@ class PostService:
         user_id: int,
         text: str,
         title: Optional[str] = None,
+        *,
+        to_tg: bool = False,
+        to_tw: bool = False,
+        to_wp: bool = True,
+        to_vk: bool = False,
+        to_threads: bool = False,
+        to_dzen: bool = False,
+        to_instagram: bool = False,
     ) -> Dict:
         """Создает пост WordPress в таблице wp_posts.
         
@@ -123,6 +134,7 @@ class PostService:
             user_id: ID пользователя
             text: Текст поста (HTML, до 150000 символов)
             title: Заголовок поста
+            to_*: цели дублирования
         
         Returns:
             Созданный пост из таблицы wp_posts
@@ -131,7 +143,9 @@ class PostService:
         limit = self.PLATFORM_LIMITS.get("wp", 150000)
         if len(text) > limit:
             raise ValueError(f"Text exceeds wp limit of {limit} characters")
-        
+
+        await ensure_monthly_post_quota(user_id)
+
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -141,12 +155,12 @@ class PostService:
                         user_id, post_text, title, domain, url, author, avatar,
                         post_date, screenshot, images, image_over_text,
                         comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk
+                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram
                     ) VALUES (
                         %s, %s, %s, NULL, NULL, NULL, NULL,
                         NULL, NULL, '[]', NULL,
                         0, 0, 0, 0, FALSE, 'collected',
-                        'wp', FALSE, FALSE, TRUE, FALSE
+                        'wp', %s, %s, %s, %s, %s, %s, %s
                     )
                     RETURNING *
                     """,
@@ -154,6 +168,13 @@ class PostService:
                         user_id,
                         text,
                         title,
+                        to_tg,
+                        to_tw,
+                        to_wp,
+                        to_vk,
+                        to_threads,
+                        to_dzen,
+                        to_instagram,
                     )
                 )
                 row = await cur.fetchone()
@@ -166,6 +187,14 @@ class PostService:
         user_id: int,
         text: str,
         images: Optional[List[str]] = None,
+        *,
+        to_tg: bool = True,
+        to_tw: bool = False,
+        to_wp: bool = False,
+        to_vk: bool = False,
+        to_threads: bool = False,
+        to_dzen: bool = False,
+        to_instagram: bool = False,
     ) -> Dict:
         """Создает пост Telegram в таблице tg_posts.
         
@@ -173,6 +202,7 @@ class PostService:
             user_id: ID пользователя
             text: Текст поста (до 4096 символов)
             images: Список URL изображений
+            to_*: цели дублирования в другие сети
         
         Returns:
             Созданный пост из таблицы tg_posts
@@ -181,7 +211,9 @@ class PostService:
         limit = self.PLATFORM_LIMITS.get("tg", 4096)
         if len(text) > limit:
             raise ValueError(f"Text exceeds tg limit of {limit} characters")
-        
+
+        await ensure_monthly_post_quota(user_id)
+
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -191,12 +223,12 @@ class PostService:
                         user_id, post_text, title, domain, url, author, avatar,
                         post_date, screenshot, images, image_over_text,
                         comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk
+                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram
                     ) VALUES (
                         %s, %s, NULL, NULL, NULL, NULL, NULL,
                         NULL, NULL, %s, NULL,
                         0, 0, 0, 0, FALSE, 'collected',
-                        'tg', TRUE, FALSE, FALSE, FALSE
+                        'tg', %s, %s, %s, %s, %s, %s, %s
                     )
                     RETURNING *
                     """,
@@ -204,6 +236,13 @@ class PostService:
                         user_id,
                         text,
                         json.dumps(images or []),
+                        to_tg,
+                        to_tw,
+                        to_wp,
+                        to_vk,
+                        to_threads,
+                        to_dzen,
+                        to_instagram,
                     )
                 )
                 row = await cur.fetchone()
@@ -230,6 +269,8 @@ class PostService:
         limit = self.PLATFORM_LIMITS.get("cpost", 150000)
         if len(text) > limit:
             raise ValueError(f"Text exceeds cpost limit of {limit} characters")
+
+        await ensure_monthly_post_quota(user_id)
 
         conn = await get_db_connection()
         try:
@@ -290,11 +331,16 @@ class PostService:
         to_tw: bool = False,
         to_wp: bool = False,
         to_vk: bool = False,
+        to_threads: bool = False,
+        to_dzen: bool = False,
+        to_instagram: bool = False,
     ) -> Dict:
         """Создаёт пост Twitter в tw_posts (далее collector переносит в posts)."""
         limit = self.PLATFORM_LIMITS.get("tw", 280)
         if len(text) > limit:
             raise ValueError(f"Text exceeds tw limit of {limit} characters")
+
+        await ensure_monthly_post_quota(user_id)
 
         conn = await get_db_connection()
         try:
@@ -303,14 +349,24 @@ class PostService:
                     """
                     INSERT INTO tw_posts (
                         user_id, post_text, status, post_type,
-                        to_tg, to_tw, to_wp, to_vk
+                        to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram
                     ) VALUES (
                         %s, %s, 'collected', 'tw',
-                        %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s
                     )
                     RETURNING *
                     """,
-                    (user_id, text, to_tg, to_tw, to_wp, to_vk),
+                    (
+                        user_id,
+                        text,
+                        to_tg,
+                        to_tw,
+                        to_wp,
+                        to_vk,
+                        to_threads,
+                        to_dzen,
+                        to_instagram,
+                    ),
                 )
                 row = await cur.fetchone()
                 return self._row_to_post(row, cur.description)
@@ -408,6 +464,7 @@ class PostService:
         to_vk: Optional[bool] = None,
         to_threads: Optional[bool] = None,
         to_dzen: Optional[bool] = None,
+        to_instagram: Optional[bool] = None,
     ) -> Optional[Dict]:
         """Обновляет cpost_posts и дублирует изменения в posts, если строка уже собрана collector."""
         conn = await get_db_connection()
@@ -481,6 +538,9 @@ class PostService:
                 if to_dzen is not None:
                     updates.append("to_dzen = %s")
                     params.append(to_dzen)
+                if to_instagram is not None:
+                    updates.append("to_instagram = %s")
+                    params.append(to_instagram)
                 if not updates:
                     return await self.get_cpost_post(user_id, post_id)
                 params.extend([user_id, post_id])
@@ -562,6 +622,9 @@ class PostService:
                 if to_dzen is not None:
                     mirror_updates.append("to_dzen = %s")
                     mirror_params.append(to_dzen)
+                if to_instagram is not None:
+                    mirror_updates.append("to_instagram = %s")
+                    mirror_params.append(to_instagram)
                 if mirror_updates:
                     sync_params = list(mirror_params)
                     sync_params.extend([user_id, "cpost", post_id])
@@ -1099,11 +1162,20 @@ class PostService:
         user_id: int,
         text: str,
         images: Optional[List[str]] = None,
+        *,
+        to_tg: bool = False,
+        to_tw: bool = False,
+        to_wp: bool = False,
+        to_vk: bool = False,
+        to_threads: bool = True,
     ) -> Dict:
         """Создает пост Threads в таблице threads_posts."""
         limit = self.PLATFORM_LIMITS.get("threads", 500)
         if len(text) > limit:
             raise ValueError(f"Text exceeds threads limit of {limit} characters")
+
+        await ensure_monthly_post_quota(user_id)
+
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -1118,11 +1190,20 @@ class PostService:
                         %s, %s, NULL, NULL, NULL, NULL, NULL,
                         NULL, NULL, %s, NULL,
                         0, 0, 0, 0, FALSE, 'collected',
-                        'threads', FALSE, FALSE, FALSE, FALSE, TRUE
+                        'threads', %s, %s, %s, %s, %s
                     )
                     RETURNING *
                     """,
-                    (user_id, text, json.dumps(images or [])),
+                    (
+                        user_id,
+                        text,
+                        json.dumps(images or []),
+                        to_tg,
+                        to_tw,
+                        to_wp,
+                        to_vk,
+                        to_threads,
+                    ),
                 )
                 row = await cur.fetchone()
                 return self._row_to_post(row, cur.description)
@@ -1227,11 +1308,17 @@ class PostService:
         to_tw: bool = False,
         to_wp: bool = False,
         to_vk: bool = True,
+        to_threads: bool = False,
+        to_dzen: bool = False,
+        to_instagram: bool = False,
     ) -> Dict:
         """Создаёт пост VKontakte в таблице vk_posts (status=created; collector переносит в posts, затем pipeline до ready для публикации)."""
         limit = self.PLATFORM_LIMITS.get("vk", 15985)
         if len(text) > limit:
             raise ValueError(f"Text exceeds vk limit of {limit} characters")
+
+        await ensure_monthly_post_quota(user_id)
+
         images = images or []
         # Для постов с картинками vk-bot использует upload.photo_wall; явно задаём attachments с type=photo
         attachments = [{"type": "photo", "path": p} for p in images] if images else []
@@ -1244,10 +1331,10 @@ class PostService:
                     """
                     INSERT INTO vk_posts (
                         user_id, post_text, images, attachments,
-                        status, post_type, to_tg, to_tw, to_wp, to_vk
+                        status, post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram
                     ) VALUES (
                         %s, %s, %s, %s,
-                        'created', 'vk', %s, %s, %s, %s
+                        'created', 'vk', %s, %s, %s, %s, %s, %s, %s
                     )
                     RETURNING *
                     """,
@@ -1260,6 +1347,9 @@ class PostService:
                         to_tw,
                         to_wp,
                         to_vk,
+                        to_threads,
+                        to_dzen,
+                        to_instagram,
                     ),
                 )
                 row = await cur.fetchone()
@@ -1457,11 +1547,17 @@ class PostService:
         to_tw: bool = False,
         to_wp: bool = False,
         to_vk: bool = False,
+        to_dzen: bool = True,
+        to_threads: bool = False,
+        to_instagram: bool = False,
     ) -> Dict:
         """Создает пост Дзен в таблице dzen_posts."""
         limit = self.PLATFORM_LIMITS.get("dzen", 1500)
         if len(text) > limit:
             raise ValueError(f"Text exceeds dzen limit of {limit} characters")
+
+        await ensure_monthly_post_quota(user_id)
+
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -1471,12 +1567,12 @@ class PostService:
                         user_id, post_text, title, domain, url, author, avatar,
                         post_date, screenshot, images, image_over_text, videos,
                         comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk, to_dzen, to_threads
+                        post_type, to_tg, to_tw, to_wp, to_vk, to_dzen, to_threads, to_instagram
                     ) VALUES (
                         %s, %s, %s, NULL, NULL, NULL, NULL,
                         NULL, NULL, %s, NULL, %s,
                         0, 0, 0, 0, FALSE, 'collected',
-                        'dzen', %s, %s, %s, %s, TRUE, FALSE
+                        'dzen', %s, %s, %s, %s, %s, %s, %s
                     )
                     RETURNING *
                     """,
@@ -1490,6 +1586,9 @@ class PostService:
                         to_tw,
                         to_wp,
                         to_vk,
+                        to_dzen,
+                        to_threads,
+                        to_instagram,
                     ),
                 )
                 row = await cur.fetchone()
@@ -1614,6 +1713,9 @@ class PostService:
         limit = self.PLATFORM_LIMITS.get("instagram", 2200)
         if len(caption) > limit:
             raise ValueError(f"Caption exceeds instagram limit of {limit} characters")
+
+        await ensure_monthly_post_quota(user_id)
+
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:

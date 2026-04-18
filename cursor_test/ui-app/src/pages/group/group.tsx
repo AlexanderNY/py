@@ -77,7 +77,7 @@ export function GroupPage() {
     if (!group || editName.trim() === group.name) return
     setIsSavingName(true)
     try {
-      const updated = await authService.updateGroup(group.id, editName.trim())
+      const updated = await authService.updateGroup(group.id, { name: editName.trim() })
       setGroup(updated)
       await refreshUserData()
     } finally {
@@ -91,7 +91,8 @@ export function GroupPage() {
     setAddError('')
     setIsAddingMember(true)
     try {
-      const updated = await authService.addGroupMember(group.id, addEmail.trim())
+      await authService.addGroupMember(group.id, addEmail.trim(), 'author')
+      const updated = await authService.getMyGroup()
       setGroup(updated)
       setAddEmail('')
       if (isManager) await loadStats()

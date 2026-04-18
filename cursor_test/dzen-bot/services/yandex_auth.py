@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -28,6 +29,39 @@ def _find_first(driver, selectors: list[tuple[str, str]]):
     return None
 
 
+def _safe_page_hint(driver) -> str:
+    try:
+        url = (driver.current_url or "")[:300]
+        title = ""
+        try:
+            title = (driver.title or "")[:120]
+        except Exception:
+            pass
+        parts = [f"url={url!r}"]
+        if title:
+            parts.append(f"title={title!r}")
+        return "; ".join(parts)
+    except Exception:
+        return "url=н/д"
+
+
+def _raise_login_field_timeout(driver, timeout_sec: int, cause: TimeoutException) -> None:
+    hint = _safe_page_hint(driver)
+    raise YandexAuthError(
+        f"За {timeout_sec} с не найдено поле логина на странице Яндекс.Passport ({hint}). "
+        "Проверьте доступность https://passport.yandex.ru из контейнера (DNS, файрвол), "
+        "скорость сети и при смене вёрстки Яндекса — селекторы в dzen-bot/services/yandex_auth.py."
+    ) from cause
+
+
+def _raise_password_field_timeout(driver, timeout_sec: int, cause: TimeoutException) -> None:
+    hint = _safe_page_hint(driver)
+    raise YandexAuthError(
+        f"За {timeout_sec} с не найдено поле пароля после ввода логина ({hint}). "
+        "Возможна дополнительная страница (телефон, капча) или изменилась вёрстка Passport."
+    ) from cause
+
+
 def login_yandex_passport(driver, login: str, password: str) -> None:
     """
     Открывает Passport и вводит логин/пароль.
@@ -37,15 +71,23 @@ def login_yandex_passport(driver, login: str, password: str) -> None:
         raise YandexAuthError("Пустой логин или пароль")
 
     driver.get(settings.YANDEX_PASSPORT_URL)
-    wait = WebDriverWait(driver, 30)
+    login_timeout = max(25, int(settings.YANDEX_PASSPORT_LOGIN_TIMEOUT_SEC))
+    wait = WebDriverWait(driver, login_timeout)
 
     login_selectors = [
         (By.ID, "passp-field-login"),
+        (By.CSS_SELECTOR, "#passp-field-login"),
         (By.NAME, "login"),
         (By.CSS_SELECTOR, "input[type='text'][name='login']"),
         (By.CSS_SELECTOR, "input[name='login']"),
+        (By.CSS_SELECTOR, "input[type='email']"),
+        (By.CSS_SELECTOR, "input.input__control[type='text']"),
+        (By.CSS_SELECTOR, "input[autocomplete='username']"),
     ]
-    el_login = wait.until(lambda d: _find_first(d, login_selectors))
+    try:
+        el_login = wait.until(lambda d: _find_first(d, login_selectors))
+    except TimeoutException as e:
+        _raise_login_field_timeout(driver, login_timeout, e)
     el_login.clear()
     el_login.send_keys(login)
     time.sleep(0.3)
@@ -64,11 +106,17 @@ def login_yandex_passport(driver, login: str, password: str) -> None:
 
     pwd_selectors = [
         (By.ID, "passp-field-passwd"),
+        (By.CSS_SELECTOR, "#passp-field-passwd"),
         (By.NAME, "passwd"),
         (By.CSS_SELECTOR, "input[type='password']"),
+        (By.CSS_SELECTOR, "input[autocomplete='current-password']"),
     ]
-    wait_pwd = WebDriverWait(driver, 25)
-    el_pwd = wait_pwd.until(lambda d: _find_first(d, pwd_selectors))
+    pwd_timeout = max(20, int(settings.YANDEX_PASSPORT_PASSWORD_TIMEOUT_SEC))
+    wait_pwd = WebDriverWait(driver, pwd_timeout)
+    try:
+        el_pwd = wait_pwd.until(lambda d: _find_first(d, pwd_selectors))
+    except TimeoutException as e:
+        _raise_password_field_timeout(driver, pwd_timeout, e)
     el_pwd.clear()
     el_pwd.send_keys(password)
 

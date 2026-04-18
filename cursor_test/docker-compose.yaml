@@ -54,6 +54,13 @@ services:
       dockerfile: ./api-gateway/Dockerfile
     ports:
       - "8000:8000"
+    environment:
+      # Instagram bot: порт 8011, сервис instagram-bot (не 172.20.10.14:8012 — это другой сервис)
+      - INSTAGRAM_BOT_SERVICE_URL=http://instagram-bot:8011
+      - THREADS_BOT_SERVICE_URL=http://th-bot:8013
+      - DZEN_BOT_SERVICE_URL=http://dzen-bot:8012
+      - TW_BOT_SERVICE_URL=http://tw-bot:8011
+      - VK_BOT_SERVICE_URL=http://vk-bot:8005
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.250
@@ -93,20 +100,6 @@ services:
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.100
-
-  selectcb:
-    build:
-      context: .
-      dockerfile: ./selectcb/Dockerfile  
-    ports:
-      - "8015:8015"
-    environment:
-      - VITE_API_GATEWAY_URL=http://gateway:8000
-      - VITE_AUTH_SERVICE_URL=http://auth:8001
-      - VITE_CORE_SERVICE_URL=http://core:8002
-    networks:
-      monitoring_network:
-        ipv4_address: 172.20.10.15
 
   wp-bot:
     build: 
@@ -193,6 +186,11 @@ services:
       - S3_ACCESS_KEY=admin
       - S3_SECRET_KEY=password123
       - S3_USE_SSL=false
+      - CHROME_BIN=/usr/bin/chromium
+      - CHROMEDRIVER_PATH=/usr/bin/chromedriver
+      # Fallback вход через браузер при сбое instagrapi (см. INSTAGRAM_SELENIUM_FALLBACK_NETWORK_ERRORS_ONLY)
+      - INSTAGRAM_SELENIUM_FALLBACK_ENABLED=false
+      - INSTAGRAM_SELENIUM_FALLBACK_NETWORK_ERRORS_ONLY=true
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.11
@@ -200,24 +198,47 @@ services:
     build: 
       context: .
       dockerfile: ./th-bot/Dockerfile
+    depends_on:
+      - minio
     ports:
-      - "8012:8012"
+      - "8013:8013"
     environment:
       - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      - API_PORT=8013
       - LOG_LEVEL=INFO
+      - CHROME_BIN=/usr/bin/chromium
+      - CHROMEDRIVER_PATH=/usr/bin/chromedriver
+      # Диагностический веб-вход Meta (не заменяет OAuth); по умолчанию выключено
+      - ENABLE_THREADS_SELENIUM_FALLBACK=false
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_BUCKET=uploads
+      - S3_ACCESS_KEY=admin
+      - S3_SECRET_KEY=password123
+      - S3_USE_SSL=false
     networks:
       monitoring_network:
-        ipv4_address: 172.20.10.12
+        ipv4_address: 172.20.10.13
 
   tw-bot:
     build: 
       context: .
       dockerfile: ./tw-bot/Dockerfile 
+    depends_on:
+      - minio
     ports:
-      - "8014:8014"
+      - "8014:8011"
     environment:
       - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      - API_PORT=8011
       - LOG_LEVEL=INFO
+      - CHROME_BIN=/usr/bin/chromium
+      - CHROMEDRIVER_PATH=/usr/bin/chromedriver
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_BUCKET=uploads
+      - S3_ACCESS_KEY=admin
+      - S3_SECRET_KEY=password123
+      - S3_USE_SSL=false
+    shm_size: "2gb"
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.14
@@ -256,6 +277,7 @@ services:
       dockerfile: ./vk-bot/Dockerfile
     depends_on:
       - minio
+    shm_size: "1gb"
     ports:
       - "8005:8005"
     environment:
@@ -272,6 +294,8 @@ services:
       - MAX_CONCURRENT_CLIENTS=20
       - CHROME_BIN=/usr/bin/chromium
       - CHROMEDRIVER_PATH=/usr/bin/chromedriver
+      - SELENIUM_HEADLESS=true
+      - SELENIUM_PAGE_LOAD_TIMEOUT=90
     volumes:
       - tg-bot-sessions:/app/sessions
     networks:
@@ -283,13 +307,20 @@ services:
       context: .
       dockerfile: ./dzen-bot/Dockerfile     
     ports:
-      - "8013:8013"
+      - "8012:8012"
     environment:
       - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      - API_PORT=8012
       - LOG_LEVEL=INFO
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_BUCKET=uploads
+      - S3_ACCESS_KEY=admin
+      - S3_SECRET_KEY=password123
+      - S3_USE_SSL=false
+      - S3_DIAG_PREFIX=dzen/diag
     networks:
       monitoring_network:
-        ipv4_address: 172.20.10.13
+        ipv4_address: 172.20.10.12
 
   minio:
     image: minio/minio

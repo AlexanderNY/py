@@ -1,11 +1,21 @@
-from fastapi import APIRouter, HTTPException, status, Depends
-from schemas import UserProfile, UserProfileUpdate, AdminUserUpdate, RoleTariffHistoryEntry
+from fastapi import APIRouter, HTTPException, status, Depends, Query
+from fastapi.responses import PlainTextResponse
+from schemas import (
+    UserProfile,
+    UserProfileUpdate,
+    AdminUserUpdate,
+    RoleTariffHistoryEntry,
+    user_profile_from_user_dict,
+    AdminAuditLogEntry,
+)
 from services.auth_service import (
     update_user_profile,
     get_all_users,
     update_user_role_tariff,
     get_user_role_tariff_history,
+    export_users_csv_rows,
 )
+from services.admin_audit_service import get_admin_audit_log
 from services import group_service
 from utils.exceptions import UserAlreadyExistsError, UserNotFoundError
 from dependencies import get_current_user, get_admin_user
@@ -18,19 +28,8 @@ router = APIRouter(tags=["profile"])
 @router.get("/profile", response_model=UserProfile)
 async def get_profile(current_user: Dict = Depends(get_current_user)) -> UserProfile:
     """Получение профиля текущего пользователя."""
-    membership = await group_service.get_user_group_membership(current_user["id"])
-    return UserProfile(
-        id=current_user.get("id"),
-        username=current_user["username"],
-        email=current_user["email"],
-        role=current_user["role"],
-        tariff=current_user.get("tariff", "free"),
-        is_email_verified=current_user["is_email_verified"],
-        created_at=current_user["created_at"],
-        group_id=membership["group_id"] if membership else None,
-        group_name=membership["group_name"] if membership else None,
-        role_in_group=membership["role_in_group"] if membership else None,
-    )
+    memberships = await group_service.get_user_group_memberships(current_user["id"])
+    return user_profile_from_user_dict(current_user, memberships)
 
 
 @router.put("/profile", response_model=UserProfile)
@@ -45,19 +44,8 @@ async def update_profile(
             username=profile_update.username,
             email=profile_update.email
         )
-        membership = await group_service.get_user_group_membership(updated_user["id"])
-        return UserProfile(
-            id=updated_user.get("id"),
-            username=updated_user["username"],
-            email=updated_user["email"],
-            role=updated_user["role"],
-            tariff=updated_user.get("tariff", "free"),
-            is_email_verified=updated_user["is_email_verified"],
-            created_at=updated_user["created_at"],
-            group_id=membership["group_id"] if membership else None,
-            group_name=membership["group_name"] if membership else None,
-            role_in_group=membership["role_in_group"] if membership else None,
-        )
+        memberships = await group_service.get_user_group_memberships(updated_user["id"])
+        return user_profile_from_user_dict(updated_user, memberships)
     except UserAlreadyExistsError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -71,27 +59,39 @@ async def update_profile(
 
 
 @router.get("/users", response_model=List[UserProfile])
-async def get_users(admin_user: Dict = Depends(get_admin_user)) -> List[UserProfile]:
-    """Получение списка всех пользователей (только для администраторов)."""
+async def get_users(
+    admin_user: Dict = Depends(get_admin_user),
+    tariff: str | None = Query(None, description="Фильтр по тарифу"),
+    subscription_status: str | None = Query(
+        None,
+        description="Статус подписки или __null__ если не задан",
+    ),
+) -> List[UserProfile]:
+    """Получение списка пользователей с фильтрами (только для администраторов)."""
     try:
-        users = await get_all_users()
-        return [
-            UserProfile(
-                id=user.get("id"),
-                username=user["username"],
-                email=user["email"],
-                role=user["role"],
-                tariff=user.get("tariff", "free"),
-                is_email_verified=user["is_email_verified"],
-                created_at=user["created_at"]
-            )
-            for user in users
-        ]
+        users = await get_all_users(tariff=tariff, subscription_status=subscription_status)
+        return [user_profile_from_user_dict(user, None) for user in users]
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch users: {str(e)}"
         )
+
+
+@router.get("/users/export", response_class=PlainTextResponse)
+async def export_users(
+    admin_user: Dict = Depends(get_admin_user),
+    tariff: str | None = Query(None),
+    subscription_status: str | None = Query(None),
+) -> PlainTextResponse:
+    """Экспорт пользователей в CSV (фильтры как у GET /users)."""
+    users = await get_all_users(tariff=tariff, subscription_status=subscription_status)
+    csv_text = export_users_csv_rows(users)
+    return PlainTextResponse(
+        csv_text,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="users_export.csv"'},
+    )
 
 
 @router.patch("/users/{user_id}", response_model=UserProfile)
@@ -101,22 +101,20 @@ async def update_user_role_and_tariff(
     admin_user: Dict = Depends(get_admin_user)
 ) -> UserProfile:
     """Изменение роли и/или тарифа пользователя (только для администраторов)."""
+    if body.is_blocked is True and admin_user.get("id") == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot block your own account",
+        )
     try:
         updated_user = await update_user_role_tariff(
             user_id=user_id,
             role=body.role,
             tariff=body.tariff,
+            is_blocked=body.is_blocked,
             changed_by_user_id=admin_user.get("id"),
         )
-        return UserProfile(
-            id=updated_user.get("id"),
-            username=updated_user["username"],
-            email=updated_user["email"],
-            role=updated_user["role"],
-            tariff=updated_user.get("tariff", "free"),
-            is_email_verified=updated_user["is_email_verified"],
-            created_at=updated_user["created_at"]
-        )
+        return user_profile_from_user_dict(updated_user, None)
     except UserNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -149,5 +147,26 @@ async def get_role_tariff_history(
             tariff_new=e.get("tariff_new"),
         )
         for e in entries
+    ]
+
+
+@router.get("/admin/audit-log", response_model=List[AdminAuditLogEntry])
+async def admin_audit_log(
+    admin_user: Dict = Depends(get_admin_user),
+    limit: int = Query(100, ge=1, le=500),
+) -> List[AdminAuditLogEntry]:
+    """Журнал действий администраторов."""
+    rows = await get_admin_audit_log(limit=limit)
+    return [
+        AdminAuditLogEntry(
+            id=r["id"],
+            admin_user_id=r["admin_user_id"],
+            action=r["action"],
+            target_type=r["target_type"],
+            target_id=r["target_id"],
+            details_json=r["details_json"],
+            created_at=r["created_at"],
+        )
+        for r in rows
     ]
 

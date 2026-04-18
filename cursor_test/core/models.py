@@ -747,6 +747,23 @@ EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 """
 
+# Диагностические сессии Selenium (Meta web login) — не заменяют OAuth Graph token
+THREADS_SELENIUM_SESSIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS threads_selenium_sessions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    status VARCHAR(40) NOT NULL,
+    detail_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+THREADS_SELENIUM_SESSIONS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_threads_selenium_sessions_user_id ON threads_selenium_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_threads_selenium_sessions_created_at ON threads_selenium_sessions(created_at DESC);
+"""
+
 # Таблица dzen_profiles - настройки Яндекс Дзен
 DZEN_PROFILES_TABLE = """
 CREATE TABLE IF NOT EXISTS dzen_profiles (
@@ -1242,6 +1259,8 @@ ALL_TABLES = [
     THREADS_POSTS_INDEXES,
     TO_THREADS_MIGRATION,
     THREADS_PROFILES_INSTAGRAM_HANDLE_MIGRATION,
+    THREADS_SELENIUM_SESSIONS_TABLE,
+    THREADS_SELENIUM_SESSIONS_INDEXES,
     DZEN_PROFILES_TABLE,
     DZEN_PROFILES_MIGRATION,
     DZEN_PROFILES_SELENIUM_MIGRATION,

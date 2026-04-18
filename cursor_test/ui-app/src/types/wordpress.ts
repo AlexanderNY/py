@@ -68,6 +68,13 @@ export interface WordPressPost {
   pageID?: string
   tagIdList?: number[]
   categoriesIdList?: number[]
+  to_tg?: boolean
+  to_tw?: boolean
+  to_wp?: boolean
+  to_vk?: boolean
+  to_threads?: boolean
+  to_dzen?: boolean
+  to_instagram?: boolean
   post: {
     title: string
     content: string

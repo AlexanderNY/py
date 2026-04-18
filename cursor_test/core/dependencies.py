@@ -57,6 +57,12 @@ def get_current_user(
                 detail="Invalid token type"
             )
         
+        if payload.get("is_blocked") is True:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account has been blocked"
+            )
+
         return {
             "user_id": payload.get("user_id"),
             "role": payload.get("role", "guest")

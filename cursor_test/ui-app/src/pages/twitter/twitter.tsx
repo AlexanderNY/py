@@ -7,6 +7,11 @@ import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import { apiClient } from '@/services/api-client'
 import { twitterService } from '@/services/twitter-service'
+import {
+  TargetSocialNetworksWidget,
+  createDefaultTargets,
+  type TargetSocialNetworks,
+} from '@/components/target-social-networks'
 import type { TwitterProfile, TwitterScheduleType, TwPostRow, TwitterFollowingUser } from '@/types/twitter'
 
 function generateId(): string {
@@ -43,6 +48,9 @@ export function TwitterPage() {
   const [twitterRestId, setTwitterRestId] = useState<string | null>(null)
 
   const [postText, setPostText] = useState('')
+  const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
+    createDefaultTargets('tw')
+  )
 
   const [posts, setPosts] = useState<TwPostRow[]>([])
   const [isLoadingPosts, setIsLoadingPosts] = useState(false)
@@ -56,6 +64,8 @@ export function TwitterPage() {
   const [followingNextToken, setFollowingNextToken] = useState<string | null>(null)
   const [isLoadingFollowing, setIsLoadingFollowing] = useState(false)
   const [isSavingCredentials, setIsSavingCredentials] = useState(false)
+  const [seleniumUsers, setSeleniumUsers] = useState<TwitterFollowingUser[]>([])
+  const [isLoadingSelenium, setIsLoadingSelenium] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -270,6 +280,35 @@ export function TwitterPage() {
     }
   }
 
+  async function runSeleniumVerify() {
+    setError('')
+    setSuccess('')
+    setIsLoadingSelenium(true)
+    try {
+      const res = await twitterService.verifySelenium()
+      if (res.ok) {
+        setSeleniumUsers(res.users)
+        setSuccess(
+          res.message?.trim() ||
+            (res.users.length === 0
+              ? 'Selenium: вход подтверждён, список подписок пуст или не распознан'
+              : 'Selenium: подписки загружены')
+        )
+      } else {
+        setSeleniumUsers([])
+        const baseErr = res.error || 'Проверка Selenium не удалась'
+        setError(
+          res.diag_s3_key ? `${baseErr} (диагностика в S3: ${res.diag_s3_key})` : baseErr
+        )
+      }
+    } catch (err) {
+      setSeleniumUsers([])
+      setError(err instanceof Error ? err.message : 'Selenium verify failed')
+    } finally {
+      setIsLoadingSelenium(false)
+    }
+  }
+
   async function handleCreatePost(e: FormEvent) {
     e.preventDefault()
     setError('')
@@ -283,7 +322,16 @@ export function TwitterPage() {
     }
 
     try {
-      await twitterService.createPost({ text: postText, to_tw: true })
+      await twitterService.createPost({
+        text: postText,
+        to_tg: postTargets.tg,
+        to_tw: postTargets.tw,
+        to_wp: postTargets.wp,
+        to_vk: postTargets.vk,
+        to_threads: postTargets.threads,
+        to_dzen: postTargets.dzen,
+        to_instagram: postTargets.instagram,
+      })
       setSuccess('Post queued successfully')
       setPostText('')
       setHasLoadedPosts(false)
@@ -404,6 +452,7 @@ export function TwitterPage() {
                   {postText.length} / 280 characters
                 </p>
               </div>
+              <TargetSocialNetworksWidget value={postTargets} onChange={setPostTargets} />
               <CardFooter className="px-0">
                 <Button type="submit" isLoading={isCreatingPost} className="w-full sm:w-auto">
                   <svg
@@ -550,6 +599,35 @@ export function TwitterPage() {
                       ))}
                     </ul>
                   )}
+
+                  <div className="space-y-3 pt-4 border-t border-[var(--border-color)]">
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Если OAuth или API недоступны (403, план разработчика): проверка через браузер в tw-bot. Не
+                      заменяет OAuth для публикации по API. Возможны капча, 2FA и блокировки — см. правила X.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => void runSeleniumVerify()}
+                      isLoading={isLoadingSelenium}
+                    >
+                      Проверить через браузер (Selenium)
+                    </Button>
+                    {seleniumUsers.length > 0 && (
+                      <ul className="mt-2 space-y-2 max-h-64 overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-tertiary)] p-3">
+                        <li className="text-xs font-medium text-[var(--text-secondary)] mb-2">Список (веб-страница)</li>
+                        {seleniumUsers.map((u) => (
+                          <li
+                            key={`se-${u.id}`}
+                            className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-[var(--text-primary)] border-b border-[var(--border-color)] border-opacity-50 pb-2 last:border-0 last:pb-0"
+                          >
+                            <span className="font-mono text-primary-400">@{u.username ?? u.id}</span>
+                            {u.name && <span className="text-[var(--text-secondary)]">{u.name}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

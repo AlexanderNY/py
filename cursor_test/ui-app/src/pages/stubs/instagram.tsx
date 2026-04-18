@@ -4,6 +4,11 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
+import {
+  TargetSocialNetworksWidget,
+  createDefaultTargets,
+  type TargetSocialNetworks,
+} from '@/components/target-social-networks'
 import { instagramService } from '@/services/instagram-service'
 import type {
   InstagramFollowingUser,
@@ -42,11 +47,9 @@ export function InstagramPage() {
   const [instagramVerificationPending, setInstagramVerificationPending] = useState(false)
 
   const [postCaption, setPostCaption] = useState('')
-  const [toTg, setToTg] = useState(false)
-  const [toWp, setToWp] = useState(false)
-  const [toVk, setToVk] = useState(false)
-  const [toDzen, setToDzen] = useState(false)
-  const [toInstagram, setToInstagram] = useState(true)
+  const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
+    createDefaultTargets('instagram')
+  )
   const [imageFiles, setImageFiles] = useState<FileList | null>(null)
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
 
@@ -156,11 +159,13 @@ export function InstagramPage() {
         } else {
           await instagramService.createPost({
             caption: postCaption,
-            to_tg: toTg,
-            to_wp: toWp,
-            to_vk: toVk,
-            to_dzen: toDzen,
-            to_instagram: toInstagram,
+            to_tg: postTargets.tg,
+            to_tw: postTargets.tw,
+            to_wp: postTargets.wp,
+            to_vk: postTargets.vk,
+            to_dzen: postTargets.dzen,
+            to_threads: postTargets.threads,
+            to_instagram: postTargets.instagram,
           })
         }
         setSuccess('Post created successfully')
@@ -264,13 +269,23 @@ export function InstagramPage() {
       if (result.ok) {
         const n = result.following?.length ?? result.following_count ?? 0
         setFollowingPreview(result.following ?? [])
+        const via =
+          result.auth_method === 'selenium' ? ' · способ: браузер (Selenium)' : ''
         setSuccess(
           result.instagram_user_id != null
-            ? `Вход выполнен (Instagram user id: ${result.instagram_user_id})${n > 0 ? ` · загружено подписок: ${n}` : ''}`
-            : `Вход выполнен успешно${n > 0 ? ` · загружено подписок: ${n}` : ''}`
+            ? `Вход выполнен (Instagram user id: ${result.instagram_user_id})${n > 0 ? ` · загружено подписок: ${n}` : ''}${via}`
+            : `Вход выполнен успешно${n > 0 ? ` · загружено подписок: ${n}` : ''}${via}`
         )
       } else {
-        setError(result.message || 'Вход не выполнен')
+        const extra =
+          result.selenium_status && result.selenium_status !== 'success'
+            ? ` [Selenium: ${result.selenium_status}]`
+            : ''
+        const diag =
+          result.selenium_diagnostic_s3_key != null && result.selenium_diagnostic_s3_key !== ''
+            ? ` Диагностика (S3): ${result.selenium_diagnostic_s3_key}`
+            : ''
+        setError((result.message || 'Вход не выполнен') + extra + diag)
       }
       await loadProfile()
     } catch (err) {
@@ -577,28 +592,7 @@ export function InstagramPage() {
                 </div>
               )}
               {!editingPostId && (
-                <div className="flex flex-wrap gap-4">
-                  <label className="flex items-center gap-1">
-                    <input type="checkbox" checked={toTg} onChange={(e) => setToTg(e.target.checked)} />
-                    TG
-                  </label>
-                  <label className="flex items-center gap-1">
-                    <input type="checkbox" checked={toWp} onChange={(e) => setToWp(e.target.checked)} />
-                    WP
-                  </label>
-                  <label className="flex items-center gap-1">
-                    <input type="checkbox" checked={toVk} onChange={(e) => setToVk(e.target.checked)} />
-                    VK
-                  </label>
-                  <label className="flex items-center gap-1">
-                    <input type="checkbox" checked={toDzen} onChange={(e) => setToDzen(e.target.checked)} />
-                    Dzen
-                  </label>
-                  <label className="flex items-center gap-1">
-                    <input type="checkbox" checked={toInstagram} onChange={(e) => setToInstagram(e.target.checked)} />
-                    Instagram
-                  </label>
-                </div>
+                <TargetSocialNetworksWidget value={postTargets} onChange={setPostTargets} />
               )}
             </CardContent>
             <CardFooter>

@@ -5,6 +5,11 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
+import {
+  TargetSocialNetworksWidget,
+  createDefaultTargets,
+  type TargetSocialNetworks,
+} from '@/components/target-social-networks'
 import { TipTapEditor } from '@/components/ui/tiptap-editor'
 import { apiClient } from '@/services/api-client'
 import { vkontakteService } from '@/services/vkontakte-service'
@@ -14,6 +19,7 @@ import type {
   VKontaktePostListItem,
   ScheduleType,
   VKAuthStatus,
+  VKSubscriptionItem,
 } from '@/types/vkontakte'
 
 function htmlToPlainText(html: string): string {
@@ -48,6 +54,14 @@ export function VKontaktePage() {
     searchParams.get('auth') === '1' ? 'auth' : 'create'
   )
   const [authStatus, setAuthStatus] = useState<VKAuthStatus | null>(null)
+  const [subscriptions, setSubscriptions] = useState<VKSubscriptionItem[]>([])
+  const [subscriptionsSource, setSubscriptionsSource] = useState<string | null>(null)
+  const [subscriptionsHint, setSubscriptionsHint] = useState<string | null>(null)
+  const [loadingSubscriptions, setLoadingSubscriptions] = useState(false)
+  const [vkSeleniumOpen, setVkSeleniumOpen] = useState(false)
+  const [vkSeleniumLogin, setVkSeleniumLogin] = useState('')
+  const [vkSeleniumPassword, setVkSeleniumPassword] = useState('')
+  const [loadingSeleniumVerify, setLoadingSeleniumVerify] = useState(false)
 
   // Profile state
   const [publishEnabled, setPublishEnabled] = useState(false)
@@ -82,10 +96,9 @@ export function VKontaktePage() {
   // Create post state (editor content is HTML; we send plain text to API)
   const [postContent, setPostContent] = useState('')
   const [postImages, setPostImages] = useState<string[]>([])
-  const [toTg, setToTg] = useState(false)
-  const [toTw, setToTw] = useState(false)
-  const [toWp, setToWp] = useState(false)
-  const [toVk, setToVk] = useState(true)
+  const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
+    createDefaultTargets('vk')
+  )
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
 
   // Posts list
@@ -245,10 +258,13 @@ export function VKontaktePage() {
       } else {
         await vkontakteService.createPost({
           text,
-          to_tg: toTg,
-          to_tw: toTw,
-          to_wp: toWp,
-          to_vk: toVk,
+          to_tg: postTargets.tg,
+          to_tw: postTargets.tw,
+          to_wp: postTargets.wp,
+          to_vk: postTargets.vk,
+          to_threads: postTargets.threads,
+          to_dzen: postTargets.dzen,
+          to_instagram: postTargets.instagram,
           images: imagesList.length ? imagesList : undefined,
         })
         setSuccess('Post created successfully')
@@ -332,6 +348,20 @@ export function VKontaktePage() {
     }
   }
 
+  async function persistFullVkProfile(successMessage: string) {
+    setError('')
+    setSuccess('')
+    setIsSavingProfile(true)
+    try {
+      await vkontakteService.saveProfile(buildProfilePayload())
+      setSuccess(successMessage)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save profile settings')
+    } finally {
+      setIsSavingProfile(false)
+    }
+  }
+
   async function handleSaveProcessing(e: FormEvent) {
     e.preventDefault()
     setError('')
@@ -349,16 +379,57 @@ export function VKontaktePage() {
 
   async function handleSaveProfile(e: FormEvent) {
     e.preventDefault()
+    await persistFullVkProfile('Profile settings saved successfully')
+  }
+
+  async function loadSubscriptions() {
+    setLoadingSubscriptions(true)
+    setError('')
+    setSubscriptionsHint(null)
+    try {
+      const res = await vkontakteService.getSubscriptions()
+      setSubscriptions(res.subscriptions ?? [])
+      setSubscriptionsSource(res.source === 'user_oauth' ? 'Пользовательский OAuth (users.getSubscriptions)' : 'Токен сообщества (groups.getById)')
+      setSubscriptionsHint(res.message ?? null)
+      setSuccess(res.count > 0 ? `Загружено записей: ${res.count}` : 'Запрос выполнен, список пуст.')
+    } catch (err) {
+      setSubscriptions([])
+      setSubscriptionsSource(null)
+      setVkSeleniumOpen(true)
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить подписки')
+    } finally {
+      setLoadingSubscriptions(false)
+    }
+  }
+
+  async function verifySeleniumFallback() {
+    setLoadingSeleniumVerify(true)
     setError('')
     setSuccess('')
-    setIsSavingProfile(true)
     try {
-      await vkontakteService.saveProfile(buildProfilePayload())
-      setSuccess('Profile settings saved successfully')
+      const res = await vkontakteService.verifySelenium(vkSeleniumLogin.trim(), vkSeleniumPassword)
+      setVkSeleniumPassword('')
+      if (!res.ok) {
+        const base = res.error ?? 'Ошибка резервного входа VK (Selenium)'
+        setError(
+          res.diagnostic_s3_key
+            ? `${base} Диагностический скриншот сохранён в S3: ${res.diagnostic_s3_key}`
+            : base
+        )
+        return
+      }
+      setSubscriptions(res.subscriptions ?? [])
+      setSubscriptionsSource('Selenium: веб-страница (vk-bot), не заменяет OAuth/API-токен')
+      setSubscriptionsHint(res.message ?? null)
+      setSuccess(
+        res.subscriptions && res.subscriptions.length > 0
+          ? `Selenium: загружено записей: ${res.subscriptions.length}`
+          : 'Selenium: запрос выполнен, список пуст.'
+      )
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save profile settings')
+      setError(err instanceof Error ? err.message : 'Ошибка vk-bot (Selenium)')
     } finally {
-      setIsSavingProfile(false)
+      setLoadingSeleniumVerify(false)
     }
   }
 
@@ -470,7 +541,7 @@ export function VKontaktePage() {
             <CardDescription className="space-y-2">
               <span className="block">
                 {authStatus?.message ??
-                  'Пользовательский OAuth нужен для загрузки фото на стену сообщества (photos.getWallUploadServer). Токен сообщества в Profile Settings остаётся для остальных операций.'}
+                  'Пользовательский OAuth нужен для загрузки фото на стену сообщества (photos.getWallUploadServer). Токен сообщества (ниже) — для публикации от имени группы и сбора стены.'}
               </span>
               <span className="block text-xs text-[var(--text-muted)]">
                 Запрашиваемые scope в Core: <code className="text-[var(--text-secondary)]">wall</code>,{' '}
@@ -510,6 +581,117 @@ export function VKontaktePage() {
                 <p className="text-sm text-green-400">Пользовательский токен VK сохранён. Публикация с фото на стену группы доступна.</p>
               </div>
             )}
+
+            <div className="space-y-3 pt-2 border-t border-[var(--border-color)]">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">Токен сообщества (Access token)</h3>
+              <p className="text-xs text-[var(--text-muted)]">
+                Обычно это <strong className="text-[var(--text-secondary)]">токен сообщества</strong> для публикации от имени группы и сбора стены (
+                <code className="text-[var(--text-muted)]">wall</code>, при необходимости{' '}
+                <code className="text-[var(--text-muted)]">groups</code>). Для фото на стене группы дополнительно нужен пользовательский OAuth (блок выше). Подробнее: docs VK_BOT_POSTING.
+              </p>
+              <input
+                type="password"
+                value={accessToken === '***' ? '' : accessToken}
+                onChange={(e) => setAccessToken(e.target.value)}
+                placeholder={accessToken === '***' ? 'Токен сохранён (скрыт)' : 'Оставьте пустым, чтобы не менять'}
+                className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
+              />
+              {accessToken === '***' && (
+                <p className="text-xs text-[var(--text-muted)]">Токен сохранён и скрыт. Введите новый токен, чтобы заменить.</p>
+              )}
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void persistFullVkProfile('Токен и настройки VK сохранены')}
+                isLoading={isSavingProfile}
+              >
+                Сохранить токен и настройки
+              </Button>
+            </div>
+
+            <div className="space-y-3 pt-2 border-t border-[var(--border-color)]">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">Проверка авторизации</h3>
+              <p className="text-xs text-[var(--text-muted)]">
+                С OAuth: запрашивается список подписок на сообщества (VK API{' '}
+                <code className="text-[var(--text-muted)]">users.getSubscriptions</code>). Только токен сообщества: по группам из «Group to post» и сбора (
+                <code className="text-[var(--text-muted)]">groups.getById</code>).
+              </p>
+              <Button type="button" onClick={() => void loadSubscriptions()} isLoading={loadingSubscriptions}>
+                Запросить список подписок
+              </Button>
+              {subscriptionsSource && (
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Источник: {subscriptionsSource}
+                </p>
+              )}
+              {subscriptionsHint && (
+                <p className="text-xs text-amber-400/90">{subscriptionsHint}</p>
+              )}
+              {subscriptions.length > 0 && (
+                <ul className="mt-2 space-y-2 max-h-72 overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] p-3">
+                  {subscriptions.map((s, i) => (
+                    <li
+                      key={`${s.id ?? 'x'}-${i}`}
+                      className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-[var(--text-primary)] border-b border-[var(--border-color)] border-opacity-50 pb-2 last:border-0 last:pb-0"
+                    >
+                      {s.screen_name && (
+                        <span className="font-mono text-primary-400">{s.screen_name}</span>
+                      )}
+                      {s.name && <span className="text-[var(--text-secondary)]">{s.name}</span>}
+                      {s.id != null && (
+                        <span className="text-[var(--text-muted)] text-xs">id: {s.id}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="pt-3 border-t border-[var(--border-color)] border-dashed">
+                <button
+                  type="button"
+                  className="text-sm text-amber-400/90 hover:text-amber-300 underline-offset-2 hover:underline"
+                  onClick={() => setVkSeleniumOpen((v) => !v)}
+                >
+                  {vkSeleniumOpen ? 'Скрыть' : 'Резервный вход'} (Selenium, логин/пароль)
+                </button>
+                {vkSeleniumOpen && (
+                  <div className="mt-3 space-y-3 rounded-lg border border-amber-500/25 bg-[var(--bg-tertiary)]/50 p-4">
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Если OAuth или API недоступны: вход через headless-браузер (vk-bot). Пароль не сохраняется в браузере и
+                      передаётся только по HTTPS; на сервере не хранится после ответа. Возможны капча и 2FA — тогда
+                      используйте обычный OAuth. Результат — веб-список сообществ, не API-токен.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Input
+                        label="Телефон или email VK"
+                        type="text"
+                        autoComplete="username"
+                        value={vkSeleniumLogin}
+                        onChange={(e) => setVkSeleniumLogin(e.target.value)}
+                        placeholder="Логин"
+                      />
+                      <Input
+                        label="Пароль"
+                        type="password"
+                        autoComplete="current-password"
+                        value={vkSeleniumPassword}
+                        onChange={(e) => setVkSeleniumPassword(e.target.value)}
+                        placeholder="Одноразово для проверки"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => void verifySeleniumFallback()}
+                      isLoading={loadingSeleniumVerify}
+                      disabled={!vkSeleniumLogin.trim() || !vkSeleniumPassword}
+                    >
+                      Проверить через Selenium (до ~4 мин)
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -563,7 +745,7 @@ export function VKontaktePage() {
                 </p>
                 <p className="text-xs text-amber-400/90 mb-2 rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2">
                   Публикация <strong>с картинками на стену сообщества</strong> в VK требует пользовательский OAuth (
-                  <strong>Авторизация</strong>). Только текст без вложений часто достаточно публиковать с токеном сообщества из Profile Settings.
+                  <strong>Авторизация</strong>). Только текст без вложений часто достаточно публиковать с токеном сообщества (вкладка <strong>Авторизация</strong>).
                 </p>
                 {postImages.some(Boolean) && (
                   <ul className="space-y-2 mb-3">
@@ -648,27 +830,7 @@ export function VKontaktePage() {
               </div>
 
               {!editingPostId && (
-                <div className="space-y-2">
-                  <span className="text-sm font-medium text-[var(--text-secondary)] block">Publish to</span>
-                  <div className="flex flex-wrap gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={toTg} onChange={(e) => setToTg(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
-                      <span className="text-[var(--text-primary)]">Telegram</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={toTw} onChange={(e) => setToTw(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
-                      <span className="text-[var(--text-primary)]">Twitter</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={toWp} onChange={(e) => setToWp(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
-                      <span className="text-[var(--text-primary)]">WordPress</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={toVk} onChange={(e) => setToVk(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
-                      <span className="text-[var(--text-primary)]">VKontakte</span>
-                    </label>
-                  </div>
-                </div>
+                <TargetSocialNetworksWidget value={postTargets} onChange={setPostTargets} />
               )}
               <CardFooter className="px-0">
                 <Button type="submit" isLoading={isCreatingPost} className="w-full sm:w-auto">
@@ -788,25 +950,6 @@ export function VKontaktePage() {
                     </div>
                     <span className="text-[var(--text-primary)]">From group</span>
                   </label>
-                  <div>
-                    <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">Access token (VK)</label>
-                    <p className="text-xs text-[var(--text-muted)] mb-2">
-                      Обычно это <strong className="text-[var(--text-secondary)]">токен сообщества</strong> для публикации от имени группы и сбора стены (
-                      <code className="text-[var(--text-muted)]">wall</code>, при необходимости{' '}
-                      <code className="text-[var(--text-muted)]">groups</code>). Для фото на стене группы и личной стены дополнительно нужен пользовательский токен — вкладка{' '}
-                      <strong className="text-amber-400/90">Авторизация</strong> (OAuth). Подробнее: см. docs VK_BOT_POSTING в репозитории.
-                    </p>
-                    <input
-                      type="password"
-                      value={accessToken === '***' ? '' : accessToken}
-                      onChange={(e) => setAccessToken(e.target.value)}
-                      placeholder={accessToken === '***' ? 'Токен сохранён (скрыт)' : 'Оставьте пустым, чтобы не менять'}
-                      className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
-                    />
-                    {accessToken === '***' && (
-                      <p className="text-xs text-[var(--text-muted)] mt-1.5">Токен сохранён и скрыт из соображений безопасности. Введите новый токен, чтобы заменить.</p>
-                    )}
-                  </div>
                   <Input label="Group to post (ID or short name)" value={groupToPost} onChange={(e) => setGroupToPost(e.target.value)} placeholder="e.g. 123456 or club123456" />
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-[var(--text-secondary)] block">Publish schedule</label>
@@ -855,7 +998,9 @@ export function VKontaktePage() {
                   </label>
                   {collectEnabled && (
                     <div className="space-y-4 animate-slide-down">
-                      <p className="text-sm text-[var(--text-muted)]">Access token is set in Publishing section above. Here you configure which groups to read from.</p>
+                      <p className="text-sm text-[var(--text-muted)]">
+                        Токен сообщества задаётся на вкладке <strong className="text-amber-400/90">Авторизация</strong>. Здесь укажите, с каких групп читать стену.
+                      </p>
                       <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
                         <h4 className="text-sm font-semibold text-[var(--text-primary)]">Groups to read (wall.get)</h4>
                         <p className="text-xs text-[var(--text-muted)]">Enter VK group IDs (e.g. 123456 or -123456). One per field.</p>

@@ -6,11 +6,13 @@ import signal
 import sys
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from pydantic import BaseModel, Field
 
 from config import settings
 from database import init_db, close_db
 from services.vk_bot_service import VkBotService
+from services.vk_selenium_probe import verify_vk_selenium_async
 
 
 logging.basicConfig(
@@ -21,6 +23,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="VK Bot Service", version="1.0.0")
+
+
+class VkSeleniumVerifyBody(BaseModel):
+    """Тело POST /vk-bot/verify-selenium (пароль не сохраняется на сервере после ответа)."""
+
+    login: str = Field(..., min_length=1, max_length=256)
+    password: str = Field(..., min_length=1, max_length=512)
+
 
 bot_service: VkBotService | None = None
 _reload_task = None
@@ -34,6 +44,24 @@ async def health_check():
         "service": "vk-bot",
         "server_time": datetime.utcnow().isoformat() + "Z",
     }
+
+
+@app.post("/vk-bot/verify-selenium")
+async def vk_bot_verify_selenium(request: Request, body: VkSeleniumVerifyBody):
+    """Резервный вход VK через Selenium и веб-парсинг сообществ (без API-токена). Требует X-User-Id от gateway."""
+    uid_hdr = request.headers.get("x-user-id") or request.headers.get("X-User-Id")
+    if not uid_hdr:
+        return {"ok": False, "subscriptions": [], "source": "selenium_web", "error": "Отсутствует X-User-Id"}
+    try:
+        int(uid_hdr)
+    except ValueError:
+        return {"ok": False, "subscriptions": [], "source": "selenium_web", "error": "Некорректный X-User-Id"}
+    logger.info(
+        "vk-bot verify-selenium: user_id=%s login_len=%s",
+        uid_hdr,
+        len((body.login or "").strip()),
+    )
+    return await verify_vk_selenium_async(body.login, body.password, int(uid_hdr))
 
 
 @app.post("/vk/reload")

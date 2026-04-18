@@ -116,10 +116,16 @@ BOT_SCHEDULE_PROTECTED = [
     "/wp-bot/schedule",
     "/vk-bot/schedule",
     "/url-bot/schedule",
+    "/tw-bot/schedule",
     "/th-bot/schedule",
     "/th-bot/reload",
+    "/threads-bot/schedule",
     "/dzen-bot/publish-once",
     "/dzen-bot/collect-once",
+    "/dzen-bot/schedule",
+    "/dzen-bot/verify-yandex",
+    "/instagram-bot/schedule",
+    "/vk-bot/verify-selenium",
 ]
 
 # Пути авторизации ботов — требуют JWT

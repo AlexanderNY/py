@@ -8,7 +8,13 @@ from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, status
 
-from config import settings, SOURCE_TABLES, TARGET_TABLES, COLLECTOR_FUNCTIONS_FOR_ADMIN
+from config import (
+    settings,
+    SOURCE_TABLES,
+    TARGET_TABLES,
+    COLLECTOR_FUNCTIONS_FOR_ADMIN,
+    PLATFORM_POST_STATUSES_ORDERED,
+)
 from database import init_db, close_db, get_db_connection
 from services.collect_service import collect_service
 from services.distribute_service import distribute_service
@@ -30,6 +36,18 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
+
+
+def _merge_platform_status_counts(raw: dict[str, int]) -> dict[str, int]:
+    """Заполняет типичные статусы нулями и добавляет любые прочие из БД."""
+    out: dict[str, int] = {}
+    for s in PLATFORM_POST_STATUSES_ORDERED:
+        out[s] = int(raw.get(s, 0))
+    for k, v in raw.items():
+        if k not in out:
+            out[k] = int(v)
+    return out
+
 
 _collect_task: asyncio.Task | None = None
 _distribute_task: asyncio.Task | None = None
@@ -240,41 +258,44 @@ async def get_metrics():
 
     async with get_db_connection() as conn:
         async with conn.cursor() as cur:
-            # Метрики по каждой платформенной таблице
+            # Метрики по каждой платформенной таблице (все статусы из БД + нули по справочнику)
             for source in SOURCE_TABLES:
                 platform = source["platform"]
                 table = source["table"]
                 try:
                     await cur.execute(
-                        f"""
-                        SELECT
-                            COALESCE(SUM(CASE WHEN status = 'collected' THEN 1 ELSE 0 END), 0),
-                            COALESCE(SUM(CASE WHEN status = 'created' THEN 1 ELSE 0 END), 0),
-                            COALESCE(SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END), 0),
-                            COALESCE(SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END), 0)
-                        FROM {table}
-                        """
+                        f"SELECT status, COUNT(*) AS cnt FROM {table} GROUP BY status"
                     )
-                    row = await cur.fetchone()
+                    rows = await cur.fetchall()
+                    raw: dict[str, int] = {}
+                    for r in rows:
+                        st = r[0]
+                        cnt = int(r[1])
+                        label = st if st is not None and str(st).strip() != "" else "(empty)"
+                        raw[label] = cnt
+                    status_counts = _merge_platform_status_counts(raw)
                     platforms.append(
                         PlatformMetric(
                             platform=platform,
                             table=table,
-                            collected_count=row[0],
-                            created_count=row[1],
-                            ready_count=row[2],
-                            processing_count=row[3],
+                            collected_count=status_counts.get("collected", 0),
+                            created_count=status_counts.get("created", 0),
+                            ready_count=status_counts.get("ready", 0),
+                            processing_count=status_counts.get("processing", 0),
+                            status_counts=status_counts,
                         )
                     )
                 except Exception:
                     logger.warning("Could not get metrics for %s", table)
 
-            # Метрики по центральной таблице posts
+            # Центральная таблица posts — те же статусы, что и в processor /metrics
             await cur.execute(
                 """
                 SELECT
+                    COALESCE(SUM(CASE WHEN status = 'collected' THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN status = 'review' THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN status = 'distributed' THEN 1 ELSE 0 END), 0),
                     COUNT(*)
                 FROM posts
@@ -285,10 +306,12 @@ async def get_metrics():
     return MetricsResponse(
         platforms=platforms,
         posts_table={
-            "processing": posts_row[0],
-            "ready": posts_row[1],
-            "distributed": posts_row[2],
-            "total": posts_row[3],
+            "collected": posts_row[0],
+            "processing": posts_row[1],
+            "ready": posts_row[2],
+            "review": posts_row[3],
+            "distributed": posts_row[4],
+            "total": posts_row[5],
         },
     )
 

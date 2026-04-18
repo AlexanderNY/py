@@ -1,7 +1,6 @@
 import type { ComponentType } from 'react'
 import {
   UserIcon,
-  LineChartIcon,
   TelegramIcon,
   ThreadsIcon,
   WordPressIcon,
@@ -10,7 +9,6 @@ import {
   InstagramIcon,
   LinkIcon,
   PlusIcon,
-  ClipboardListIcon,
   SettingsIcon,
   UserGroupIcon,
   DocumentTextIcon,
@@ -24,17 +22,15 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { path: '/profile', label: 'Profile', Icon: UserIcon },
-  { path: '/graphs', label: 'Graphs', Icon: LineChartIcon },
+  { path: '/posts', label: 'Posts', Icon: PlusIcon },
   { path: '/telegram', label: 'Telegram', Icon: TelegramIcon },
-  { path: '/threads', label: 'Threads', Icon: ThreadsIcon },
-  { path: '/wordpress', label: 'WordPress', Icon: WordPressIcon },
-  { path: '/twitter', label: 'Twitter', Icon: TwitterIcon },
   { path: '/vkontakte', label: 'VKontakte', Icon: VKontakteIcon },
   { path: '/instagram', label: 'Instagram', Icon: InstagramIcon },
+  { path: '/threads', label: 'Threads', Icon: ThreadsIcon },
+  { path: '/wordpress', label: 'WordPress', Icon: WordPressIcon },
   { path: '/dzen', label: 'Дзен', Icon: DocumentTextIcon },
+  { path: '/twitter', label: 'Twitter', Icon: TwitterIcon },
   { path: '/custom-url', label: 'Custom URL', Icon: LinkIcon },
-  { path: '/posts', label: 'Posts', Icon: PlusIcon },
-  { path: '/test', label: 'Test', Icon: ClipboardListIcon },
 ]
 
 export const groupNavItem: NavItem = {

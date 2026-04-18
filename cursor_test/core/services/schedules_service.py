@@ -13,6 +13,9 @@ class SchedulesService:
         ("tg_profiles", "tg"),
         ("tw_profiles", "tw"),
         ("vk_profiles", "vk"),
+        ("threads_profiles", "threads"),
+        ("dzen_profiles", "dzen"),
+        ("instagram_profiles", "instagram"),
     ]
 
     async def get_all_schedules(self) -> list[dict[str, Any]]:

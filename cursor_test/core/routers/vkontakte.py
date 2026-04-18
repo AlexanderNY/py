@@ -1,8 +1,9 @@
 """Роутер для VKontakte профилей и постов."""
 
+import json
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Any, List, Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -69,6 +70,161 @@ async def get_vk_profile(x_user_id: Optional[str] = Header(None)):
 
 
 VK_OAUTH_SCOPES = "wall,photos,groups,offline"
+
+VK_API_VERSION = "5.199"
+VK_API_BASE = "https://api.vk.com/method"
+
+
+def _vk_parse_api_response(data: dict) -> Any:
+    """Извлекает response или бросает HTTPException по полю error."""
+    if "error" in data:
+        err = data["error"]
+        code = err.get("error_code")
+        msg = err.get("error_msg", "VK API error")
+        raise HTTPException(
+            status_code=502,
+            detail=f"VK API: {msg}" + (f" ({code})" if code is not None else ""),
+        )
+    return data.get("response")
+
+
+async def _vk_api_get(method: str, params: dict) -> Any:
+    """GET api.vk.com/method/{method} с таймаутом."""
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.get(
+                f"{VK_API_BASE}/{method}",
+                params=params,
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except (httpx.HTTPError, json.JSONDecodeError) as e:
+            raise HTTPException(status_code=502, detail=f"VK transport error: {e}") from e
+    return _vk_parse_api_response(data)
+
+
+def _collect_group_ids_for_community_probe(
+    group_to_post: Optional[str],
+    groups_to_read: Optional[List[Any]],
+) -> List[str]:
+    """Уникальные идентификаторы групп из настроек профиля (для groups.getById)."""
+    raw: List[str] = []
+    if group_to_post and str(group_to_post).strip():
+        raw.append(str(group_to_post).strip())
+    if isinstance(groups_to_read, list):
+        for g in groups_to_read:
+            if g is None:
+                continue
+            s = str(g).strip()
+            if s:
+                raw.append(s)
+    seen = set()
+    out: List[str] = []
+    for x in raw:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out[:100]
+
+
+@router.get("/subscriptions")
+async def vk_list_subscriptions(x_user_id: Optional[str] = Header(None)):
+    """Список подписок на сообщества (users.getSubscriptions) или проверка токена сообщества (groups.getById).
+
+    Пользовательский OAuth: полный список подписок пользователя на сообщества.
+    Только токен сообщества: возвращаются данные по группам из group_to_post / groups_to_read (доступ API к этим id).
+    """
+    user_id = get_user_id_from_header(x_user_id)
+    raw = await profile_service.get_vk_profile_tokens_raw(user_id)
+    if not raw:
+        raise HTTPException(
+            status_code=404,
+            detail="Профиль VK не найден. Сохраните настройки на вкладке Profile Settings.",
+        )
+    user_tok = (raw.get("user_access_token") or "").strip()
+    comm_tok = (raw.get("access_token") or "").strip()
+
+    if user_tok:
+        params: dict = {
+            "access_token": user_tok,
+            "v": VK_API_VERSION,
+            "extended": 1,
+            "count": 100,
+        }
+        uid = raw.get("vk_user_id")
+        if uid is not None:
+            params["user_id"] = int(uid)
+        resp = await _vk_api_get("users.getSubscriptions", params)
+        subs: List[dict] = []
+        if isinstance(resp, list):
+            for gid in resp[:100]:
+                subs.append({"id": gid, "name": None, "screen_name": None, "type": "group"})
+        elif isinstance(resp, dict):
+            for g in resp.get("groups") or []:
+                if not isinstance(g, dict):
+                    continue
+                gid = g.get("id")
+                subs.append(
+                    {
+                        "id": gid,
+                        "name": g.get("name"),
+                        "screen_name": g.get("screen_name"),
+                        "type": g.get("type"),
+                    }
+                )
+            if not subs and isinstance(resp.get("items"), list):
+                for gid in resp["items"][:100]:
+                    subs.append({"id": gid, "name": None, "screen_name": None, "type": "group"})
+        return {
+            "ok": True,
+            "source": "user_oauth",
+            "subscriptions": subs,
+            "count": len(subs),
+        }
+
+    if comm_tok:
+        ids = _collect_group_ids_for_community_probe(
+            raw.get("group_to_post"),
+            raw.get("groups_to_read"),
+        )
+        if not ids:
+            raise HTTPException(
+                status_code=400,
+                detail="Укажите Group to post или группы для сбора (Collection), чтобы проверить токен сообщества.",
+            )
+        params = {
+            "access_token": comm_tok,
+            "v": VK_API_VERSION,
+            "group_ids": ",".join(ids),
+            "fields": "screen_name",
+        }
+        resp = await _vk_api_get("groups.getById", params)
+        subs = []
+        if isinstance(resp, list):
+            for g in resp:
+                if not isinstance(g, dict):
+                    continue
+                subs.append(
+                    {
+                        "id": g.get("id"),
+                        "name": g.get("name"),
+                        "screen_name": g.get("screen_name"),
+                        "type": g.get("type"),
+                    }
+                )
+        return {
+            "ok": True,
+            "source": "community_token",
+            "subscriptions": subs,
+            "count": len(subs),
+            "message": "Данные по указанным группам через токен сообщества. Полный список подписок пользователя — через OAuth VK.",
+        }
+
+    raise HTTPException(
+        status_code=400,
+        detail="Нет сохранённого токена: укажите Access token (VK) на вкладке Авторизация или подключите VK (OAuth).",
+    )
 
 
 @router.get("/oauth/url")
@@ -295,6 +451,9 @@ async def create_vk_post(
             to_tw=data.to_tw,
             to_wp=data.to_wp,
             to_vk=data.to_vk,
+            to_threads=data.to_threads,
+            to_dzen=data.to_dzen,
+            to_instagram=data.to_instagram,
         )
         return post
     except ValueError as e:

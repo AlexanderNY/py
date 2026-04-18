@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     S3_ACCESS_KEY: str = ""
     S3_SECRET_KEY: str = ""
     S3_USE_SSL: bool = False
+    # Префикс ключей для диагностических скриншотов Selenium (имя файла содержит «diag»)
+    S3_DIAG_PREFIX: str = "dzen/diag"
 
     # Selenium
     CHROME_BIN: str = ""
@@ -35,7 +37,18 @@ class Settings(BaseSettings):
 
     # URL и селекторы (Дзен меняет вёрстку — править через env)
     YANDEX_PASSPORT_URL: str = "https://passport.yandex.ru/auth/"
+    YANDEX_PASSPORT_LOGIN_TIMEOUT_SEC: int = 50
+    YANDEX_PASSPORT_PASSWORD_TIMEOUT_SEC: int = 40
     DZEN_NEW_ARTICLE_URL: str = "https://dzen.ru/article/new?type=article"
+    DZEN_SUBSCRIPTIONS_URL: str = "https://dzen.ru/subscriptions"
+    DZEN_SUBSCRIPTIONS_WAIT_SEC: int = 45
+    DZEN_SUBSCRIPTIONS_SCROLL_TIMES: int = 4
+    DZEN_SUBSCRIPTIONS_SCROLL_PAUSE_SEC: float = 1.2
+    # Селекторы ссылок на каналы (через запятую); пустые — fallback на все a[href*='dzen.ru']
+    DZEN_SUBSCRIPTIONS_LINK_SELECTORS: str = (
+        "a[href*='/id/'], a[href*='dzen.ru/id/'], "
+        "a[href*='/media/id/'], [data-testid='channel-link'] a"
+    )
 
     # Публикация: поле текста, загрузка картинок, публикация
     DZEN_BODY_SELECTOR: str = "div[data-placeholder], article [contenteditable='true'], .zen-editor [contenteditable='true']"

@@ -24,6 +24,21 @@ class Settings(BaseSettings):
 
     DEFAULT_TWEET_SCREENSHOT_XPATH: str = "//article[@data-testid='tweet']"
 
+    # Selenium (verify-x fallback)
+    SELENIUM_HEADLESS: bool = True
+    SELENIUM_PAGE_LOAD_TIMEOUT: int = 60
+    SELENIUM_IMPLICIT_WAIT: int = 5
+    CHROME_BIN: str = ""
+    CHROMEDRIVER_PATH: str = ""
+    X_SELENIUM_FOLLOWING_MAX_SCROLL: int = 4
+
+    # S3 (диагностические скриншоты Selenium)
+    S3_ENDPOINT_URL: str = ""
+    S3_BUCKET: str = "uploads"
+    S3_ACCESS_KEY: str = ""
+    S3_SECRET_KEY: str = ""
+    S3_USE_SSL: bool = False
+
     class Config:
         env_file = ".env"
         case_sensitive = True

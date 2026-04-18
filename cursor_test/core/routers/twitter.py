@@ -117,6 +117,9 @@ async def create_tw_post(
             to_tw=data.to_tw,
             to_wp=data.to_wp,
             to_vk=data.to_vk,
+            to_threads=data.to_threads,
+            to_dzen=data.to_dzen,
+            to_instagram=data.to_instagram,
         )
         return post
     except ValueError as e:

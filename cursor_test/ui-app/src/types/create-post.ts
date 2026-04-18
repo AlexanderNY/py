@@ -5,6 +5,8 @@ export interface CreatePostRequest {
     vk?: boolean
     wp?: boolean
     threads?: boolean
+    instagram?: boolean
+    dzen?: boolean
   }
   text: string
   title?: string
@@ -50,6 +52,8 @@ export interface CpostPostListItem {
   to_wp?: boolean
   to_vk?: boolean
   to_threads?: boolean
+  to_dzen?: boolean
+  to_instagram?: boolean
   created_at?: string
   updated_at?: string
 }
@@ -80,4 +84,6 @@ export interface CpostPostUpdateRequest {
   to_wp?: boolean
   to_vk?: boolean
   to_threads?: boolean
+  to_dzen?: boolean
+  to_instagram?: boolean
 }

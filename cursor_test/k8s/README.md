@@ -70,7 +70,7 @@ kubectl apply -f k8s/url-bot/
 kubectl apply -f k8s/collector/
 kubectl apply -f k8s/processor/
 kubectl apply -f k8s/th-bot/
-kubectl apply -f k8s/test/
+kubectl apply -f k8s/selectcb/
 kubectl apply -f k8s/ingress.yaml
 ```
 

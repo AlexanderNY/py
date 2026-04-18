@@ -184,6 +184,27 @@ async def get_storage_files(
     return await forward_to_core("/admin/storage/files", request)
 
 
+@router.get("/admin/storage/presigned-url")
+async def get_storage_presigned_url(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Временная ссылка на объект S3 (просмотр PNG диагностики). Только admin."""
+    return await forward_to_core("/admin/storage/presigned-url", request)
+
+
+@router.delete("/admin/storage/files")
+async def delete_storage_file(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Удаление объекта в S3. Только admin.
+
+    DELETE /core/admin/storage/files?key=... -> DELETE /admin/storage/files на core.
+    """
+    return await forward_to_core("/admin/storage/files", request)
+
+
 @router.get("/schedules")
 async def get_schedules(
     request: Request,

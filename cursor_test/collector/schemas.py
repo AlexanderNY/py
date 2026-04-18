@@ -1,9 +1,9 @@
 """Pydantic-модели для Collector API."""
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CollectorFunction(BaseModel):
@@ -58,6 +58,7 @@ class PlatformMetric(BaseModel):
     created_count: int = 0
     ready_count: int
     processing_count: int
+    status_counts: Dict[str, int] = Field(default_factory=dict)
 
 
 class MetricsResponse(BaseModel):

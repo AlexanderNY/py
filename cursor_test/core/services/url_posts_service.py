@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from database import get_db_connection, release_db_connection
+from services.quota_service import ensure_monthly_post_quota
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,12 @@ async def save_url_post(item: dict[str, Any]) -> int | None:
         id вставленной записи или None при ошибке.
     """
     user_id = item.get("user_id")
+    if user_id is not None:
+        try:
+            uid = int(user_id)
+            await ensure_monthly_post_quota(uid)
+        except (TypeError, ValueError):
+            pass
     url = item.get("url") or ""
     raw_post_text = item.get("post_text") or ""
     to_tg = item.get("to_tg", False)

@@ -1,4 +1,4 @@
-import { useState, FormEvent, Fragment, useEffect, type ReactNode } from 'react'
+import { useState, FormEvent, Fragment, useEffect, useRef, type ReactNode } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
@@ -7,16 +7,18 @@ import { TableSkeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui'
 import { TipTapEditor } from '@/components/ui/tiptap-editor'
 import { authService } from '@/services/auth-service'
+import { useAuth } from '@/contexts/auth-context'
 import { coreService } from '@/services/core-service'
 import { notificationsService } from '@/services/notifications-service'
 import { Input } from '@/components/ui/input'
-import type { User, RoleTariffHistoryEntry, GroupResponse } from '@/types/auth'
+import type { User, RoleTariffHistoryEntry, GroupResponse, AdminAuditLogEntry } from '@/types/auth'
 import type {
   UserStatisticsItem,
   ScheduleSnapshot,
   Notification,
   ServicesStatusResponse,
   PostsTablesResponse,
+  PlatformMetric,
   PostRow,
   PostingDiagnosticsResponse,
   StorageFileItem,
@@ -24,10 +26,67 @@ import type {
   RuntimeLocationResponse,
 } from '@/types/core'
 
-type AdminTab = 'users' | 'groups' | 'statistics' | 'schedule' | 'notifications' | 'services-status' | 'processor' | 'collector' | 'scheduler' | 'posts-tables' | 'posting-diagnostics' | 'runtime-location' | 'storage'
+type AdminTab = 'users' | 'audit' | 'groups' | 'statistics' | 'schedule' | 'notifications' | 'services-status' | 'processor' | 'collector' | 'scheduler' | 'posts-tables' | 'posting-diagnostics' | 'runtime-location' | 'storage'
+
+/** Платформы для «Принудительный запуск ботов» (совпадает с scheduler BOT_PLATFORMS). */
+const SCHEDULE_BOT_PLATFORMS = [
+  'wp',
+  'tg',
+  'tw',
+  'vk',
+  'url',
+  'threads',
+  'dzen',
+  'instagram',
+] as const
+
+/** Типичные статусы строк в таблицах *_posts; редкие из БД добавляются колонками справа. */
+const PLATFORM_TABLE_STATUS_ORDER: readonly string[] = [
+  'collected',
+  'created',
+  'processing',
+  'ready',
+  'review',
+  'published',
+  'failed',
+  'skipped',
+]
+
+function platformTableStatusColumns(platforms: PlatformMetric[]): string[] {
+  const extra = new Set<string>()
+  for (const p of platforms) {
+    const sc = p.status_counts
+    if (!sc) continue
+    for (const k of Object.keys(sc)) {
+      if (!PLATFORM_TABLE_STATUS_ORDER.includes(k)) {
+        extra.add(k)
+      }
+    }
+  }
+  return [...PLATFORM_TABLE_STATUS_ORDER, ...Array.from(extra).sort()]
+}
+
+function platformStatusCell(p: PlatformMetric, col: string): number {
+  const sc = p.status_counts
+  if (sc && Object.prototype.hasOwnProperty.call(sc, col)) {
+    return Number(sc[col] ?? 0)
+  }
+  if (col === 'collected') return p.collected_count ?? 0
+  if (col === 'created') return p.created_count ?? 0
+  if (col === 'ready') return p.ready_count ?? 0
+  if (col === 'processing') return p.processing_count ?? 0
+  return 0
+}
+
+/** Не перезапрашивать те же данные при переключении вкладок чаще этого интервала (мс). */
+const STALE_SERVICES_STATUS_MS = 30_000
+const STALE_POSTS_TABLES_MS = 60_000
 
 export function AdministrationPage() {
+  const { user: currentUser } = useAuth()
   const [activeTab, setActiveTab] = useState<AdminTab>('users')
+  const lastServicesStatusLoadedAt = useRef<number | null>(null)
+  const lastPostsTablesLoadedAt = useRef<number | null>(null)
   const [users, setUsers] = useState<User[]>([])
   const [statistics, setStatistics] = useState<UserStatisticsItem[]>([])
   const [schedules, setSchedules] = useState<ScheduleSnapshot[]>([])
@@ -38,6 +97,7 @@ export function AdministrationPage() {
   const [isStartingBot, setIsStartingBot] = useState(false)
   const [usersError, setUsersError] = useState('')
   const [savingUserId, setSavingUserId] = useState<number | null>(null)
+  const [blockingUserId, setBlockingUserId] = useState<number | null>(null)
   const [userUpdateError, setUserUpdateError] = useState('')
   const [expandedHistoryUserId, setExpandedHistoryUserId] = useState<number | null>(null)
   const [historyList, setHistoryList] = useState<RoleTariffHistoryEntry[]>([])
@@ -45,16 +105,27 @@ export function AdministrationPage() {
   const [historyError, setHistoryError] = useState('')
   const ROLES = ['guest', 'user', 'admin', 'manager', 'author'] as const
   const TARIFFS = ['free', 'basic', 'premium']
+  const SUBSCRIPTION_STATUS_FILTERS: { value: string; label: string }[] = [
+    { value: '', label: 'All statuses' },
+    { value: '__null__', label: 'No status' },
+    { value: 'active', label: 'active' },
+    { value: 'past_due', label: 'past_due' },
+    { value: 'canceled', label: 'canceled' },
+    { value: 'unpaid', label: 'unpaid' },
+    { value: 'trialing', label: 'trialing' },
+  ]
+  const [userFilterTariff, setUserFilterTariff] = useState('')
+  const [userFilterSubscriptionStatus, setUserFilterSubscriptionStatus] = useState('')
+  const [auditLog, setAuditLog] = useState<AdminAuditLogEntry[]>([])
+  const [isLoadingAudit, setIsLoadingAudit] = useState(false)
+  const [auditError, setAuditError] = useState('')
   const [statisticsError, setStatisticsError] = useState('')
   const [scheduleError, setScheduleError] = useState('')
   const [discoveryMessage, setDiscoveryMessage] = useState('')
   const [botMessage, setBotMessage] = useState('')
-  const [selectedBots, setSelectedBots] = useState<{ [key: string]: boolean }>({
-    wp: false,
-    tg: false,
-    tw: false,
-    vk: false
-  })
+  const [selectedBots, setSelectedBots] = useState<{ [key: string]: boolean }>(() =>
+    Object.fromEntries(SCHEDULE_BOT_PLATFORMS.map((p) => [p, false]))
+  )
 
   // Notifications state
   const [notificationMessage, setNotificationMessage] = useState('')
@@ -95,8 +166,11 @@ export function AdministrationPage() {
   // S3 storage files (admin)
   const [storageFiles, setStorageFiles] = useState<StorageFilesResponse | null>(null)
   const [storagePrefix, setStoragePrefix] = useState('')
+  const [storageDiagOnly, setStorageDiagOnly] = useState(false)
   const [isLoadingStorageFiles, setIsLoadingStorageFiles] = useState(false)
   const [storageFilesError, setStorageFilesError] = useState('')
+  const [storageDeletingKey, setStorageDeletingKey] = useState<string | null>(null)
+  const [storageOpeningKey, setStorageOpeningKey] = useState<string | null>(null)
 
   const [runtimeLocation, setRuntimeLocation] = useState<RuntimeLocationResponse | null>(null)
   const [isLoadingRuntimeLocation, setIsLoadingRuntimeLocation] = useState(false)
@@ -105,19 +179,56 @@ export function AdministrationPage() {
   const [groupsList, setGroupsList] = useState<GroupResponse[]>([])
   const [isLoadingGroups, setIsLoadingGroups] = useState(false)
   const [groupsError, setGroupsError] = useState('')
+  const [newGroupName, setNewGroupName] = useState('')
+  const [newGroupDescription, setNewGroupDescription] = useState('')
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false)
+  const [addMemberForms, setAddMemberForms] = useState<
+    Record<number, { email: string; role: 'manager' | 'author' }>
+  >({})
+  const [addingToGroupId, setAddingToGroupId] = useState<number | null>(null)
+  const [removingMemberKey, setRemovingMemberKey] = useState<string | null>(null)
 
   async function handleLoadUsers() {
     setUsersError('')
     setUserUpdateError('')
     setIsLoadingUsers(true)
     try {
-      const data = await authService.getUsers()
+      const data = await authService.getUsers({
+        tariff: userFilterTariff || undefined,
+        subscription_status: userFilterSubscriptionStatus || undefined,
+      })
       setUsers(data)
     } catch (error) {
       setUsersError(error instanceof Error ? error.message : 'Failed to fetch users')
       setUsers([])
     } finally {
       setIsLoadingUsers(false)
+    }
+  }
+
+  async function handleExportUsersCsv() {
+    setUsersError('')
+    try {
+      await authService.exportUsersCsv({
+        tariff: userFilterTariff || undefined,
+        subscription_status: userFilterSubscriptionStatus || undefined,
+      })
+    } catch (error) {
+      setUsersError(error instanceof Error ? error.message : 'Export failed')
+    }
+  }
+
+  async function handleLoadAuditLog() {
+    setAuditError('')
+    setIsLoadingAudit(true)
+    try {
+      const data = await authService.getAdminAuditLog(200)
+      setAuditLog(data)
+    } catch (error) {
+      setAuditError(error instanceof Error ? error.message : 'Failed to load audit log')
+      setAuditLog([])
+    } finally {
+      setIsLoadingAudit(false)
     }
   }
 
@@ -132,6 +243,69 @@ export function AdministrationPage() {
       setGroupsList([])
     } finally {
       setIsLoadingGroups(false)
+    }
+  }
+
+  async function handleCreateGroupAdmin(e: FormEvent) {
+    e.preventDefault()
+    if (!newGroupName.trim()) return
+    setGroupsError('')
+    setIsCreatingGroup(true)
+    try {
+      const created = await authService.createGroupAsAdmin(newGroupName.trim(), newGroupDescription.trim())
+      setGroupsList((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
+      setNewGroupName('')
+      setNewGroupDescription('')
+    } catch (error) {
+      setGroupsError(error instanceof Error ? error.message : 'Failed to create group')
+    } finally {
+      setIsCreatingGroup(false)
+    }
+  }
+
+  function getMemberForm(groupId: number) {
+    return addMemberForms[groupId] ?? { email: '', role: 'author' as const }
+  }
+
+  function setMemberForm(
+    groupId: number,
+    patch: Partial<{ email: string; role: 'manager' | 'author' }>
+  ) {
+    setAddMemberForms((prev) => ({
+      ...prev,
+      [groupId]: { ...getMemberForm(groupId), ...patch },
+    }))
+  }
+
+  async function handleAddMemberToGroup(group: GroupResponse) {
+    const form = getMemberForm(group.id)
+    const email = form.email.trim()
+    if (!email) return
+    const isEmpty = !group.members || group.members.length === 0
+    const role = isEmpty ? 'manager' : form.role
+    setGroupsError('')
+    setAddingToGroupId(group.id)
+    try {
+      await authService.addGroupMember(group.id, email, role)
+      await handleLoadGroups()
+      setMemberForm(group.id, { email: '' })
+    } catch (error) {
+      setGroupsError(error instanceof Error ? error.message : 'Failed to add member')
+    } finally {
+      setAddingToGroupId(null)
+    }
+  }
+
+  async function handleRemoveGroupMember(groupId: number, userId: number) {
+    setGroupsError('')
+    setRemovingMemberKey(`${groupId}-${userId}`)
+    try {
+      await authService.removeGroupMember(groupId, userId)
+      await handleLoadGroups()
+    } catch (error) {
+      setGroupsError(error instanceof Error ? error.message : 'Failed to remove member')
+    } finally {
+      setRemovingMemberKey(null)
     }
   }
 
@@ -157,6 +331,26 @@ export function AdministrationPage() {
       setUserUpdateError(error instanceof Error ? error.message : 'Failed to update user')
     } finally {
       setSavingUserId(null)
+    }
+  }
+
+  async function handleSetUserBlocked(user: User, blocked: boolean) {
+    if (user.id == null) return
+    if (blocked && currentUser?.id === user.id) {
+      setUserUpdateError('Нельзя заблокировать собственную учётную запись')
+      return
+    }
+    setUserUpdateError('')
+    setBlockingUserId(user.id)
+    try {
+      const updated = await authService.updateUser(user.id, { is_blocked: blocked })
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, ...updated } : u))
+      )
+    } catch (error) {
+      setUserUpdateError(error instanceof Error ? error.message : 'Failed to update block status')
+    } finally {
+      setBlockingUserId(null)
     }
   }
 
@@ -315,6 +509,7 @@ export function AdministrationPage() {
     try {
       const data = await coreService.getServicesStatus()
       setServicesStatus(data)
+      lastServicesStatusLoadedAt.current = Date.now()
     } catch (error) {
       setServicesStatusError(error instanceof Error ? error.message : 'Failed to fetch services status')
       setServicesStatus(null)
@@ -331,6 +526,7 @@ export function AdministrationPage() {
       const data = await coreService.runProcessorCycle()
       if (data.status === 'success') {
         setProcessorRunMessage(`Обработано постов: ${data.count}. ${data.message}`)
+        lastPostsTablesLoadedAt.current = null
         await handleLoadServicesStatus()
       } else {
         setProcessorRunError(data.message || 'Processor cycle failed')
@@ -348,6 +544,7 @@ export function AdministrationPage() {
     try {
       const data = await coreService.getPostsTablesOverview()
       setPostsTables(data)
+      lastPostsTablesLoadedAt.current = Date.now()
     } catch (error) {
       setPostsTablesError(error instanceof Error ? error.message : 'Failed to fetch posts tables')
       setPostsTables(null)
@@ -379,10 +576,12 @@ export function AdministrationPage() {
       const data = await coreService.runCollectCycle()
       if (data.status === 'success') {
         setCollectMessage(`Собрано постов: ${data.count}. ${data.message}`)
+        lastPostsTablesLoadedAt.current = null
         await handleRunPostingDiagnostics()
       } else if (data.status === 'partial') {
         setCollectMessage(`Собрано постов: ${data.count}. ${data.message}`)
         if (data.errors?.length) setCollectError(data.errors.join('; '))
+        lastPostsTablesLoadedAt.current = null
         await handleRunPostingDiagnostics()
       } else {
         setCollectError(data.message || 'Ошибка цикла сбора')
@@ -403,6 +602,7 @@ export function AdministrationPage() {
       const data = await coreService.runDistributeCycle()
       if (data.status === 'success') {
         setDistributeMessage(`Распределено постов: ${data.count}. ${data.message}`)
+        lastPostsTablesLoadedAt.current = null
         await handleRunPostingDiagnostics()
       } else {
         setDistributeError(data.message || 'Ошибка цикла распределения')
@@ -421,6 +621,7 @@ export function AdministrationPage() {
       const data = await coreService.getStorageFiles({
         prefix: storagePrefix.trim() || undefined,
         limit: 500,
+        ...(storageDiagOnly ? { key_contains: 'diag' } : {}),
       })
       setStorageFiles(data)
     } catch (error) {
@@ -428,6 +629,42 @@ export function AdministrationPage() {
       setStorageFiles(null)
     } finally {
       setIsLoadingStorageFiles(false)
+    }
+  }
+
+  async function handleOpenStorageFile(key: string) {
+    setStorageFilesError('')
+    setStorageOpeningKey(key)
+    try {
+      const { url } = await coreService.getStoragePresignedUrl(key)
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (error) {
+      setStorageFilesError(error instanceof Error ? error.message : 'Не удалось открыть файл')
+    } finally {
+      setStorageOpeningKey(null)
+    }
+  }
+
+  async function handleDeleteStorageFile(key: string) {
+    const ok = window.confirm(
+      `Удалить объект из S3? Это действие необратимо.\n\n${key}`
+    )
+    if (!ok) return
+    setStorageFilesError('')
+    setStorageDeletingKey(key)
+    try {
+      await coreService.deleteStorageFile(key)
+      setStorageFiles((prev) => {
+        if (!prev?.enabled) return prev
+        return {
+          ...prev,
+          objects: prev.objects.filter((o) => o.key !== key),
+        }
+      })
+    } catch (error) {
+      setStorageFilesError(error instanceof Error ? error.message : 'Не удалось удалить файл')
+    } finally {
+      setStorageDeletingKey(null)
     }
   }
 
@@ -459,15 +696,24 @@ export function AdministrationPage() {
     }
   }
 
-  // Load data when opening Processor, Collector, or Scheduler tabs
+  // Подгрузка при открытии вкладок инфраструктуры: без лишних запросов, пока кэш не устарел
   useEffect(() => {
-    if (activeTab === 'processor' || activeTab === 'collector' || activeTab === 'scheduler') {
-      handleLoadServicesStatus()
-      if (activeTab === 'processor' || activeTab === 'collector') {
-        handleLoadPostsTables()
-      }
-      if (activeTab === 'scheduler') {
-        handleLoadSchedule()
+    if (activeTab !== 'processor' && activeTab !== 'collector' && activeTab !== 'scheduler') {
+      return
+    }
+    const now = Date.now()
+    const servicesStale =
+      lastServicesStatusLoadedAt.current === null ||
+      now - lastServicesStatusLoadedAt.current > STALE_SERVICES_STATUS_MS
+    if (servicesStale) {
+      void handleLoadServicesStatus()
+    }
+    if (activeTab === 'processor' || activeTab === 'collector') {
+      const postsStale =
+        lastPostsTablesLoadedAt.current === null ||
+        now - lastPostsTablesLoadedAt.current > STALE_POSTS_TABLES_MS
+      if (postsStale) {
+        void handleLoadPostsTables()
       }
     }
   }, [activeTab])
@@ -525,7 +771,10 @@ export function AdministrationPage() {
 
   return (
     <PageContainer maxWidth="wide">
-      <PageHeader title="Administration" description="Manage users and view usage statistics" />
+      <PageHeader
+        title="Administration"
+        description="Пользователи и группы, статистика, уведомления, мониторинг сервисов (core, collector, processor, scheduler), пайплайн постов, диагностика постинга, расписания, S3 и сведения о окружении."
+      />
 
       {/* Tabs */}
       <div className="flex space-x-1 border-b border-[var(--border-color)]">
@@ -538,6 +787,16 @@ export function AdministrationPage() {
           }`}
         >
           Users
+        </button>
+        <button
+          onClick={() => setActiveTab('audit')}
+          className={`px-4 py-2 font-medium text-sm transition-colors ${
+            activeTab === 'audit'
+              ? 'text-primary-400 border-b-2 border-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          Audit log
         </button>
         <button
           onClick={() => setActiveTab('groups')}
@@ -674,18 +933,48 @@ export function AdministrationPage() {
             <CardDescription>View and manage all registered users</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button 
-              onClick={handleLoadUsers} 
-              isLoading={isLoadingUsers}
-              className="w-full sm:w-auto"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Load Users
-            </Button>
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+              <Button 
+                onClick={handleLoadUsers} 
+                isLoading={isLoadingUsers}
+                className="w-full sm:w-auto"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Load Users
+              </Button>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-[var(--text-muted)]">Tariff</label>
+                <select
+                  value={userFilterTariff}
+                  onChange={(e) => setUserFilterTariff(e.target.value)}
+                  className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)]"
+                >
+                  <option value="">All tariffs</option>
+                  {TARIFFS.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-[var(--text-muted)]">Subscription</label>
+                <select
+                  value={userFilterSubscriptionStatus}
+                  onChange={(e) => setUserFilterSubscriptionStatus(e.target.value)}
+                  className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] min-w-[140px]"
+                >
+                  {SUBSCRIPTION_STATUS_FILTERS.map((o) => (
+                    <option key={o.value || 'all'} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <Button type="button" variant="secondary" onClick={handleExportUsersCsv} className="w-full sm:w-auto">
+                Export CSV
+              </Button>
+            </div>
 
-            {isLoadingUsers && <TableSkeleton rows={5} cols={7} className="mt-4" />}
+            {isLoadingUsers && <TableSkeleton rows={5} cols={10} className="mt-4" />}
 
             {usersError && (
               <Alert variant="error" className="animate-slide-down">
@@ -708,7 +997,9 @@ export function AdministrationPage() {
                       <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Email</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Role</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Tariff</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Subscription</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Email Verified</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Access</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Created At</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Actions</th>
                     </tr>
@@ -721,7 +1012,7 @@ export function AdministrationPage() {
                       return (
                         <Fragment key={user.id ?? user.email}>
                         <tr
-                          className="border-b border-[var(--border-color)] hover:bg-[var(--bg-secondary)] transition-colors"
+                          className={`border-b border-[var(--border-color)] hover:bg-[var(--bg-secondary)] transition-colors ${user.is_blocked ? 'opacity-80' : ''}`}
                         >
                           <td className="py-3 px-4 text-[var(--text-secondary)] font-medium">{user.username}</td>
                           <td className="py-3 px-4 text-[var(--text-secondary)]">{user.email}</td>
@@ -757,6 +1048,9 @@ export function AdministrationPage() {
                               ))}
                             </select>
                           </td>
+                          <td className="py-3 px-4 text-xs text-[var(--text-secondary)] max-w-[120px]">
+                            {user.subscription_status ?? '—'}
+                          </td>
                           <td className="py-3 px-4">
                             {user.is_email_verified ? (
                               <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-emerald-500/20 text-emerald-400">
@@ -773,6 +1067,34 @@ export function AdministrationPage() {
                                 Not Verified
                               </span>
                             )}
+                          </td>
+                          <td className="py-3 px-4 align-top">
+                            <div className="flex flex-col gap-2">
+                              {user.is_blocked ? (
+                                <span className="inline-flex w-fit items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-400">
+                                  Заблокирован
+                                </span>
+                              ) : (
+                                <span className="inline-flex w-fit items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400">
+                                  Активен
+                                </span>
+                              )}
+                              {user.id != null && (
+                                <Button
+                                  size="sm"
+                                  variant={user.is_blocked ? 'secondary' : 'danger'}
+                                  disabled={
+                                    blockingUserId === user.id ||
+                                    (user.is_blocked !== true && currentUser?.id === user.id)
+                                  }
+                                  isLoading={blockingUserId === user.id}
+                                  onClick={() => handleSetUserBlocked(user, !user.is_blocked)}
+                                  className="w-fit"
+                                >
+                                  {user.is_blocked ? 'Разблокировать' : 'Заблокировать'}
+                                </Button>
+                              )}
+                            </div>
                           </td>
                           <td className="py-3 px-4 text-[var(--text-secondary)]">
                             {new Date(user.created_at).toLocaleDateString()}
@@ -799,7 +1121,7 @@ export function AdministrationPage() {
                         </tr>
                         {user.id != null && expandedHistoryUserId === user.id && (
                           <tr className="bg-[var(--bg-tertiary)]">
-                            <td colSpan={7} className="py-4 px-4">
+                            <td colSpan={8} className="py-4 px-4">
                               {isLoadingHistory ? (
                                 <p className="text-[var(--text-muted)] text-sm">Loading history…</p>
                               ) : historyError ? (
@@ -861,6 +1183,62 @@ export function AdministrationPage() {
         </Card>
       )}
 
+      {activeTab === 'audit' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle>Admin audit log</CardTitle>
+            <CardDescription>
+              Изменения ролей и тарифов, блокировки (записи при действиях администраторов)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button onClick={handleLoadAuditLog} isLoading={isLoadingAudit} className="w-full sm:w-auto">
+              Load audit log
+            </Button>
+            {auditError && (
+              <Alert variant="error" className="animate-slide-down">
+                {auditError}
+              </Alert>
+            )}
+            {auditLog.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--border-color)]">
+                      <th className="text-left py-2 px-3">Time</th>
+                      <th className="text-left py-2 px-3">Admin ID</th>
+                      <th className="text-left py-2 px-3">Action</th>
+                      <th className="text-left py-2 px-3">Target</th>
+                      <th className="text-left py-2 px-3">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditLog.map((row) => (
+                      <tr key={row.id} className="border-b border-[var(--border-color)]">
+                        <td className="py-2 px-3 whitespace-nowrap text-[var(--text-secondary)]">
+                          {new Date(row.created_at).toLocaleString()}
+                        </td>
+                        <td className="py-2 px-3">{row.admin_user_id}</td>
+                        <td className="py-2 px-3">{row.action}</td>
+                        <td className="py-2 px-3 text-xs">
+                          {row.target_type ?? '—'} {row.target_id ?? ''}
+                        </td>
+                        <td className="py-2 px-3 text-xs font-mono max-w-[280px] truncate" title={JSON.stringify(row.details_json ?? {})}>
+                          {row.details_json ? JSON.stringify(row.details_json) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {auditLog.length === 0 && !isLoadingAudit && !auditError && (
+              <EmptyState title="No entries" description='Click "Load audit log" to fetch records.' />
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Groups Tab */}
       {activeTab === 'groups' && (
         <Card className="animate-slide-up">
@@ -871,18 +1249,42 @@ export function AdministrationPage() {
               </svg>
               Groups
             </CardTitle>
-            <CardDescription>All groups and their members</CardDescription>
+            <CardDescription>
+              Создайте группу с описанием и добавляйте пользователей по email. Один пользователь может состоять в нескольких группах.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
+            <form onSubmit={handleCreateGroupAdmin} className="space-y-3 rounded-xl border border-[var(--border-color)] p-4 bg-[var(--bg-secondary)]">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">Новая группа</h3>
+              <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+                <Input
+                  placeholder="Название группы"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  className="max-w-md"
+                />
+                <Button type="submit" disabled={!newGroupName.trim() || isCreatingGroup} isLoading={isCreatingGroup}>
+                  Создать группу
+                </Button>
+              </div>
+              <textarea
+                className="w-full max-w-2xl rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] min-h-[88px] focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-400"
+                placeholder="Описание (необязательно)"
+                value={newGroupDescription}
+                onChange={(e) => setNewGroupDescription(e.target.value)}
+              />
+            </form>
+
             <Button
               onClick={handleLoadGroups}
               isLoading={isLoadingGroups}
               className="w-full sm:w-auto"
+              variant="secondary"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              Load Groups
+              Обновить список
             </Button>
             {groupsError && (
               <Alert variant="error" className="animate-slide-down">
@@ -891,48 +1293,111 @@ export function AdministrationPage() {
             )}
             {groupsList.length > 0 && (
               <div className="space-y-6 animate-slide-down">
-                {groupsList.map((group) => (
-                  <div key={group.id} className="rounded-xl border border-[var(--border-color)] p-4 bg-[var(--bg-secondary)]">
-                    <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">{group.name}</h3>
-                    <p className="text-sm text-[var(--text-muted)] mb-3">ID: {group.id} · Created: {new Date(group.created_at).toLocaleDateString()}</p>
-                    {group.members && group.members.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b border-[var(--border-color)]">
-                              <th className="text-left py-2 px-3 font-medium text-[var(--text-secondary)]">Username</th>
-                              <th className="text-left py-2 px-3 font-medium text-[var(--text-secondary)]">Email</th>
-                              <th className="text-left py-2 px-3 font-medium text-[var(--text-secondary)]">Tariff</th>
-                              <th className="text-left py-2 px-3 font-medium text-[var(--text-secondary)]">Role in group</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {group.members.map((m) => (
-                              <tr key={m.user_id} className="border-b border-[var(--border-color)] last:border-0">
-                                <td className="py-2 px-3 text-[var(--text-primary)]">{m.username}</td>
-                                <td className="py-2 px-3 text-[var(--text-secondary)]">{m.email}</td>
-                                <td className="py-2 px-3 text-[var(--text-secondary)]">{m.tariff}</td>
-                                <td className="py-2 px-3">
-                                  <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${m.role_in_group === 'manager' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                                    {m.role_in_group}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                {groupsList.map((group) => {
+                  const isEmpty = !group.members || group.members.length === 0
+                  const form = getMemberForm(group.id)
+                  return (
+                    <div key={group.id} className="rounded-xl border border-[var(--border-color)] p-4 bg-[var(--bg-secondary)]">
+                      <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-1">{group.name}</h3>
+                      {group.description ? (
+                        <p className="text-sm text-[var(--text-secondary)] whitespace-pre-wrap mb-2">{group.description}</p>
+                      ) : null}
+                      <p className="text-sm text-[var(--text-muted)] mb-4">
+                        ID: {group.id} · Создана: {new Date(group.created_at).toLocaleString()}
+                      </p>
+
+                      <div className="mb-4 space-y-2">
+                        <p className="text-sm font-medium text-[var(--text-primary)]">Добавить участника по email</p>
+                        {isEmpty && (
+                          <p className="text-xs text-amber-400/90">
+                            В пустую группу первым должен быть добавлен менеджер (роль задаётся автоматически).
+                          </p>
+                        )}
+                        <div className="flex flex-col sm:flex-row gap-2 flex-wrap items-end">
+                          <Input
+                            placeholder="email@example.com"
+                            type="email"
+                            value={form.email}
+                            onChange={(e) => setMemberForm(group.id, { email: e.target.value })}
+                            className="max-w-sm"
+                          />
+                          {!isEmpty && (
+                            <select
+                              value={form.role}
+                              onChange={(e) =>
+                                setMemberForm(group.id, { role: e.target.value as 'manager' | 'author' })
+                              }
+                              className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-3 py-2 text-sm text-[var(--text-primary)]"
+                            >
+                              <option value="author">author</option>
+                              <option value="manager">manager</option>
+                            </select>
+                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleAddMemberToGroup(group)}
+                            disabled={!form.email.trim() || addingToGroupId === group.id}
+                            isLoading={addingToGroupId === group.id}
+                          >
+                            Добавить
+                          </Button>
+                        </div>
                       </div>
-                    ) : (
-                      <p className="text-[var(--text-muted)] text-sm">No members</p>
-                    )}
-                  </div>
-                ))}
+
+                      {group.members && group.members.length > 0 ? (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b border-[var(--border-color)]">
+                                <th className="text-left py-2 px-3 font-medium text-[var(--text-secondary)]">Username</th>
+                                <th className="text-left py-2 px-3 font-medium text-[var(--text-secondary)]">Email</th>
+                                <th className="text-left py-2 px-3 font-medium text-[var(--text-secondary)]">Tariff</th>
+                                <th className="text-left py-2 px-3 font-medium text-[var(--text-secondary)]">Role</th>
+                                <th className="text-right py-2 px-3 font-medium text-[var(--text-secondary)]"> </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {group.members.map((m) => (
+                                <tr key={m.user_id} className="border-b border-[var(--border-color)] last:border-0">
+                                  <td className="py-2 px-3 text-[var(--text-primary)]">{m.username}</td>
+                                  <td className="py-2 px-3 text-[var(--text-secondary)]">{m.email}</td>
+                                  <td className="py-2 px-3 text-[var(--text-secondary)]">{m.tariff}</td>
+                                  <td className="py-2 px-3">
+                                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${m.role_in_group === 'manager' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                      {m.role_in_group}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3 text-right">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-red-400 hover:text-red-300"
+                                      disabled={removingMemberKey === `${group.id}-${m.user_id}`}
+                                      isLoading={removingMemberKey === `${group.id}-${m.user_id}`}
+                                      onClick={() => handleRemoveGroupMember(group.id, m.user_id)}
+                                    >
+                                      Удалить
+                                    </Button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="text-[var(--text-muted)] text-sm">Нет участников</p>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
             {groupsList.length === 0 && !isLoadingGroups && !groupsError && (
               <EmptyState
-                title="No groups loaded"
-                description='Click "Load Groups" to fetch the list of groups.'
+                title="Список пуст"
+                description='Создайте группу выше или нажмите «Обновить список», чтобы загрузить данные.'
               />
             )}
           </CardContent>
@@ -1073,7 +1538,7 @@ export function AdministrationPage() {
                 </p>
                 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
-                  {['wp', 'tg', 'tw', 'vk'].map((platform) => (
+                  {SCHEDULE_BOT_PLATFORMS.map((platform) => (
                     <label
                       key={platform}
                       className="flex items-center space-x-2 cursor-pointer p-3 rounded-lg border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] transition-colors"
@@ -1495,7 +1960,7 @@ export function AdministrationPage() {
               </svg>
               Processor
             </CardTitle>
-            <CardDescription>Processor service status and posts table</CardDescription>
+            <CardDescription>Статус processor и сводка по статусам в таблице posts; полные данные — на вкладке Posts.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <Button
@@ -1506,7 +1971,7 @@ export function AdministrationPage() {
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              Refresh status
+              Обновить статус сервисов
             </Button>
             {servicesStatusError && (
               <Alert variant="error" className="animate-slide-down">{servicesStatusError}</Alert>
@@ -1561,9 +2026,13 @@ export function AdministrationPage() {
               </>
             )}
             <div>
-              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Table posts (processor view)</h3>
+              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Таблица posts (сводка processor)</h3>
+              <p className="text-sm text-[var(--text-muted)] mb-3">
+                Счётчики по статусам в центральной таблице posts (метрики processor). Полная таблица строк и платформенные метрики — на вкладке{' '}
+                <strong className="text-[var(--text-secondary)]">Posts</strong>.
+              </p>
               <Button onClick={handleLoadPostsTables} isLoading={isLoadingPostsTables} size="sm" variant="secondary" className="mb-2">
-                Load posts tables
+                Обновить сводку
               </Button>
               {postsTablesError && <Alert variant="error" className="mb-2">{postsTablesError}</Alert>}
               {postsTables?.posts_table_processor && Object.keys(postsTables.posts_table_processor).length > 0 && (
@@ -1576,33 +2045,9 @@ export function AdministrationPage() {
                 </div>
               )}
               <div className="mt-4">
-                <Button onClick={handleLoadPostsList} isLoading={isLoadingPostsList} size="sm" variant="secondary">
-                  Load posts rows (up to 500)
+                <Button type="button" variant="secondary" onClick={() => setActiveTab('posts-tables')}>
+                  Открыть вкладку Posts — полная таблица и метрики
                 </Button>
-                {postsListError && <Alert variant="error" className="mt-2">{postsListError}</Alert>}
-                {postsList.length > 0 && (
-                  <div className="overflow-x-auto mt-4 rounded-xl border border-[var(--border-color)]">
-                    <table className="w-full border-collapse min-w-max">
-                      <thead className="bg-[var(--bg-tertiary)]">
-                        <tr>
-                          {POSTS_TABLE_COLUMNS.slice(0, 12).map(({ key, label }) => (
-                            <th key={key} className="py-2 px-3 text-left text-sm font-medium text-[var(--text-secondary)] whitespace-nowrap">{label}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[var(--border-color)]">
-                        {postsList.slice(0, 50).map((post) => (
-                          <tr key={post.id} className="hover:bg-[var(--bg-tertiary)]">
-                            {POSTS_TABLE_COLUMNS.slice(0, 12).map(({ key }) => (
-                              <td key={key} className="py-2 px-3 text-sm whitespace-nowrap">{formatPostCell(post, key)}</td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <p className="text-[var(--text-muted)] text-sm mt-2">Showing first 50 of {postsList.length} loaded</p>
-                  </div>
-                )}
               </div>
             </div>
           </CardContent>
@@ -1676,36 +2121,49 @@ export function AdministrationPage() {
             )}
             <div>
               <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Platform tables</h3>
+              <p className="text-sm text-[var(--text-muted)] mb-2">
+                Все платформенные таблицы постов из collector (включая threads, cpost и т.д.); по колонкам — статусы строк в каждой *_posts.
+              </p>
               <Button onClick={handleLoadPostsTables} isLoading={isLoadingPostsTables} size="sm" variant="secondary" className="mb-2">
                 Load posts tables
               </Button>
               {postsTablesError && <Alert variant="error" className="mb-2">{postsTablesError}</Alert>}
-              {postsTables?.platforms && postsTables.platforms.length > 0 && (
+              {postsTables?.platforms && postsTables.platforms.length > 0 && (() => {
+                const statusCols = platformTableStatusColumns(postsTables.platforms)
+                return (
                 <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
-                  <table className="w-full">
+                  <table className="w-full min-w-max">
                     <thead className="bg-[var(--bg-tertiary)]">
                       <tr>
-                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Platform</th>
-                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Table</th>
-                        <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Collected</th>
-                        <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Ready</th>
-                        <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Processing</th>
+                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)] whitespace-nowrap">Platform</th>
+                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)] whitespace-nowrap">Table</th>
+                        {statusCols.map((col) => (
+                          <th
+                            key={col}
+                            className="py-3 px-2 text-right text-xs font-medium text-[var(--text-secondary)] whitespace-nowrap"
+                          >
+                            {col}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--border-color)]">
                       {postsTables.platforms.map((p) => (
                         <tr key={p.table} className="hover:bg-[var(--bg-tertiary)]">
-                          <td className="py-3 px-4 text-[var(--text-primary)] font-medium">{p.platform}</td>
-                          <td className="py-3 px-4 text-[var(--text-secondary)] font-mono text-sm">{p.table}</td>
-                          <td className="py-3 px-4 text-right text-[var(--text-secondary)]">{p.collected_count.toLocaleString()}</td>
-                          <td className="py-3 px-4 text-right text-[var(--text-secondary)]">{p.ready_count.toLocaleString()}</td>
-                          <td className="py-3 px-4 text-right text-[var(--text-secondary)]">{p.processing_count.toLocaleString()}</td>
+                          <td className="py-3 px-4 text-[var(--text-primary)] font-medium whitespace-nowrap">{p.platform}</td>
+                          <td className="py-3 px-4 text-[var(--text-secondary)] font-mono text-sm whitespace-nowrap">{p.table}</td>
+                          {statusCols.map((col) => (
+                            <td key={col} className="py-3 px-2 text-right text-sm text-[var(--text-secondary)] tabular-nums">
+                              {platformStatusCell(p, col).toLocaleString()}
+                            </td>
+                          ))}
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              )}
+                )
+              })()}
               {postsTables?.posts_table_collector && Object.keys(postsTables.posts_table_collector).length > 0 && (
                 <div className="mt-4">
                   <h4 className="font-semibold text-[var(--text-primary)] mb-2">Central table posts (collector view)</h4>
@@ -1733,7 +2191,7 @@ export function AdministrationPage() {
               </svg>
               Scheduler
             </CardTitle>
-            <CardDescription>Scheduler service status and schedule_snapshots table</CardDescription>
+            <CardDescription>Статус сервиса scheduler. Просмотр и действия с расписаниями — на вкладке Schedule.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <Button onClick={handleLoadServicesStatus} isLoading={isLoadingServicesStatus} className="w-full sm:w-auto">
@@ -1742,11 +2200,7 @@ export function AdministrationPage() {
               </svg>
               Refresh status
             </Button>
-            <Button onClick={handleLoadSchedule} isLoading={isLoadingSchedule} size="sm" variant="secondary" className="ml-2">
-              Load schedule table
-            </Button>
             {servicesStatusError && <Alert variant="error">{servicesStatusError}</Alert>}
-            {scheduleError && <Alert variant="error">{scheduleError}</Alert>}
             {servicesStatus?.scheduler && (
               <>
                 <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
@@ -1789,46 +2243,15 @@ export function AdministrationPage() {
                 )}
               </>
             )}
-            <div>
-              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Table schedule_snapshots</h3>
-              {schedules.length > 0 ? (
-                <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
-                  <table className="w-full">
-                    <thead className="bg-[var(--bg-tertiary)]">
-                      <tr>
-                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">User ID</th>
-                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Platform</th>
-                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Publish Enabled</th>
-                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Collect Enabled</th>
-                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Schedule Type</th>
-                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Time Intervals</th>
-                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Updated At</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--border-color)]">
-                      {schedules.map((schedule, index) => (
-                        <tr key={`${schedule.user_id}-${schedule.platform}-${index}`} className="hover:bg-[var(--bg-tertiary)]">
-                          <td className="py-3 px-4 text-[var(--text-secondary)] font-medium">{schedule.user_id}</td>
-                          <td className="py-3 px-4">
-                            <span className="inline-flex px-3 py-1 rounded-full text-sm font-medium bg-blue-500/20 text-blue-400">{schedule.platform}</span>
-                          </td>
-                          <td className="py-3 px-4">{schedule.publish_enabled ? 'Yes' : 'No'}</td>
-                          <td className="py-3 px-4">{schedule.collect_enabled ? 'Yes' : 'No'}</td>
-                          <td className="py-3 px-4 text-[var(--text-secondary)]">{schedule.schedule_type}</td>
-                          <td className="py-3 px-4 text-[var(--text-secondary)]">
-                            {schedule.time_intervals?.length ? schedule.time_intervals.map((interval, idx) => (
-                              <span key={idx} className="block text-xs">{interval.start} - {interval.end}</span>
-                            )) : '—'}
-                          </td>
-                          <td className="py-3 px-4 text-[var(--text-secondary)]">{new Date(schedule.updated_at).toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-[var(--text-muted)]">Click &quot;Load schedule table&quot; to fetch schedule_snapshots</p>
-              )}
+            <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Расписания и снимки</h3>
+              <p className="text-sm text-[var(--text-secondary)] mb-3">
+                Таблица <code className="text-xs font-mono">schedule_snapshots</code>, запуск сбора расписаний и принудительный запуск ботов находятся на вкладке{' '}
+                <strong className="text-[var(--text-primary)]">Schedule</strong>, чтобы не дублировать интерфейс.
+              </p>
+              <Button type="button" variant="secondary" onClick={() => setActiveTab('schedule')}>
+                Перейти к Schedule Snapshots
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -1871,35 +2294,48 @@ export function AdministrationPage() {
                   </Alert>
                 )}
 
-                {postsTables.platforms && postsTables.platforms.length > 0 && (
+                {postsTables.platforms && postsTables.platforms.length > 0 && (() => {
+                  const statusCols = platformTableStatusColumns(postsTables.platforms)
+                  return (
                   <div>
                     <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Platform tables</h3>
+                    <p className="text-sm text-[var(--text-muted)] mb-2">
+                      Все платформенные таблицы постов из collector; по колонкам — статусы строк в *_posts (типичные + любые встреченные в БД).
+                    </p>
                     <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
-                      <table className="w-full">
+                      <table className="w-full min-w-max">
                         <thead className="bg-[var(--bg-tertiary)]">
                           <tr>
-                            <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Platform</th>
-                            <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Table</th>
-                            <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Collected</th>
-                            <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Ready</th>
-                            <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Processing</th>
+                            <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)] whitespace-nowrap">Platform</th>
+                            <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)] whitespace-nowrap">Table</th>
+                            {statusCols.map((col) => (
+                              <th
+                                key={col}
+                                className="py-3 px-2 text-right text-xs font-medium text-[var(--text-secondary)] whitespace-nowrap"
+                              >
+                                {col}
+                              </th>
+                            ))}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--border-color)]">
                           {postsTables.platforms.map((p) => (
                             <tr key={p.table} className="hover:bg-[var(--bg-tertiary)]">
-                              <td className="py-3 px-4 text-[var(--text-primary)] font-medium">{p.platform}</td>
-                              <td className="py-3 px-4 text-[var(--text-secondary)] font-mono text-sm">{p.table}</td>
-                              <td className="py-3 px-4 text-right text-[var(--text-secondary)]">{p.collected_count.toLocaleString()}</td>
-                              <td className="py-3 px-4 text-right text-[var(--text-secondary)]">{p.ready_count.toLocaleString()}</td>
-                              <td className="py-3 px-4 text-right text-[var(--text-secondary)]">{p.processing_count.toLocaleString()}</td>
+                              <td className="py-3 px-4 text-[var(--text-primary)] font-medium whitespace-nowrap">{p.platform}</td>
+                              <td className="py-3 px-4 text-[var(--text-secondary)] font-mono text-sm whitespace-nowrap">{p.table}</td>
+                              {statusCols.map((col) => (
+                                <td key={col} className="py-3 px-2 text-right text-sm text-[var(--text-secondary)] tabular-nums">
+                                  {platformStatusCell(p, col).toLocaleString()}
+                                </td>
+                              ))}
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
                   </div>
-                )}
+                  )
+                })()}
 
                 {postsTables.posts_table_collector && Object.keys(postsTables.posts_table_collector).length > 0 && (
                   <div>
@@ -2294,21 +2730,37 @@ export function AdministrationPage() {
               S3 Storage (файлы хранилища)
             </CardTitle>
             <CardDescription>
-              Список файлов в едином S3-хранилище (MinIO / AWS S3). Префикс — фильтр по ключу (например vk/, uploads/tg).
+              Список файлов в едином S3-хранилище (MinIO / AWS S3). Префикс — фильтр по началу ключа. Режим «diag» показывает только объекты, в имени ключа которых есть подстрока «diag» (диагностические скриншоты при ошибках Selenium, см. vk/tw/instagram боты).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex flex-wrap gap-2 items-center">
+            <div className="flex flex-wrap gap-3 items-center">
               <Input
                 placeholder="Префикс (например vk/ или uploads/)"
                 value={storagePrefix}
                 onChange={(e) => setStoragePrefix(e.target.value)}
                 className="max-w-xs"
               />
+              <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)] cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={storageDiagOnly}
+                  onChange={(e) => setStorageDiagOnly(e.target.checked)}
+                  className="rounded border-[var(--border-color)]"
+                />
+                Только диагностика Selenium (ключ содержит «diag»)
+              </label>
               <Button onClick={handleLoadStorageFiles} isLoading={isLoadingStorageFiles}>
                 Загрузить список файлов
               </Button>
             </div>
+            {storageFiles?.filter_applied && (
+              <p className="text-xs text-[var(--text-muted)]">
+                Фильтр по ключу: «{storageFiles.filter_applied}»
+                {storageFiles.pages_scanned != null ? ` · просмотрено страниц S3: ${storageFiles.pages_scanned}` : ''}
+                {storageFiles.filter_truncated ? ' · список может быть неполным (лимит сканирования).' : ''}
+              </p>
+            )}
 
             {storageFilesError && (
               <Alert variant="error">{storageFilesError}</Alert>
@@ -2328,12 +2780,13 @@ export function AdministrationPage() {
                       <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Ключ</th>
                       <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Размер</th>
                       <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Изменён</th>
+                      <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)] min-w-[200px]">Действия</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-color)]">
                     {storageFiles.objects.length === 0 ? (
                       <tr>
-                        <td colSpan={3} className="py-3 px-4 text-[var(--text-muted)] text-sm">
+                        <td colSpan={4} className="py-3 px-4 text-[var(--text-muted)] text-sm">
                           Файлов нет{storagePrefix ? ` по префиксу «${storagePrefix}»` : ''}.
                         </td>
                       </tr>
@@ -2346,6 +2799,30 @@ export function AdministrationPage() {
                           </td>
                           <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">
                             {obj.last_modified ? new Date(obj.last_modified).toLocaleString() : '—'}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                isLoading={storageOpeningKey === obj.key}
+                                disabled={storageOpeningKey !== null && storageOpeningKey !== obj.key}
+                                onClick={() => handleOpenStorageFile(obj.key)}
+                              >
+                                Открыть
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="danger"
+                                size="sm"
+                                isLoading={storageDeletingKey === obj.key}
+                                disabled={storageDeletingKey !== null && storageDeletingKey !== obj.key}
+                                onClick={() => handleDeleteStorageFile(obj.key)}
+                              >
+                                Удалить
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))
