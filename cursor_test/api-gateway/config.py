@@ -93,6 +93,8 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/dzen-bot/publish-once": {"requests": 30, "window_seconds": 60},
     "/dzen-bot/collect-once": {"requests": 30, "window_seconds": 60},
     "/dzen-bot/verify-yandex": {"requests": 8, "window_seconds": 60},
+    "/dzen-bot/verify-yandex/start": {"requests": 8, "window_seconds": 60},
+    "/dzen-bot/verify-yandex/push-code": {"requests": 12, "window_seconds": 60},
     "/tw-bot/verify-selenium": {"requests": 6, "window_seconds": 60},
     "/vk-bot/verify-selenium": {"requests": 6, "window_seconds": 60},
     "/instagram-bot/reload": {"requests": 20, "window_seconds": 60},

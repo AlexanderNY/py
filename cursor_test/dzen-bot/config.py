@@ -37,6 +37,10 @@ class Settings(BaseSettings):
 
     # URL и селекторы (Дзен меняет вёрстку — править через env)
     YANDEX_PASSPORT_URL: str = "https://passport.yandex.ru/auth/"
+    # Вход через dzen.ru (см. yandex_dzen_flow) вместо прямого passport
+    USE_DZEN_ENTRY_AUTH: bool = True
+    DZEN_ENTRY_BASE_URL: str = "https://dzen.ru/"
+    PENDING_DZEN_AUTH_TTL_SEC: int = 900
     YANDEX_PASSPORT_LOGIN_TIMEOUT_SEC: int = 50
     YANDEX_PASSPORT_PASSWORD_TIMEOUT_SEC: int = 40
     DZEN_NEW_ARTICLE_URL: str = "https://dzen.ru/article/new?type=article"

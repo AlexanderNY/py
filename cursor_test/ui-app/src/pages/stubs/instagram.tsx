@@ -62,6 +62,7 @@ export function InstagramPage() {
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [isSavingAuth, setIsSavingAuth] = useState(false)
   const [isLoginTesting, setIsLoginTesting] = useState(false)
+  const [lastDiagnosticImage, setLastDiagnosticImage] = useState<string | null>(null)
   const [followingPreview, setFollowingPreview] = useState<InstagramFollowingUser[]>([])
   const [isCreatingPost, setIsCreatingPost] = useState(false)
   const [error, setError] = useState('')
@@ -262,11 +263,13 @@ export function InstagramPage() {
   async function handleLoginTest() {
     setError('')
     setSuccess('')
+    setLastDiagnosticImage(null)
     setFollowingPreview([])
     setIsLoginTesting(true)
     try {
       const result = await instagramService.loginTest(50)
       if (result.ok) {
+        setLastDiagnosticImage(null)
         const n = result.following?.length ?? result.following_count ?? 0
         setFollowingPreview(result.following ?? [])
         const via =
@@ -277,6 +280,14 @@ export function InstagramPage() {
             : `Вход выполнен успешно${n > 0 ? ` · загружено подписок: ${n}` : ''}${via}`
         )
       } else {
+        const b64 = result.selenium_diagnostic_image_base64?.trim()
+        if (b64) {
+          setLastDiagnosticImage(
+            b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`
+          )
+        } else {
+          setLastDiagnosticImage(null)
+        }
         const extra =
           result.selenium_status && result.selenium_status !== 'success'
             ? ` [Selenium: ${result.selenium_status}]`
@@ -289,6 +300,7 @@ export function InstagramPage() {
       }
       await loadProfile()
     } catch (err) {
+      setLastDiagnosticImage(null)
       setError(err instanceof Error ? err.message : 'Проверка входа не удалась')
     } finally {
       setIsLoginTesting(false)
@@ -445,6 +457,16 @@ export function InstagramPage() {
               </Button>
             </CardFooter>
           </form>
+          {lastDiagnosticImage && (
+            <CardContent className="border-t border-[var(--border-color)] pt-4">
+              <p className="text-sm text-[var(--muted)] mb-2">Снимок экрана при ошибке (diag)</p>
+              <img
+                src={lastDiagnosticImage}
+                alt="Диагностика Selenium"
+                className="max-w-full h-auto rounded-md border border-[var(--border-color)]"
+              />
+            </CardContent>
+          )}
           {followingPreview.length > 0 && (
             <CardContent className="border-t border-[var(--border-color)] pt-4">
               <p className="text-sm font-medium mb-2">Подписки (аккаунты, на которые вы подписаны)</p>

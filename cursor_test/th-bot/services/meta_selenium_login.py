@@ -1,8 +1,12 @@
 """
-Синхронный сценарий веб-входа Meta (Facebook login).
+Синхронный сценарий веб-входа в Instagram (instagram.com) для диагностики.
 Не извлекает Graph API token и не заменяет OAuth для Threads API.
-Пароль не пишется в логи; селекторы могут устареть при смене верстки Meta.
-При сбоях возвращает diagnostic_png для загрузки в S3 (ключ с подстрокой diag).
+
+Реалистичные ограничения: лендинг/challenge/cookies, A/B и локализация (RU/EN)
+могут отличаться — в коде есть fallback; это не гарантирует 24/7-устойчивость
+и не заменяет OAuth Graph API.
+
+Пароль не пишется в логи. При сбоях — diagnostic_png для S3 (ключ с подстрокой diag).
 """
 
 from __future__ import annotations
@@ -18,11 +22,12 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import WebDriverWait
 
 from config import settings
+import services.instagram_selenium_helpers as ig
 
 logger = logging.getLogger(__name__)
 
 
-def _find_first(driver: WebDriver, selectors: list[Tuple[str, str]]):
+def _find_first(driver: WebDriver, selectors: list[tuple[str, str]]):
     for by, value in selectors:
         try:
             el = driver.find_element(by, value)
@@ -34,33 +39,55 @@ def _find_first(driver: WebDriver, selectors: list[Tuple[str, str]]):
 
 
 def _capture_diag_png(driver: Optional[WebDriver]) -> Optional[bytes]:
-    """PNG скриншот окна браузера для диагностики (без пароля в содержимом)."""
     if not driver:
         return None
     try:
         return driver.get_screenshot_as_png()
     except Exception:
-        logger.warning("Meta selenium: get_screenshot_as_png failed", exc_info=True)
+        logger.warning("Instagram selenium: get_screenshot_as_png failed", exc_info=True)
         return None
 
 
-def _detect_post_login_state(driver: WebDriver) -> Tuple[str, str]:
-    """Возвращает (код_статуса, сообщение_для_пользователя)."""
+def _detect_instagram_state(driver: WebDriver) -> tuple[str, str]:
+    """
+    Успех / challenge / 2FA / бан / ошибка по URL и (частично) странице.
+    Не ориентируемся на facebook.com.
+    """
     url = (driver.current_url or "").lower()
-    src = (driver.page_source or "").lower()
+    src = (driver.page_source or "").lower()[:20000]
 
-    if "checkpoint" in url or "checkpoint" in src[:8000]:
-        return "challenge_required", "Meta запросила проверку (checkpoint). Завершите вход вручную в браузере."
-    if "two_factor" in url or "two_step_verification" in url:
-        return "challenge_required", "Требуется двухфакторная аутентификация. Выполните шаг вручную."
-    if "login" in url and ("error" in src or "incorrect" in src or "wrong" in src):
+    if "suspended" in url or "suspended" in src:
+        return "failed", "Аккаунт в статусе suspended. Требуется ручной разбор в Instagram."
+    if "challenge" in url or "checkpoint" in url or "checkpoint" in src:
+        return (
+            "challenge_required",
+            "Instagram запросил проверку (challenge / checkpoint). Завершите вход вручную в браузере.",
+        )
+    if "two_factor" in url or "two factor" in src or "2fa" in src:
+        return (
+            "challenge_required",
+            "Требуется двухфакторная аутентификация. Выполните шаг вручную.",
+        )
+    if "consent" in url or "accounts/confirm" in url:
+        return "challenge_required", "Требуется подтверждение или согласие в Instagram. Завершите вручную."
+
+    if "accounts/login" in url and ("error" in src or "попроб" in src or "incorrect" in src):
         return "failed", "Не удалось войти (проверьте логин и пароль)."
-    if "facebook.com" in url and "login" not in url and "checkpoint" not in url:
+
+    if "accounts/onetap" in url:
         return (
             "completed_unverified",
-            "Браузер покинул страницу логина. Это не заменяет OAuth: для API Threads по-прежнему нужен «Connect with Threads».",
+            "Сессия дошла до onetap. Для публикации через API по-прежнему нужен «Connect with Threads» (OAuth), не веб-логин.",
         )
-    return "failed", "Не удалось определить результат входа (изменилась вёрстка Meta или таймаут)."
+    if "instagram.com" in url and "login" not in url and "challenge" not in url and "suspended" not in url:
+        return (
+            "completed_unverified",
+            "Браузер покинул страницу логина (Instagram). Для публикации через API по-прежнему нужен «Connect with Threads» (OAuth), не веб-логин.",
+        )
+    return (
+        "failed",
+        "Не удалось определить результат входа (таймаут, капча или смена вёрстки Instagram).",
+    )
 
 
 def run_meta_web_login(
@@ -70,17 +97,16 @@ def run_meta_web_login(
     session_id: int,
 ) -> dict[str, Any]:
     """
-    Пытается ввести учётные данные на странице входа Meta.
-    Пароль не пишется в логи.
-    При ошибках Selenium в ответе может быть diagnostic_png (bytes) для S3.
+    Пытается ввести учётные данные в веб-форму Instagram.
     """
-    _ = user_id, session_id  # для отладки/расширений; ключ S3 формируется в upload-слое
+    _ = user_id, session_id
     if not username or not password:
         return {"status": "failed", "message": "Пустой логин или пароль", "diagnostic_png": None}
 
     from services.selenium_driver import create_chrome_driver
 
     driver: Optional[WebDriver] = None
+    start_url = settings.INSTAGRAM_WEB_LOGIN_URL
 
     def finish(
         status: str,
@@ -95,73 +121,54 @@ def run_meta_web_login(
 
     try:
         driver = create_chrome_driver()
-        driver.get(settings.META_WEB_LOGIN_URL)
+        driver.get(start_url)
+        time.sleep(1.5)
         wait = WebDriverWait(driver, 25)
 
-        email_selectors = [
-            (By.ID, "email"),
-            (By.NAME, "email"),
-            (By.CSS_SELECTOR, "input[type='text'][name='email']"),
-            (By.CSS_SELECTOR, "input[name='email']"),
-            (By.CSS_SELECTOR, "input[autocomplete='username']"),
-        ]
-        try:
-            el_email = wait.until(lambda d: _find_first(d, email_selectors))
-        except TimeoutException:
-            logger.warning("Meta selenium: email field timeout")
+        if not ig.find_email_input_and_fill(driver, username, wait):
+            logger.warning("Instagram selenium: email/username field not found")
             return finish(
                 "failed",
-                "Не найдено поле email (обновите селекторы или откройте Meta вручную).",
+                "Не найдено поле логина (проверьте локализацию или вёрстку Instagram).",
                 diag=True,
             )
-        if not el_email:
-            return finish("failed", "Поле email не найдено.", diag=True)
-        el_email.clear()
-        el_email.send_keys(username)
+        time.sleep(0.5)
+
+        if not ig.find_password_input_and_fill(driver, password, wait):
+            return finish("failed", "Не найдено поле пароля.", diag=True)
         time.sleep(0.4)
 
-        pwd_selectors = [
-            (By.ID, "pass"),
-            (By.NAME, "pass"),
-            (By.CSS_SELECTOR, "input[type='password']"),
-            (By.NAME, "password"),
-        ]
-        el_pass = _find_first(driver, pwd_selectors)
-        if not el_pass:
-            el_pass = wait.until(lambda d: _find_first(d, pwd_selectors))
-        el_pass.clear()
-        el_pass.send_keys(password)
-
-        submit = _find_first(
-            driver,
-            [
-                (By.NAME, "login"),
-                (By.CSS_SELECTOR, "button[name='login']"),
-                (By.XPATH, "//button[@type='submit']"),
-            ],
-        )
-        if submit:
-            submit.click()
-        else:
-            el_pass.send_keys(Keys.RETURN)
-
+        clicked = ig.find_and_click_login_button(driver, wait)
+        if not clicked:
+            el_pass = _find_first(
+                driver,
+                [
+                    (By.NAME, "pass"),
+                    (By.CSS_SELECTOR, "input[name='pass']"),
+                    (By.CSS_SELECTOR, "input[type='password']"),
+                ],
+            )
+            if el_pass:
+                el_pass.send_keys(Keys.RETURN)
+            else:
+                return finish("failed", "Не найдена кнопка входа.", diag=True)
         time.sleep(4.0)
-        code, msg = _detect_post_login_state(driver)
+        code, msg = _detect_instagram_state(driver)
         if code in ("failed", "challenge_required"):
             png = _capture_diag_png(driver)
             return {"status": code, "message": msg, "diagnostic_png": png}
         return {"status": code, "message": msg, "diagnostic_png": None}
 
     except TimeoutException as e:
-        logger.warning("Meta selenium timeout: %s", e)
+        logger.warning("Instagram selenium timeout: %s", e)
         png = _capture_diag_png(driver)
         return {
             "status": "failed",
-            "message": "Таймаут при загрузке или вводе (Meta могла изменить страницу).",
+            "message": "Таймаут при загрузке или вводе (страница Instagram могла измениться).",
             "diagnostic_png": png,
         }
     except WebDriverException as e:
-        logger.warning("Meta selenium webdriver error: %s", e)
+        logger.warning("Instagram selenium webdriver error: %s", e)
         png = _capture_diag_png(driver)
         return {
             "status": "failed",

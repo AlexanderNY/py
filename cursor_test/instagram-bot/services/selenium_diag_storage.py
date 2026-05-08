@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 
 from config import settings
 
@@ -67,13 +68,31 @@ def upload_selenium_diag_screenshot_png(png_bytes: bytes, reason_slug: str) -> O
         return None
 
 
-def try_capture_and_upload_diag(driver: Any, reason_slug: str) -> Optional[str]:
-    """Делает скриншот окна браузера и загружает в S3. Безопасно при ошибках."""
+def try_capture_and_upload_diag(driver: Any, reason_slug: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Скриншот: загрузка в S3 + base64 для UI (без префикса data:).
+
+    Возвращает (s3_key, base64_str). При слишком большом PNG base64 опускается, S3 остаётся.
+    """
     if driver is None:
-        return None
+        return None, None
     try:
         png = driver.get_screenshot_as_png()
-        return upload_selenium_diag_screenshot_png(png, reason_slug)
     except Exception as e:
-        logger.warning("Selenium diag screenshot capture/upload skipped: %s", e)
-        return None
+        logger.warning("Selenium diag screenshot capture skipped: %s", e)
+        return None, None
+
+    max_kb = int(getattr(settings, "SELENIUM_DIAG_MAX_BASE64_KB", 512) or 512)
+    max_bytes = max(64, max_kb) * 1024
+    b64: Optional[str] = None
+    if len(png) <= max_bytes:
+        b64 = base64.b64encode(png).decode("ascii")
+    else:
+        logger.warning(
+            "Diagnostic PNG %s bytes exceeds SELENIUM_DIAG_MAX_BASE64_KB=%s, omitting base64 in API",
+            len(png),
+            max_kb,
+        )
+
+    s3_key = upload_selenium_diag_screenshot_png(png, reason_slug)
+    return s3_key, b64

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import re
 from datetime import datetime, timezone
@@ -27,6 +28,17 @@ async def _put_png(key: str, png: bytes) -> None:
     if not storage:
         return
     await storage.put(key, png, content_type="image/png")
+
+
+async def _put_png_and_presigned_url(
+    key: str, png: bytes, expires_in: int = 3600
+) -> tuple[Optional[str], Optional[str]]:
+    storage = get_storage()
+    if not storage:
+        return None, None
+    await storage.put(key, png, content_type="image/png")
+    url = await storage.get_presigned_url(key, expires_in=expires_in)
+    return key, url
 
 
 def upload_selenium_diag_screenshot(
@@ -81,6 +93,60 @@ def upload_selenium_diag_screenshot(
     return key
 
 
+def upload_selenium_diag_screenshot_with_url(
+    driver: "WebDriver",
+    label: str,
+    *,
+    user_id: Optional[int] = None,
+    expires_in: int = 3600,
+) -> tuple[Optional[str], Optional[str]]:
+    """
+    Скриншот в S3 и presigned URL для отображения в UI.
+    Returns:
+        (s3_key, presigned_url) или (None, None).
+    """
+    if driver is None:
+        return None, None
+    try:
+        png = driver.get_screenshot_as_png()
+    except Exception as e:
+        logger.warning("selenium_diag: get_screenshot_as_png failed: %s", e)
+        return None, None
+
+    if not get_storage():
+        # Fallback for UI diagnostics when S3/presigned is not configured.
+        # This keeps the screenshot visible in auth tab via <img src="data:...">.
+        data_url = "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+        return None, data_url
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    uid_part = f"uid{user_id}" if user_id is not None else "nouid"
+    safe = _sanitize_label(label)
+    prefix = (settings.S3_DIAG_PREFIX or "dzen/diag").strip().strip("/")
+    key = f"{prefix}/diag_selenium_{ts}_{uid_part}_{safe}.png"
+
+    try:
+        k, url = asyncio.run(_put_png_and_presigned_url(key, png, expires_in=expires_in))
+    except RuntimeError as e:
+        if "cannot be called from a running event loop" in str(e).lower() or "already running" in str(
+            str(e)
+        ).lower():
+            logger.warning("selenium_diag: cannot run async S3 in this context (%s)", e)
+            data_url = "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+            return None, data_url
+        logger.warning("selenium_diag: S3 upload failed: %s", e)
+        data_url = "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+        return None, data_url
+    except Exception as e:
+        logger.warning("selenium_diag: S3 upload failed: %s", e)
+        data_url = "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+        return None, data_url
+
+    if k:
+        logger.info("selenium_diag: screenshot s3://%s/%s presigned ok", getattr(settings, "S3_BUCKET", ""), k)
+    return k, url
+
+
 def capture_selenium_error_to_s3(
     driver: Optional["WebDriver"],
     label: str,
@@ -94,3 +160,15 @@ def capture_selenium_error_to_s3(
     if driver is None:
         return None
     return upload_selenium_diag_screenshot(driver, label, user_id=user_id)
+
+
+def capture_selenium_error_to_s3_with_url(
+    driver: Optional["WebDriver"],
+    label: str,
+    *,
+    user_id: Optional[int] = None,
+) -> tuple[Optional[str], Optional[str]]:
+    """Как capture_selenium_error_to_s3, плюс presigned URL."""
+    if driver is None:
+        return None, None
+    return upload_selenium_diag_screenshot_with_url(driver, label, user_id=user_id)

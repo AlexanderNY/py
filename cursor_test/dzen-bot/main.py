@@ -11,7 +11,7 @@ from fastapi import FastAPI, Request
 from config import settings
 from database import init_db, close_db
 from services.dzen_bot_service import DzenBotService
-from services.dzen_subscriptions_probe import verify_yandex_for_user
+from services.dzen_subscriptions_probe import verify_yandex_start_for_user, verify_yandex_push_for_user
 
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
@@ -77,17 +77,64 @@ async def schedule_from_scheduler():
     return {"status": "ok", "message": "dzen-bot schedule pass started"}
 
 
-@app.post("/dzen-bot/verify-yandex")
-async def verify_yandex(request: Request):
-    """Проверка входа Яндекс и чтение подписок Дзена (Selenium). Требует X-User-Id от gateway."""
+def _x_user_id(request: Request) -> int | None:
     uid_hdr = request.headers.get("x-user-id") or request.headers.get("X-User-Id")
     if not uid_hdr:
-        return {"ok": False, "subscriptions": [], "error": "Отсутствует X-User-Id"}
+        return None
     try:
-        user_id = int(uid_hdr)
+        return int(uid_hdr)
     except ValueError:
-        return {"ok": False, "subscriptions": [], "error": "Некорректный X-User-Id"}
-    return await verify_yandex_for_user(user_id)
+        return None
+
+
+@app.post("/dzen-bot/verify-yandex/start")
+async def verify_yandex_start(request: Request):
+    """Старт: вход через dzen.ru, при пуше — сессия до push-code."""
+    user_id = _x_user_id(request)
+    if user_id is None:
+        return {
+            "ok": False,
+            "need_push_code": False,
+            "subscriptions": [],
+            "error": "Отсутствует или невалиден X-User-Id",
+            "message": None,
+            "diag_image_url": None,
+        }
+    return await verify_yandex_start_for_user(user_id)
+
+
+@app.post("/dzen-bot/verify-yandex/push-code")
+async def verify_yandex_push_code(request: Request):
+    user_id = _x_user_id(request)
+    if user_id is None:
+        return {
+            "ok": False,
+            "need_push_code": True,
+            "subscriptions": [],
+            "error": "Отсутствует или невалиден X-User-Id",
+            "message": None,
+            "diag_image_url": None,
+        }
+    body = await request.json()
+    code = (body or {}).get("code", "")
+    if isinstance(code, (int, float)):
+        code = str(int(code))
+    if not (isinstance(code, str) and code.strip()):
+        return {
+            "ok": False,
+            "need_push_code": True,
+            "subscriptions": [],
+            "error": "Передайте непустое поле code (строка).",
+            "message": None,
+            "diag_image_url": None,
+        }
+    return await verify_yandex_push_for_user(user_id, code.strip())
+
+
+@app.post("/dzen-bot/verify-yandex")
+async def verify_yandex_legacy_start(request: Request):
+    """Обратная совместимость: то же, что /verify-yandex/start."""
+    return await verify_yandex_start(request)
 
 
 async def run_api_server():

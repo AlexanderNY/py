@@ -88,6 +88,8 @@ export interface ThreadsSeleniumAttemptResult {
   message: string
   /** Ключ объекта в S3 (подстрока diag), если скрин сохранён при сбое */
   diagnostic_s3_key?: string | null
+  /** Скрин для встраивания в UI (только если PNG ≤ лимита на бэкенде) */
+  diagnostic_image_data_url?: string | null
   disclaimer?: string
 }
 

@@ -12,12 +12,14 @@ export interface DzenSubscriptionItem {
   url: string
 }
 
-/** Ответ dzen-bot POST /dzen-bot/verify-yandex */
+/** Ответ dzen-bot POST /dzen-bot/verify-yandex/start | push-code (и legacy /verify-yandex) */
 export interface DzenVerifyResponse {
   ok: boolean
+  need_push_code?: boolean
   subscriptions: DzenSubscriptionItem[]
-  error?: string
-  message?: string
+  error?: string | null
+  message?: string | null
+  diag_image_url?: string | null
 }
 
 export interface DzenProfile {

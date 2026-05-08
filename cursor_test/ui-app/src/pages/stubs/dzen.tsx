@@ -16,6 +16,7 @@ import type {
   DzenCollectSource,
   ScheduleType,
   DzenSubscriptionItem,
+  DzenVerifyResponse,
 } from '@/types/dzen'
 
 function generateId(): string {
@@ -67,6 +68,9 @@ export function DzenPage() {
   const [isVerifyingAuth, setIsVerifyingAuth] = useState(false)
   const [verifySubscriptions, setVerifySubscriptions] = useState<DzenSubscriptionItem[]>([])
   const [verifyInfoMessage, setVerifyInfoMessage] = useState<string | null>(null)
+  const [needPushCode, setNeedPushCode] = useState(false)
+  const [pushCode, setPushCode] = useState('')
+  const [verifyDiagImageUrl, setVerifyDiagImageUrl] = useState<string | null>(null)
   const [isCreatingPost, setIsCreatingPost] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -282,31 +286,86 @@ export function DzenPage() {
     }
   }
 
+  function applyVerifyResponse(res: DzenVerifyResponse) {
+    if (res.diag_image_url) {
+      setVerifyDiagImageUrl(res.diag_image_url)
+    } else {
+      setVerifyDiagImageUrl(null)
+    }
+    if (res.ok) {
+      setVerifySubscriptions(res.subscriptions ?? [])
+      setVerifyInfoMessage(res.message ?? null)
+      if (res.subscriptions?.length) {
+        setSuccess('Авторизация подтверждена, список подписок загружен.')
+      } else if (res.message) {
+        setSuccess('Вход выполнен.')
+      } else {
+        setSuccess('Авторизация подтверждена.')
+      }
+    } else {
+      setVerifySubscriptions(res.subscriptions ?? [])
+      setError(res.error ?? 'Не удалось проверить авторизацию')
+    }
+  }
+
   async function handleVerifyAuth() {
     setError('')
     setSuccess('')
     setVerifyInfoMessage(null)
+    setNeedPushCode(false)
+    setPushCode('')
+    setVerifyDiagImageUrl(null)
     setIsVerifyingAuth(true)
     try {
-      const res = await dzenService.verifyYandex()
+      const res = await dzenService.verifyYandexStart()
       await loadProfile()
-      if (res.ok) {
-        setVerifySubscriptions(res.subscriptions ?? [])
-        setVerifyInfoMessage(res.message ?? null)
-        if (res.subscriptions?.length) {
-          setSuccess('Авторизация подтверждена, список подписок загружен.')
-        } else if (res.message) {
-          setSuccess('Вход выполнен.')
-        } else {
-          setSuccess('Авторизация подтверждена.')
+      if (res.ok && res.need_push_code) {
+        setNeedPushCode(true)
+        setVerifyInfoMessage(res.message ?? 'Введите код из пуш-уведомления.')
+        if (res.diag_image_url) {
+          setVerifyDiagImageUrl(res.diag_image_url)
         }
-      } else {
-        setVerifySubscriptions([])
-        setError(res.error ?? 'Не удалось проверить авторизацию')
+        return
       }
+      applyVerifyResponse(res)
     } catch (err) {
       setVerifySubscriptions([])
       setError(err instanceof Error ? err.message : 'Ошибка проверки авторизации')
+    } finally {
+      setIsVerifyingAuth(false)
+    }
+  }
+
+  async function handlePushCodeSubmit() {
+    const code = pushCode.trim()
+    if (!code) {
+      setError('Введите код из пуш-уведомления.')
+      return
+    }
+    setError('')
+    setSuccess('')
+    setIsVerifyingAuth(true)
+    try {
+      const res = await dzenService.verifyYandexPushCode(code)
+      await loadProfile()
+      if (res.ok) {
+        setNeedPushCode(false)
+        setPushCode('')
+        applyVerifyResponse(res)
+        return
+      }
+      if (res.need_push_code) {
+        setNeedPushCode(true)
+        if (res.diag_image_url) {
+          setVerifyDiagImageUrl(res.diag_image_url)
+        }
+        setError(res.error ?? 'Повторите ввод кода.')
+        return
+      }
+      setNeedPushCode(false)
+      applyVerifyResponse(res)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка отправки кода')
     } finally {
       setIsVerifyingAuth(false)
     }
@@ -717,6 +776,41 @@ export function DzenPage() {
                     </Button>
                   </div>
                 </form>
+                {verifyDiagImageUrl && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-[var(--text-muted)]">Снимок экрана для диагностики (страница в браузере бота):</p>
+                    <img
+                      src={verifyDiagImageUrl}
+                      alt="Диагностика Selenium"
+                      className="max-w-full rounded-xl border border-[var(--border-color)] max-h-96 object-contain bg-[var(--bg-secondary)]"
+                    />
+                  </div>
+                )}
+                {needPushCode && (
+                  <div className="space-y-3 p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+                    <p className="text-sm text-[var(--text-primary)]">Введите код из пуш-уведомления в приложении Яндекса.</p>
+                    <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+                      <div className="flex-1">
+                        <Input
+                          label="Код"
+                          value={pushCode}
+                          onChange={(e) => setPushCode(e.target.value.replace(/\s/g, ''))}
+                          placeholder="Например 123456"
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        isLoading={isVerifyingAuth}
+                        onClick={() => void handlePushCodeSubmit()}
+                      >
+                        Отправить код
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {verifyInfoMessage && (
                   <Alert variant="warning" className="text-sm">
                     {verifyInfoMessage}

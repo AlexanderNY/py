@@ -139,6 +139,8 @@ async def instagram_login_test(
             }
             if sel_result.diagnostic_s3_key:
                 fail_body["selenium_diagnostic_s3_key"] = sel_result.diagnostic_s3_key
+            if sel_result.diagnostic_image_base64:
+                fail_body["selenium_diagnostic_image_base64"] = sel_result.diagnostic_image_base64
             return fail_body
         try:
             ig_cl = client_from_browser_cookies(sel_result.cookie_dict)

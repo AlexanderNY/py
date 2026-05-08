@@ -169,12 +169,40 @@ async def dzen_bot_collect_once(
     return await _forward_to_bot(settings.DZEN_BOT_SERVICE_URL, "/dzen-bot/collect-once", request)
 
 
+@router.post("/dzen-bot/verify-yandex/start")
+async def dzen_bot_verify_yandex_start(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """POST /dzen-bot/verify-yandex/start -> dzen-bot: старт Selenium-входа; при need_push сессия ждёт push-code."""
+    return await _forward_to_bot(
+        settings.DZEN_BOT_SERVICE_URL,
+        "/dzen-bot/verify-yandex/start",
+        request,
+        timeout_seconds=180.0,
+    )
+
+
+@router.post("/dzen-bot/verify-yandex/push-code")
+async def dzen_bot_verify_yandex_push_code(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """POST /dzen-bot/verify-yandex/push-code -> dzen-bot: ввод кода пуш-уведомления."""
+    return await _forward_to_bot(
+        settings.DZEN_BOT_SERVICE_URL,
+        "/dzen-bot/verify-yandex/push-code",
+        request,
+        timeout_seconds=120.0,
+    )
+
+
 @router.post("/dzen-bot/verify-yandex")
 async def dzen_bot_verify_yandex(
     request: Request,
     current_user: dict = Depends(get_current_user),
 ) -> Response:
-    """POST /dzen-bot/verify-yandex -> dzen-bot: Selenium-вход и список подписок. Долгий таймаут."""
+    """POST /dzen-bot/verify-yandex -> dzen-bot: то же, что /start (обратная совместимость)."""
     return await _forward_to_bot(
         settings.DZEN_BOT_SERVICE_URL,
         "/dzen-bot/verify-yandex",

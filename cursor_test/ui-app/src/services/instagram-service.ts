@@ -35,8 +35,9 @@ export const instagramService = {
     following_count?: number
     auth_method?: 'instagrapi' | 'selenium'
     selenium_status?: string | null
-    /** Ключ объекта в S3 (имя содержит diag), если сохранён скрин при ошибке Selenium */
+    /** S3 key (содержит diag) и/или base64 PNG без префикса data: при ошибке Selenium */
     selenium_diagnostic_s3_key?: string | null
+    selenium_diagnostic_image_base64?: string | null
   }> {
     const response = await apiClient.post<{
       ok: boolean
@@ -46,6 +47,7 @@ export const instagramService = {
       following_count?: number
       auth_method?: 'instagrapi' | 'selenium'
       selenium_status?: string | null
+      selenium_diagnostic_image_base64?: string | null
       selenium_diagnostic_s3_key?: string | null
       detail?: string
     }>('/instagram-bot/login-test', {}, {

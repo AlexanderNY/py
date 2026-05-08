@@ -1,6 +1,7 @@
 """Роуты Threads: auth status, auth url, reload, schedule, Selenium fallback."""
 
 import asyncio
+import base64
 import json
 import logging
 import time
@@ -77,8 +78,8 @@ async def threads_selenium_attempt(
     x_user_id: Optional[str] = Header(None),
 ):
     """
-    Диагностический веб-вход Meta через Selenium (вариант A плана).
-    Не записывает OAuth token и не включает публикацию через Graph API.
+    Диагностический веб-вход в Instagram через Selenium (не OAuth).
+    Скрин в ответе (data URL) только при умеренном размере PNG; иначе только S3.
     """
     if not settings.ENABLE_THREADS_SELENIUM_FALLBACK:
         raise HTTPException(
@@ -110,12 +111,24 @@ async def threads_selenium_attempt(
         if diag_key:
             detail = f"{message} | diagnostic_s3_key={diag_key}"
         await update_session(session_id, status, detail)
+        max_b64 = int(settings.SELENIUM_DIAG_BASE64_MAX_BYTES)
+        diagnostic_image_data_url: str | None = None
+        if png and len(png) <= max_b64:
+            b64 = base64.b64encode(png).decode("ascii")
+            diagnostic_image_data_url = f"data:image/png;base64,{b64}"
+        elif png:
+            logger.info(
+                "Selenium diagnostic PNG size %s exceeds base64 cap %s; S3 only",
+                len(png),
+                max_b64,
+            )
         return {
             "session_id": session_id,
             "user_id": user_id,
             "status": status,
             "message": message,
             "diagnostic_s3_key": diag_key,
+            "diagnostic_image_data_url": diagnostic_image_data_url,
             "disclaimer": "This does not grant Graph API OAuth. Use Connect with Threads for API publishing.",
         }
     except Exception as e:

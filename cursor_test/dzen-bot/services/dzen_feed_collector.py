@@ -16,7 +16,8 @@ from database import get_db_connection, release_db_connection
 from .selenium_diag import capture_selenium_error_to_s3
 from .selenium_driver import create_chrome_driver
 from .selenium_errors import format_selenium_exception
-from .yandex_auth import YandexAuthError, login_yandex_passport
+from .yandex_auth import YandexAuthError
+from .yandex_dzen_flow import yandex_auth_dispatch
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +107,7 @@ def _collect_links_sync(profile: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], 
     driver = None
     try:
         driver = create_chrome_driver()
-        login_yandex_passport(driver, login, password)
+        yandex_auth_dispatch(driver, login, password)
         driver.get(studio_url)
         time.sleep(3.5)
 

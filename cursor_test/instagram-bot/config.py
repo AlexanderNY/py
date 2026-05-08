@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     INSTAGRAM_SELENIUM_FALLBACK_NETWORK_ERRORS_ONLY: bool = True
     # Таймаут ожидания успешного входа в UI (сек).
     SELENIUM_INSTAGRAM_LOGIN_TIMEOUT_SEC: int = 120
+    # Макс. размер PNG (КБ) для отдачи base64 в API; больше — только S3.
+    SELENIUM_DIAG_MAX_BASE64_KB: int = 512
 
     # S3-совместимое хранилище (единое с core).
     S3_ENDPOINT_URL: str = ""

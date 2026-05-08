@@ -691,6 +691,15 @@ export function ThreadsPage() {
                 <div className="text-sm rounded-md bg-[var(--bg-tertiary)] p-3 space-y-1">
                   <p className="font-medium text-[var(--text-primary)]">Статус: {seleniumAttemptResult.status}</p>
                   <p className="text-[var(--text-secondary)]">{seleniumAttemptResult.message}</p>
+                  {seleniumAttemptResult.diagnostic_image_data_url && (
+                    <div className="mt-2">
+                      <img
+                        alt="Диагностика Selenium"
+                        src={seleniumAttemptResult.diagnostic_image_data_url}
+                        className="max-w-full rounded border border-[var(--border-color)]"
+                      />
+                    </div>
+                  )}
                   {seleniumAttemptResult.diagnostic_s3_key && (
                     <p className="text-xs font-mono text-amber-300/90 mt-2 break-all">
                       Диагностика в S3: {seleniumAttemptResult.diagnostic_s3_key}

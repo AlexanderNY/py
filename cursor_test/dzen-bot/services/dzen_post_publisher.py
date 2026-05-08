@@ -22,7 +22,8 @@ from storage_helper import get_storage
 from .selenium_diag import capture_selenium_error_to_s3
 from .selenium_driver import create_chrome_driver
 from .selenium_errors import format_selenium_exception
-from .yandex_auth import YandexAuthError, ensure_dzen_session, login_yandex_passport
+from .yandex_auth import YandexAuthError, ensure_dzen_session
+from .yandex_dzen_flow import yandex_auth_dispatch
 
 logger = logging.getLogger(__name__)
 
@@ -247,7 +248,7 @@ def _publish_sync(post: Dict[str, Any]) -> tuple[bool, Optional[str], Optional[s
     temp_files: List[str] = list(local_paths)
     try:
         driver = create_chrome_driver()
-        login_yandex_passport(driver, login, password)
+        yandex_auth_dispatch(driver, login, password)
         ensure_dzen_session(driver)
 
         driver.get(settings.DZEN_NEW_ARTICLE_URL)

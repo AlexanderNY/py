@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     SELENIUM_PAGE_LOAD_TIMEOUT: int = 45
     SELENIUM_IMPLICIT_WAIT: int = 5
     META_WEB_LOGIN_URL: str = "https://www.facebook.com/login/"
+    INSTAGRAM_WEB_LOGIN_URL: str = "https://www.instagram.com/"
+    # Не встраивать base64-скрин в JSON, если PNG слишком велик
+    SELENIUM_DIAG_BASE64_MAX_BYTES: int = 1_500_000
     THREADS_SELENIUM_RATE_LIMIT_SECONDS: int = 300
 
     # MinIO / S3 для диагностических скриншотов Selenium (ключи содержат подстроку diag)

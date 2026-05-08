@@ -15,10 +15,17 @@ from selenium.webdriver.support.ui import WebDriverWait
 from config import settings
 from database import get_db_connection, release_db_connection
 
-from .selenium_diag import capture_selenium_error_to_s3
+from .selenium_diag import capture_selenium_error_to_s3, upload_selenium_diag_screenshot_with_url
 from .selenium_driver import create_chrome_driver
 from .selenium_errors import format_selenium_exception
-from .yandex_auth import YandexAuthError, ensure_dzen_session, login_yandex_passport
+from .pending_yandex_session import get_session, pop_and_quit, put_session
+from .yandex_auth import YandexAuthError, ensure_dzen_session
+from .yandex_dzen_flow import (
+    dzen_entry_run_until_push_or_ok,
+    dzen_entry_submit_push_code,
+    page_indicates_push_code,
+    yandex_auth_dispatch,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -103,12 +110,40 @@ def _scroll_page(driver: WebDriver, times: int = 3) -> None:
             break
 
 
+def run_subscriptions_collection_driver(
+    driver: WebDriver, user_id: Optional[int]
+) -> Tuple[List[Dict[str, str]], Optional[str]]:
+    ensure_dzen_session(driver)
+    url = (settings.DZEN_SUBSCRIPTIONS_URL or "").strip() or "https://dzen.ru/subscriptions"
+    driver.get(url)
+    time.sleep(2.0)
+    wait_sec = max(15, int(settings.DZEN_SUBSCRIPTIONS_WAIT_SEC))
+    WebDriverWait(driver, wait_sec).until(lambda d: d.find_element(By.TAG_NAME, "body"))
+    cur = (driver.current_url or "").lower()
+    if "passport.yandex" in cur and "session" not in cur:
+        return [], "Редирект на Passport: сессия Дзена не подтверждена"
+    time.sleep(2.0)
+    _scroll_page(driver, settings.DZEN_SUBSCRIPTIONS_SCROLL_TIMES)
+    subs = _collect_subscription_links(driver)
+    if not subs:
+        time.sleep(3.0)
+        _scroll_page(driver, 2)
+        subs = _collect_subscription_links(driver)
+    warn: Optional[str] = None
+    if not subs:
+        warn = (
+            "Вход выполнен, но подписки на странице не распознаны "
+            "(пустой список или изменилась вёрстка Дзена)."
+        )
+        logger.info("Dzen subscriptions: 0 items (user_id=%s)", user_id)
+    return subs, warn
+
+
 def verify_subscriptions_sync(
     login: str, password: str, user_id: Optional[int] = None
 ) -> Tuple[bool, List[Dict[str, str]], Optional[str]]:
     """
-    Вход и переход на страницу подписок; возвращает (ok, subscriptions, error_message).
-    При ok=True error_message может быть предупреждением (пустой список).
+    Один заход: вход (dzen-флоу / passport) + подписки. При пуш-экране — YandexAuthError.
     """
     login = (login or "").strip()
     password = (password or "").strip()
@@ -118,39 +153,11 @@ def verify_subscriptions_sync(
     driver: Optional[WebDriver] = None
     try:
         driver = create_chrome_driver()
-        login_yandex_passport(driver, login, password)
-        ensure_dzen_session(driver)
-
-        url = (settings.DZEN_SUBSCRIPTIONS_URL or "").strip() or "https://dzen.ru/subscriptions"
-        driver.get(url)
-        time.sleep(2.0)
-
-        wait_sec = max(15, int(settings.DZEN_SUBSCRIPTIONS_WAIT_SEC))
-        WebDriverWait(driver, wait_sec).until(lambda d: d.find_element(By.TAG_NAME, "body"))
-
-        cur = (driver.current_url or "").lower()
-        if "passport.yandex" in cur and "session" not in cur:
-            return False, [], "Редирект на Passport: сессия Дзена не подтверждена"
-
-        time.sleep(2.0)
-        _scroll_page(driver, settings.DZEN_SUBSCRIPTIONS_SCROLL_TIMES)
-
-        subs = _collect_subscription_links(driver)
-        if not subs:
-            # Повтор после дополнительного ожидания (ленивая подгрузка)
-            time.sleep(3.0)
-            _scroll_page(driver, 2)
-            subs = _collect_subscription_links(driver)
-
-        warn: Optional[str] = None
-        if not subs:
-            warn = (
-                "Вход выполнен, но подписки на странице не распознаны "
-                "(пустой список или изменилась вёрстка Дзена)."
-            )
-            logger.info("Dzen subscriptions probe: 0 items parsed for login=%s", login[:3] + "***")
-
-        return True, subs, warn
+        yandex_auth_dispatch(driver, login, password)
+        subs, wmsg = run_subscriptions_collection_driver(driver, user_id)
+        if wmsg and "не подтверждена" in wmsg:
+            return False, [], wmsg
+        return True, subs, wmsg
     except YandexAuthError as e:
         logger.warning("Dzen subscriptions probe: %s", e)
         capture_selenium_error_to_s3(driver, "subscriptions_probe_yandex_auth", user_id=user_id)
@@ -166,6 +173,165 @@ def verify_subscriptions_sync(
                 driver.quit()
             except Exception:
                 pass
+
+
+def verify_yandex_start_sync(user_id: int, login: str, password: str) -> Dict[str, Any]:
+    """Dzen-вход с возможностью паузы на пуш. При пуше WebDriver в pending (не quit)."""
+    pop_and_quit(user_id)
+    login = (login or "").strip()
+    password = (password or "").strip()
+    if not login or not password:
+        return {
+            "ok": False,
+            "need_push_code": False,
+            "subscriptions": [],
+            "error": "Не заданы логин или пароль в профиле Дзен",
+            "message": None,
+            "diag_image_url": None,
+        }
+    driver: Optional[WebDriver] = None
+    keep_driver = False
+    try:
+        driver = create_chrome_driver()
+        rflow = dzen_entry_run_until_push_or_ok(driver, login, password)
+        if rflow == "push":
+            _, durl = upload_selenium_diag_screenshot_with_url(
+                driver, "verify_yandex_start_push", user_id=user_id
+            )
+            put_session(user_id, driver)
+            keep_driver = True
+            driver = None
+            return {
+                "ok": True,
+                "need_push_code": True,
+                "message": "Введите код из пуш-уведомления Яндекса.",
+                "subscriptions": [],
+                "error": None,
+                "diag_image_url": durl,
+            }
+        subs, wmsg = run_subscriptions_collection_driver(driver, user_id)
+        res: Dict[str, Any] = {
+            "ok": True,
+            "need_push_code": False,
+            "subscriptions": subs,
+            "message": wmsg,
+            "error": None,
+            "diag_image_url": None,
+        }
+        if wmsg and "не подтверждена" in wmsg:
+            res["ok"] = False
+            res["error"] = wmsg
+        return res
+    except YandexAuthError as e:
+        pair = (
+            upload_selenium_diag_screenshot_with_url(
+                driver, "verify_yandex_start_auth_err", user_id=user_id
+            )
+            if driver
+            else (None, None)
+        )
+        du = pair[1] if pair and len(pair) > 1 and pair[1] else None
+        return {
+            "ok": False,
+            "need_push_code": False,
+            "subscriptions": [],
+            "error": str(e),
+            "message": None,
+            "diag_image_url": du,
+        }
+    except Exception as e:
+        friendly = format_selenium_exception(e)
+        pair = (
+            upload_selenium_diag_screenshot_with_url(
+                driver, "verify_yandex_start_exc", user_id=user_id
+            )
+            if driver
+            else (None, None)
+        )
+        logger.exception("verify_yandex_start: %s", friendly)
+        durl: Optional[str] = None
+        if pair and len(pair) > 1:
+            durl = pair[1]
+        return {
+            "ok": False,
+            "need_push_code": False,
+            "subscriptions": [],
+            "error": friendly,
+            "message": None,
+            "diag_image_url": durl,
+        }
+    finally:
+        if driver and not keep_driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+
+
+def verify_yandex_push_code_sync(user_id: int, code: str) -> Dict[str, Any]:
+    s = get_session(user_id)
+    if not s:
+        return {
+            "ok": False,
+            "need_push_code": True,
+            "subscriptions": [],
+            "error": "Сессия ожидания пуша не найдена. Нажмите «Проверить» снова.",
+            "message": None,
+            "diag_image_url": None,
+        }
+    driver = s.driver
+    try:
+        dzen_entry_submit_push_code(driver, code)
+        if page_indicates_push_code(driver):
+            _, durl = upload_selenium_diag_screenshot_with_url(
+                driver, "push_code_retry", user_id=user_id
+            )
+            du = durl
+            return {
+                "ok": False,
+                "need_push_code": True,
+                "subscriptions": [],
+                "error": "Сценарий по-прежнему ожидает код. Повторите ввод.",
+                "message": None,
+                "diag_image_url": du,
+            }
+        subs, wmsg = run_subscriptions_collection_driver(driver, user_id)
+        pop_and_quit(user_id)
+        return {
+            "ok": True,
+            "need_push_code": False,
+            "subscriptions": subs,
+            "message": wmsg,
+            "error": None,
+            "diag_image_url": None,
+        }
+    except YandexAuthError as e:
+        pair = upload_selenium_diag_screenshot_with_url(
+            driver, "push_code_error", user_id=user_id
+        )
+        du = pair[1] if pair and len(pair) > 1 else None
+        return {
+            "ok": False,
+            "need_push_code": True,
+            "subscriptions": [],
+            "error": str(e),
+            "message": None,
+            "diag_image_url": du,
+        }
+    except Exception as e:
+        friendly = format_selenium_exception(e)
+        pair = upload_selenium_diag_screenshot_with_url(
+            driver, "push_code_exception", user_id=user_id
+        )
+        du = pair[1] if pair and len(pair) > 1 else None
+        return {
+            "ok": False,
+            "need_push_code": True,
+            "subscriptions": [],
+            "error": friendly,
+            "message": None,
+            "diag_image_url": du,
+        }
 
 
 async def fetch_yandex_credentials(user_id: int) -> Tuple[Optional[str], Optional[str]]:
@@ -206,25 +372,37 @@ async def set_last_auth_error(user_id: int, message: Optional[str]) -> None:
         await release_db_connection(conn)
 
 
-async def verify_yandex_for_user(user_id: int) -> Dict[str, Any]:
-    """Проверка по сохранённым в БД учётным данным."""
+async def verify_yandex_start_for_user(user_id: int) -> Dict[str, Any]:
+    """Старт проверки: dzen-вход, при необходимости пуш, иначе подписки."""
     import asyncio
 
     login, password = await fetch_yandex_credentials(user_id)
     if not login or not password:
         err = "Сохраните логин и пароль Яндекса во вкладке «Авторизация» (профиль Дзен)."
         await set_last_auth_error(user_id, err)
-        return {"ok": False, "subscriptions": [], "error": err}
+        return {
+            "ok": False,
+            "need_push_code": False,
+            "subscriptions": [],
+            "error": err,
+            "message": None,
+            "diag_image_url": None,
+        }
 
-    ok, subs, msg = await asyncio.to_thread(verify_subscriptions_sync, login, password, user_id)
-
-    if ok:
+    d = await asyncio.to_thread(verify_yandex_start_sync, user_id, login, password)
+    if d.get("error"):
+        await set_last_auth_error(user_id, str(d["error"])[:2000])
+    else:
         await set_last_auth_error(user_id, None)
-        result: Dict[str, Any] = {"ok": True, "subscriptions": subs}
-        if msg:
-            result["message"] = msg
-        return result
+    return d
 
-    err_text = (msg or "Ошибка проверки авторизации")[:2000]
-    await set_last_auth_error(user_id, err_text)
-    return {"ok": False, "subscriptions": [], "error": err_text}
+
+async def verify_yandex_push_for_user(user_id: int, code: str) -> Dict[str, Any]:
+    import asyncio
+
+    d = await asyncio.to_thread(verify_yandex_push_code_sync, user_id, code)
+    if d.get("ok") and not d.get("error"):
+        await set_last_auth_error(user_id, None)
+    elif d.get("error"):
+        await set_last_auth_error(user_id, str(d["error"])[:2000])
+    return d
