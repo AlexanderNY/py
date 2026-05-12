@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: str = ""
     S3_USE_SSL: bool = False
 
+    # Игровой бот (Bot API, aiogram). Пустой токен — polling не запускается.
+    GAME_BOT_TOKEN: str = ""
+    # Telegram user id админов (через запятую) — is_admin в game_players при /start.
+    GAME_ADMIN_TELEGRAM_IDS: str = ""
+    # Секрет для HTTP-админки CRUD (заголовок X-Game-Admin-Token).
+    GAME_ADMIN_API_TOKEN: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True

@@ -265,6 +265,10 @@ services:
       - MAX_CONCURRENT_CLIENTS=20
       - CHROME_BIN=/usr/bin/chromium
       - CHROMEDRIVER_PATH=/usr/bin/chromedriver
+      # Игровой бот (BotFather token); пусто — только Telethon + API без aiogram polling.
+      - GAME_BOT_TOKEN=
+      - GAME_ADMIN_TELEGRAM_IDS=
+      - GAME_ADMIN_API_TOKEN=
     volumes:
       - tg-bot-sessions:/app/sessions
     networks:
