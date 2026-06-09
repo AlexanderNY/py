@@ -1,4 +1,5 @@
 import { useState, FormEvent, useEffect, useCallback } from 'react'
+import axios from 'axios'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -29,6 +30,34 @@ interface DynamicField {
 }
 
 const DZEN_MAX_LENGTH = 1500
+const DZEN_AUTH_DIAG_STORAGE_KEY = 'dzen_auth_diag_url'
+
+function readStoredDiagUrl(): string | null {
+  try {
+    return sessionStorage.getItem(DZEN_AUTH_DIAG_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function writeStoredDiagUrl(url: string | null): void {
+  try {
+    if (url) {
+      sessionStorage.setItem(DZEN_AUTH_DIAG_STORAGE_KEY, url)
+    } else {
+      sessionStorage.removeItem(DZEN_AUTH_DIAG_STORAGE_KEY)
+    }
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function isTimeoutError(err: unknown): boolean {
+  if (axios.isAxiosError(err)) {
+    return err.code === 'ECONNABORTED' || (err.message || '').toLowerCase().includes('timeout')
+  }
+  return err instanceof Error && err.message.toLowerCase().includes('timeout')
+}
 
 export function DzenPage() {
   const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'auth'>('create')
@@ -71,6 +100,7 @@ export function DzenPage() {
   const [needPushCode, setNeedPushCode] = useState(false)
   const [pushCode, setPushCode] = useState('')
   const [verifyDiagImageUrl, setVerifyDiagImageUrl] = useState<string | null>(null)
+  const [diagImageLoadError, setDiagImageLoadError] = useState(false)
   const [isCreatingPost, setIsCreatingPost] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -124,6 +154,16 @@ export function DzenPage() {
       loadPosts()
     }
   }, [activeTab, hasLoadedPosts])
+
+  useEffect(() => {
+    if (activeTab === 'auth') {
+      const stored = readStoredDiagUrl()
+      if (stored) {
+        setVerifyDiagImageUrl(stored)
+        setDiagImageLoadError(false)
+      }
+    }
+  }, [activeTab])
 
   async function loadPosts() {
     setIsLoadingPosts(true)
@@ -286,11 +326,36 @@ export function DzenPage() {
     }
   }
 
+  function setDiagFromResponse(url: string | null | undefined, clearOnSuccess: boolean) {
+    if (url) {
+      writeStoredDiagUrl(url)
+      setVerifyDiagImageUrl(url)
+      setDiagImageLoadError(false)
+      return
+    }
+    if (clearOnSuccess) {
+      writeStoredDiagUrl(null)
+      setVerifyDiagImageUrl(null)
+      setDiagImageLoadError(false)
+    }
+  }
+
+  async function refreshPendingDiagScreenshot(): Promise<void> {
+    try {
+      const diag = await dzenService.fetchVerifyPendingDiag()
+      if (diag.diag_image_url) {
+        setDiagFromResponse(diag.diag_image_url, false)
+      }
+    } catch {
+      /* best effort */
+    }
+  }
+
   function applyVerifyResponse(res: DzenVerifyResponse) {
     if (res.diag_image_url) {
-      setVerifyDiagImageUrl(res.diag_image_url)
-    } else {
-      setVerifyDiagImageUrl(null)
+      setDiagFromResponse(res.diag_image_url, false)
+    } else if (res.ok) {
+      setDiagFromResponse(null, true)
     }
     if (res.ok) {
       setVerifySubscriptions(res.subscriptions ?? [])
@@ -314,7 +379,6 @@ export function DzenPage() {
     setVerifyInfoMessage(null)
     setNeedPushCode(false)
     setPushCode('')
-    setVerifyDiagImageUrl(null)
     setIsVerifyingAuth(true)
     try {
       const res = await dzenService.verifyYandexStart()
@@ -322,15 +386,20 @@ export function DzenPage() {
       if (res.ok && res.need_push_code) {
         setNeedPushCode(true)
         setVerifyInfoMessage(res.message ?? 'Введите код из пуш-уведомления.')
-        if (res.diag_image_url) {
-          setVerifyDiagImageUrl(res.diag_image_url)
-        }
+        setDiagFromResponse(res.diag_image_url, false)
         return
       }
       applyVerifyResponse(res)
     } catch (err) {
       setVerifySubscriptions([])
-      setError(err instanceof Error ? err.message : 'Ошибка проверки авторизации')
+      if (isTimeoutError(err)) {
+        setError(
+          'Превышен таймаут ожидания ответа. Проверка на сервере может ещё выполняться — обновляем скрин…'
+        )
+        await refreshPendingDiagScreenshot()
+      } else {
+        setError(err instanceof Error ? err.message : 'Ошибка проверки авторизации')
+      }
     } finally {
       setIsVerifyingAuth(false)
     }
@@ -356,16 +425,21 @@ export function DzenPage() {
       }
       if (res.need_push_code) {
         setNeedPushCode(true)
-        if (res.diag_image_url) {
-          setVerifyDiagImageUrl(res.diag_image_url)
-        }
+        setDiagFromResponse(res.diag_image_url, false)
         setError(res.error ?? 'Повторите ввод кода.')
         return
       }
       setNeedPushCode(false)
       applyVerifyResponse(res)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка отправки кода')
+      if (isTimeoutError(err)) {
+        setError(
+          'Превышен таймаут после отправки кода. Бот мог продолжить вход — обновляем скрин с текущего экрана…'
+        )
+        await refreshPendingDiagScreenshot()
+      } else {
+        setError(err instanceof Error ? err.message : 'Ошибка отправки кода')
+      }
     } finally {
       setIsVerifyingAuth(false)
     }
@@ -779,11 +853,19 @@ export function DzenPage() {
                 {verifyDiagImageUrl && (
                   <div className="space-y-2">
                     <p className="text-xs text-[var(--text-muted)]">Снимок экрана для диагностики (страница в браузере бота):</p>
-                    <img
-                      src={verifyDiagImageUrl}
-                      alt="Диагностика Selenium"
-                      className="max-w-full rounded-xl border border-[var(--border-color)] max-h-96 object-contain bg-[var(--bg-secondary)]"
-                    />
+                    {!diagImageLoadError ? (
+                      <img
+                        src={verifyDiagImageUrl}
+                        alt="Диагностика Selenium"
+                        className="max-w-full rounded-xl border border-[var(--border-color)] max-h-96 object-contain bg-[var(--bg-secondary)]"
+                        onLoad={() => setDiagImageLoadError(false)}
+                        onError={() => setDiagImageLoadError(true)}
+                      />
+                    ) : (
+                      <p className="text-sm text-[var(--text-secondary)]">
+                        Не удалось загрузить скрин. Нажмите «Проверить авторизацию» ещё раз.
+                      </p>
+                    )}
                   </div>
                 )}
                 {needPushCode && (

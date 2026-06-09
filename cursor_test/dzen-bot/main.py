@@ -11,7 +11,11 @@ from fastapi import FastAPI, Request
 from config import settings
 from database import init_db, close_db
 from services.dzen_bot_service import DzenBotService
-from services.dzen_subscriptions_probe import verify_yandex_start_for_user, verify_yandex_push_for_user
+from services.dzen_subscriptions_probe import (
+    verify_yandex_pending_diag_for_user,
+    verify_yandex_push_for_user,
+    verify_yandex_start_for_user,
+)
 
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
@@ -129,6 +133,15 @@ async def verify_yandex_push_code(request: Request):
             "diag_image_url": None,
         }
     return await verify_yandex_push_for_user(user_id, code.strip())
+
+
+@app.get("/dzen-bot/verify-yandex/pending-diag")
+async def verify_yandex_pending_diag(request: Request):
+    """Актуальный скрин pending WebDriver (если push-code ещё выполняется или сессия жива)."""
+    user_id = _x_user_id(request)
+    if user_id is None:
+        return {"diag_image_url": None, "error": "Отсутствует или невалиден X-User-Id"}
+    return await verify_yandex_pending_diag_for_user(user_id)
 
 
 @app.post("/dzen-bot/verify-yandex")

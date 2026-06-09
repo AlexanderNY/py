@@ -9,7 +9,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, List, Literal, Optional
 
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 from selenium.webdriver import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -17,7 +17,13 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from config import settings
 
-from .yandex_auth import YandexAuthError, _find_first, _safe_page_hint
+from .yandex_auth import (
+    PushCodeRequiredError,
+    YandexAuthError,
+    _find_first,
+    _safe_page_hint,
+    dismiss_passport_overlays,
+)
 
 if TYPE_CHECKING:
     from selenium.webdriver.remote.webdriver import WebDriver
@@ -186,40 +192,86 @@ def _enter_password_and_submit(driver: "WebDriver", password: str, timeout: floa
         (By.CSS_SELECTOR, "input[autocomplete='current-password']"),
     ]
     wait = WebDriverWait(driver, max(20, int(timeout)))
-    try:
-        el = wait.until(lambda d: _find_first(d, pwd_selectors))
-    except TimeoutException as e:
-        raise YandexAuthError(
-            "Не найдено поле пароля. " + _safe_page_hint(driver)
-        ) from e
-    el.clear()
-    el.send_keys(password)
-    time.sleep(0.2)
-    sub = _find_first(
-        driver,
-        [
-            (By.ID, "passp:sign-in"),
-            (By.CSS_SELECTOR, "button[type='submit']"),
-            (By.XPATH, "//button[contains(., 'Войти')]"),
-        ],
-    )
-    if sub:
-        sub.click()
-    else:
-        el.send_keys(Keys.ENTER)
-    time.sleep(2.5)
+    last_stale: Optional[Exception] = None
+    el = None
+    for attempt in range(3):
+        try:
+            el = wait.until(lambda d: _find_first(d, pwd_selectors))
+            el.clear()
+            el.send_keys(password)
+            time.sleep(0.2)
+            sub = _find_first(
+                driver,
+                [
+                    (By.ID, "passp:sign-in"),
+                    (By.CSS_SELECTOR, "button[type='submit']"),
+                    (By.XPATH, "//button[contains(., 'Войти') or contains(., 'Sign in')]"),
+                ],
+            )
+            if sub:
+                sub.click()
+            else:
+                el.send_keys(Keys.ENTER)
+            time.sleep(2.5)
+            return
+        except TimeoutException as e:
+            if page_indicates_push_code(driver):
+                raise PushCodeRequiredError(
+                    "Требуется код из пуш-уведомления. " + _safe_page_hint(driver)
+                ) from e
+            raise YandexAuthError(
+                "Не найдено поле пароля. " + _safe_page_hint(driver)
+            ) from e
+        except StaleElementReferenceException as e:
+            last_stale = e
+            if attempt >= 2:
+                raise YandexAuthError(
+                    "Страница сменилась при вводе пароля. Повторите проверку авторизации."
+                ) from e
+            time.sleep(0.5)
 
 
 def page_indicates_push_code(driver: "WebDriver") -> bool:
+    u = (driver.current_url or "").lower()
+    url_markers = ("push-code", "/auth/push", "pwl-yandex/auth/push")
+    if any(m in u for m in url_markers):
+        return True
+
     t = (driver.title or "") + (driver.page_source or "")[:150000]
     tl = t.lower()
-    markers = (
+    text_markers = (
         "код из пуш",
         "введите код из пуш",
         "пуш-уведом",
         "push-уведом",
+        "push notification",
+        "enter the code",
+        "confirmation code",
+        "one-time code",
+        "code from the app",
+        "code from push",
     )
-    return any(m in tl for m in markers)
+    if any(m in tl for m in text_markers):
+        return True
+
+    try:
+        visible_pwd = [
+            p for p in driver.find_elements(By.CSS_SELECTOR, "input[type='password']") if p.is_displayed()
+        ]
+        if visible_pwd:
+            return False
+        code_selectors = (
+            "input[autocomplete='one-time-code']",
+            "input[inputmode='numeric']",
+            "input[type='tel']",
+        )
+        for sel in code_selectors:
+            for inp in driver.find_elements(By.CSS_SELECTOR, sel):
+                if inp.is_displayed():
+                    return True
+    except Exception:
+        pass
+    return False
 
 
 def _check_authenticated(driver: "WebDriver") -> bool:
@@ -252,6 +304,7 @@ def dzen_entry_run_until_push_or_ok(
 
     driver.get(base)
     time.sleep(2.0)
+    dismiss_passport_overlays(driver)
     if _detect_captcha_block(driver):
         raise YandexAuthError(
             "Обнаружена проверка SmartCaptcha/«не робот» на dzen.ru. "
@@ -260,8 +313,10 @@ def dzen_entry_run_until_push_or_ok(
 
     _click_voyti_on_dzen(driver, 25.0)
     time.sleep(1.0)
+    dismiss_passport_overlays(driver)
     _click_yandex_id_entry(driver, 25.0)
     time.sleep(2.0)
+    dismiss_passport_overlays(driver)
 
     if _detect_captcha_block(driver):
         raise YandexAuthError("Капча/антибот на этапе Яндекс ID. " + _safe_page_hint(driver))
@@ -276,13 +331,19 @@ def dzen_entry_run_until_push_or_ok(
                 + _safe_page_hint(driver)
             )
 
+    dismiss_passport_overlays(driver)
+
     if page_indicates_push_code(driver):
         return "push"
 
-    _enter_password_and_submit(
-        driver, password, float(getattr(settings, "YANDEX_PASSPORT_PASSWORD_TIMEOUT_SEC", 40))
-    )
+    try:
+        _enter_password_and_submit(
+            driver, password, float(getattr(settings, "YANDEX_PASSPORT_PASSWORD_TIMEOUT_SEC", 40))
+        )
+    except PushCodeRequiredError:
+        return "push"
     time.sleep(2.0)
+    dismiss_passport_overlays(driver)
 
     if page_indicates_push_code(driver):
         return "push"
@@ -298,6 +359,96 @@ def dzen_entry_run_until_push_or_ok(
     return "ok" if _check_authenticated(driver) or not page_indicates_push_code(driver) else "push"
 
 
+def _find_push_code_input(driver: "WebDriver", timeout: float = 25.0):
+    wait = WebDriverWait(driver, timeout)
+    selectors: List = [
+        (By.CSS_SELECTOR, "input[autocomplete='one-time-code']"),
+        (By.CSS_SELECTOR, "input[type='tel']"),
+        (By.CSS_SELECTOR, "input[inputmode='numeric']"),
+        (By.CSS_SELECTOR, "input[aria-label*='од']"),
+        (By.XPATH, "//input[contains(@aria-label,'од')]"),
+        (By.XPATH, "//input[contains(@aria-label,'code') or contains(@aria-label,'Code')]"),
+    ]
+    for by, val in selectors:
+        try:
+            el = wait.until(EC.element_to_be_clickable((by, val)))
+            if el.is_displayed():
+                return el
+        except Exception:
+            continue
+    for inp in driver.find_elements(By.CSS_SELECTOR, "input"):
+        try:
+            if inp.is_displayed() and inp.is_enabled():
+                return inp
+        except StaleElementReferenceException:
+            continue
+    return None
+
+
+def _click_submit_after_push_code(driver: "WebDriver") -> None:
+    submit_selectors: List = [
+        (By.XPATH, "//button[contains(., 'Продолж') or contains(., 'подтверд') or contains(., 'Continue') or contains(., 'Confirm')]"),
+        (By.CSS_SELECTOR, "button[type='submit']"),
+        (By.XPATH, "//button[contains(., 'Next') or contains(., 'Sign in')]"),
+    ]
+    for by, val in submit_selectors:
+        btn = _find_first(driver, [(by, val)])
+        if not btn:
+            continue
+        try:
+            btn.click()
+            return
+        except StaleElementReferenceException:
+            continue
+        except Exception:
+            continue
+    fresh = _find_push_code_input(driver, 8.0)
+    if fresh:
+        fresh.send_keys(Keys.ENTER)
+
+
+def _wait_push_code_page_settled(driver: "WebDriver", timeout: float = 25.0) -> None:
+    def settled(d: "WebDriver") -> bool:
+        u = (d.current_url or "").lower()
+        if "push-code" not in u and not page_indicates_push_code(d):
+            return True
+        src = _lower_src(d)
+        if any(m in src for m in ("неверн", "ошиб", "incorrect", "wrong", "invalid")):
+            return True
+        return False
+
+    try:
+        WebDriverWait(driver, timeout).until(settled)
+    except TimeoutException:
+        pass
+
+
+def has_visible_password_field(driver: "WebDriver") -> bool:
+    try:
+        for pwd in driver.find_elements(By.CSS_SELECTOR, "input[type='password']"):
+            if pwd.is_displayed():
+                return True
+    except StaleElementReferenceException:
+        return False
+    except Exception:
+        return False
+    return False
+
+
+def complete_auth_after_push_code(driver: "WebDriver", password: str) -> None:
+    """После пуш-кода Яндекс часто показывает экран пароля."""
+    dismiss_passport_overlays(driver)
+    if not has_visible_password_field(driver):
+        return
+    if not (password or "").strip():
+        raise YandexAuthError("После кода требуется пароль, но он не задан в профиле Дзен.")
+    _enter_password_and_submit(
+        driver, password, float(getattr(settings, "YANDEX_PASSPORT_PASSWORD_TIMEOUT_SEC", 40))
+    )
+    time.sleep(2.0)
+    dismiss_passport_overlays(driver)
+
+
 def dzen_entry_submit_push_code(
     driver: "WebDriver", code: str
 ) -> None:
@@ -305,50 +456,52 @@ def dzen_entry_submit_push_code(
     if not c:
         raise YandexAuthError("Пустой код пуш-уведомления")
 
-    selectors: List = [
-        (By.CSS_SELECTOR, "input[autocomplete='one-time-code']"),
-        (By.CSS_SELECTOR, "input[type='tel']"),
-        (By.CSS_SELECTOR, "input[aria-label*='од']"),  # часть подписи
-        (By.XPATH, "//input[contains(@aria-label,'од')]"),
-    ]
-    wait = WebDriverWait(driver, 25.0)
-    el = None
-    for by, v in selectors:
-        try:
-            el = wait.until(EC.element_to_be_clickable((by, v)))
-            break
-        except Exception:
-            continue
-    if not el:
-        # fallback: один видимый input
-        for inp in driver.find_elements(By.CSS_SELECTOR, "input"):
-            if inp.is_displayed():
-                el = inp
-                break
-    if not el:
-        raise YandexAuthError("Поле для ввода кода не найдено. " + _safe_page_hint(driver))
+    dismiss_passport_overlays(driver)
 
-    el.clear()
-    el.send_keys(c)
-    time.sleep(0.2)
-    btn = _find_first(
-        driver,
-        [
-            (By.XPATH, "//button[contains(., 'Продолж') or contains(., 'подтверд')]"),
-            (By.CSS_SELECTOR, "button[type='submit']"),
-        ],
-    )
-    if btn:
+    last_stale: Optional[Exception] = None
+    for attempt in range(4):
         try:
-            btn.click()
-        except Exception:
-            el.send_keys(Keys.ENTER)
+            el = _find_push_code_input(driver)
+            if not el:
+                raise YandexAuthError("Поле для ввода кода не найдено. " + _safe_page_hint(driver))
+
+            try:
+                el.click()
+            except StaleElementReferenceException as e:
+                last_stale = e
+                time.sleep(0.5)
+                continue
+
+            try:
+                el.clear()
+            except StaleElementReferenceException:
+                driver.execute_script("arguments[0].value = '';", el)
+            except Exception:
+                driver.execute_script("arguments[0].value = '';", el)
+
+            el.send_keys(c)
+            time.sleep(0.35)
+            _click_submit_after_push_code(driver)
+            _wait_push_code_page_settled(driver)
+            dismiss_passport_overlays(driver)
+            break
+        except StaleElementReferenceException as e:
+            last_stale = e
+            if attempt >= 3:
+                raise YandexAuthError(
+                    "Страница сменилась во время ввода кода. Нажмите «Проверить авторизацию» и повторите."
+                    + " " + _safe_page_hint(driver)
+                ) from e
+            time.sleep(0.6)
     else:
-        el.send_keys(Keys.ENTER)
-    time.sleep(3.0)
+        if last_stale:
+            raise YandexAuthError(
+                "Не удалось ввести код: элемент формы обновился (StaleElement). Повторите проверку."
+            ) from last_stale
+
     if page_indicates_push_code(driver):
         s = _lower_src(driver)
-        if "неверн" in s or "ошиб" in s:
+        if any(m in s for m in ("неверн", "ошиб", "incorrect", "wrong", "invalid")):
             raise YandexAuthError("Код не принят. " + _safe_page_hint(driver))
 
 

@@ -18,6 +18,10 @@ class YandexAuthError(Exception):
     """Не удалось войти (капча, 2FA, неверный пароль и т.д.)."""
 
 
+class PushCodeRequiredError(YandexAuthError):
+    """Открыт экран ввода кода из пуш-уведомления (двухшаговый вход)."""
+
+
 def _find_first(driver, selectors: list[tuple[str, str]]):
     for by, value in selectors:
         try:
@@ -27,6 +31,49 @@ def _find_first(driver, selectors: list[tuple[str, str]]):
         except Exception:
             continue
     return None
+
+
+def dismiss_remind_later_popup(driver, timeout: float = 4.0) -> bool:
+    """
+    Закрывает всплывающее окно про биометрию: «Напомнить позже» / Remind me later.
+    Returns True, если кнопка найдена и нажата.
+    """
+    from selenium.common.exceptions import StaleElementReferenceException
+    from selenium.webdriver.support import expected_conditions as EC
+
+    xpaths = [
+        "//button[contains(normalize-space(.), 'Напомнить позже')]",
+        "//a[contains(normalize-space(.), 'Напомнить позже')]",
+        "//*[@role='button' and contains(normalize-space(.), 'Напомнить позже')]",
+        (
+            "//button[contains(translate(normalize-space(.), "
+            "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'remind me later')]"
+        ),
+        (
+            "//a[contains(translate(normalize-space(.), "
+            "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'remind me later')]"
+        ),
+        "//*[@aria-label='Напомнить позже' or @aria-label='Remind me later']",
+    ]
+    short = min(max(1.0, timeout), 5.0)
+    for xp in xpaths:
+        try:
+            el = WebDriverWait(driver, short).until(EC.element_to_be_clickable((By.XPATH, xp)))
+            if el.is_displayed():
+                el.click()
+                logger.info("Dismissed biometric popup: Remind me later")
+                time.sleep(0.4)
+                return True
+        except (TimeoutException, StaleElementReferenceException):
+            continue
+        except Exception:
+            continue
+    return False
+
+
+def dismiss_passport_overlays(driver) -> None:
+    """Закрывает известные модальные окна Passport/ID, мешающие сценарию."""
+    dismiss_remind_later_popup(driver, timeout=2.0)
 
 
 def _safe_page_hint(driver) -> str:
@@ -71,6 +118,7 @@ def login_yandex_passport(driver, login: str, password: str) -> None:
         raise YandexAuthError("Пустой логин или пароль")
 
     driver.get(settings.YANDEX_PASSPORT_URL)
+    dismiss_passport_overlays(driver)
     login_timeout = max(25, int(settings.YANDEX_PASSPORT_LOGIN_TIMEOUT_SEC))
     wait = WebDriverWait(driver, login_timeout)
 
@@ -154,3 +202,4 @@ def ensure_dzen_session(driver) -> None:
     """Открывает Дзен, чтобы проверить сессию после Passport."""
     driver.get("https://dzen.ru/")
     time.sleep(2.0)
+    dismiss_passport_overlays(driver)

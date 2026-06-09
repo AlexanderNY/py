@@ -70,7 +70,15 @@ export const dzenService = {
     const response = await apiClient.post<DzenVerifyResponse>(
       '/dzen-bot/verify-yandex/push-code',
       { code: code.trim() },
-      { timeout: 120_000 }
+      { timeout: 300_000 }
+    )
+    return response.data
+  },
+
+  async fetchVerifyPendingDiag(): Promise<{ diag_image_url?: string | null; error?: string | null }> {
+    const response = await apiClient.get<{ diag_image_url?: string | null; error?: string | null }>(
+      '/dzen-bot/verify-yandex/pending-diag',
+      { timeout: 45_000 }
     )
     return response.data
   },

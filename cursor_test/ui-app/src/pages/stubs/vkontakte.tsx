@@ -78,6 +78,10 @@ export function VKontaktePage() {
   const [signed, setSigned] = useState(false)
   const [markAsAds, setMarkAsAds] = useState(false)
   const [accessToken, setAccessToken] = useState('')
+  const [vkAppId, setVkAppId] = useState('')
+  const [vkAppSecret, setVkAppSecret] = useState('')
+  const [vkFrontendUrl, setVkFrontendUrl] = useState('http://localhost:8100')
+  const [vkPublicGatewayUrl, setVkPublicGatewayUrl] = useState('http://localhost:8000')
   const [groupsToRead, setGroupsToRead] = useState<DynamicField[]>([{ id: generateId(), value: '' }])
   const [groupToPost, setGroupToPost] = useState('')
   const [processEnabled, setProcessEnabled] = useState(false)
@@ -141,6 +145,10 @@ export function VKontaktePage() {
         setSigned(profile.signed ?? false)
         setMarkAsAds(profile.mark_as_ads ?? false)
         setAccessToken(profile.access_token ?? '')
+        setVkAppId(profile.vk_app_id ?? '')
+        setVkAppSecret(profile.vk_app_secret ?? '')
+        setVkFrontendUrl(profile.vk_frontend_url?.trim() || 'http://localhost:8100')
+        setVkPublicGatewayUrl(profile.vk_public_gateway_url?.trim() || 'http://localhost:8000')
         const gr = profile.groups_to_read
         if (Array.isArray(gr) && gr.length > 0) {
           setGroupsToRead(gr.map((g) => ({ id: generateId(), value: String(g) })))
@@ -329,6 +337,10 @@ export function VKontaktePage() {
       signed: signed,
       mark_as_ads: markAsAds,
       access_token: accessToken && accessToken !== '***' ? accessToken : undefined,
+      vk_app_id: vkAppId.trim() || undefined,
+      vk_app_secret: vkAppSecret && vkAppSecret !== '***' ? vkAppSecret : undefined,
+      vk_frontend_url: vkFrontendUrl.trim() || undefined,
+      vk_public_gateway_url: vkPublicGatewayUrl.trim() || undefined,
       groups_to_read: groupsToReadPayload,
       group_to_post: groupToPost || undefined,
       process_enabled: processEnabled,
@@ -471,6 +483,8 @@ export function VKontaktePage() {
 
   const showAuthBlock = authStatus != null && !authStatus.connected
 
+  const vkOAuthRedirectUri = `${vkPublicGatewayUrl.replace(/\/$/, '')}/vk/oauth/callback`
+
   return (
     <PageContainer maxWidth="wide">
       <PageHeader title="VKontakte Integration" description="Configure your VKontakte account settings and post management" />
@@ -552,6 +566,58 @@ export function VKontaktePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="space-y-3 p-4 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">Приложение VK (OAuth)</h3>
+              <p className="text-xs text-[var(--text-muted)]">
+                Параметры из <code className="text-[var(--text-secondary)]">.env</code> перенесены сюда. Укажите данные
+                приложения с{' '}
+                <a href="https://dev.vk.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">
+                  dev.vk.com
+                </a>
+                . Redirect URI в кабинете VK должен совпадать с вычисленным ниже.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  label="VK App ID (VK_APP_ID)"
+                  value={vkAppId}
+                  onChange={(e) => setVkAppId(e.target.value)}
+                  placeholder="12345678"
+                />
+                <Input
+                  label="VK App Secret (VK_APP_SECRET)"
+                  type="password"
+                  value={vkAppSecret === '***' ? '' : vkAppSecret}
+                  onChange={(e) => setVkAppSecret(e.target.value)}
+                  placeholder={vkAppSecret === '***' ? 'Секрет сохранён (скрыт)' : 'Защищённый ключ приложения'}
+                />
+                <Input
+                  label="URL интерфейса (FRONTEND_URL)"
+                  value={vkFrontendUrl}
+                  onChange={(e) => setVkFrontendUrl(e.target.value)}
+                  placeholder="http://localhost:8100"
+                />
+                <Input
+                  label="Публичный URL gateway (VK_PUBLIC_GATEWAY_URL)"
+                  value={vkPublicGatewayUrl}
+                  onChange={(e) => setVkPublicGatewayUrl(e.target.value)}
+                  placeholder="http://localhost:8000"
+                />
+              </div>
+              <p className="text-xs text-[var(--text-muted)]">
+                Redirect URI для VK:{' '}
+                <code className="text-[var(--text-secondary)] break-all">{vkOAuthRedirectUri}</code>
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void persistFullVkProfile('Настройки OAuth VK сохранены')}
+                isLoading={isSavingProfile}
+              >
+                Сохранить настройки OAuth
+              </Button>
+            </div>
+
             <div className="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-tertiary)]">
               <div
                 className={`w-3 h-3 rounded-full ${
@@ -571,7 +637,8 @@ export function VKontaktePage() {
             {!authStatus?.connected && (
               <div className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/5">
                 <p className="text-sm text-[var(--text-muted)] mb-4">
-                  Нажмите кнопку и войдите в VK. После успешного входа токен сохранится в профиле (user_access_token).
+                  Сначала сохраните блок «Приложение VK» выше, затем нажмите кнопку и войдите в VK. После успешного входа
+                  токен сохранится в профиле (user_access_token).
                 </p>
                 <Button onClick={() => void handleConnectVk()}>Подключить VK</Button>
               </div>

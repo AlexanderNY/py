@@ -126,6 +126,7 @@ BOT_SCHEDULE_PROTECTED = [
     "/dzen-bot/verify-yandex",
     "/dzen-bot/verify-yandex/start",
     "/dzen-bot/verify-yandex/push-code",
+    "/dzen-bot/verify-yandex/pending-diag",
     "/instagram-bot/schedule",
     "/vk-bot/verify-selenium",
 ]

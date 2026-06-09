@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, Optional
 
 from config import settings
@@ -23,6 +23,7 @@ _store: Dict[int, "PendingSession"] = {}
 class PendingSession:
     driver: "WebDriver"
     created_at: float
+    op_lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
 
 def _ttl() -> int:

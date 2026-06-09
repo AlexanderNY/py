@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 
 class Settings(BaseSettings):
@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     VK_APP_ID: str = ""
     VK_APP_SECRET: str = ""
     VK_OAUTH_REDIRECT_URI: str = ""
+    # Публичный URL gateway (как его видит браузер и VK), не внутренний http://gateway:8000
+    VK_PUBLIC_GATEWAY_URL: str = "http://localhost:8000"
 
     # X (Twitter) OAuth 2.0 PKCE (Core callback обменивает code на токены)
     TWITTER_CLIENT_ID: str = ""
@@ -72,3 +74,16 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def get_vk_oauth_redirect_uri(public_gateway_url: Optional[str] = None) -> str:
+    """Redirect URI для VK OAuth: профиль/UI, явный VK_OAUTH_REDIRECT_URI или VK_PUBLIC_GATEWAY_URL."""
+    if public_gateway_url and str(public_gateway_url).strip():
+        return f"{str(public_gateway_url).strip().rstrip('/')}/vk/oauth/callback"
+    explicit = (settings.VK_OAUTH_REDIRECT_URI or "").strip()
+    if explicit:
+        return explicit
+    base = (settings.VK_PUBLIC_GATEWAY_URL or "").strip().rstrip("/")
+    if not base:
+        base = "http://localhost:8000"
+    return f"{base}/vk/oauth/callback"

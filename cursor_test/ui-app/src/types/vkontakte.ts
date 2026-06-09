@@ -65,6 +65,14 @@ export interface VKontakteProfile {
   groups_to_read?: number[]
   /** ID или short_name группы для публикации */
   group_to_post?: string | null
+  /** ID приложения VK (OAuth), вкладка «Авторизация» */
+  vk_app_id?: string | null
+  /** Секрет приложения VK (маскируется как "***") */
+  vk_app_secret?: string | null
+  /** URL UI после OAuth (FRONTEND_URL) */
+  vk_frontend_url?: string | null
+  /** Публичный URL gateway для redirect_uri (VK_PUBLIC_GATEWAY_URL) */
+  vk_public_gateway_url?: string | null
   process_enabled?: boolean
   processing_description?: string | null
   remove_emojis?: boolean

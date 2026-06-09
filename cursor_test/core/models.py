@@ -552,6 +552,29 @@ EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 """
 
+VK_PROFILES_OAUTH_APP_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN vk_app_id VARCHAR(32);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN vk_app_secret VARCHAR(512);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN vk_frontend_url VARCHAR(512);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN vk_public_gateway_url VARCHAR(512);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+"""
+
 # Таблица vk_posts - посты VKontakte (структура аналогична tg_posts)
 VK_POSTS_TABLE = """
 CREATE TABLE IF NOT EXISTS vk_posts (
@@ -1249,6 +1272,7 @@ ALL_TABLES = [
     VK_PROFILES_MIGRATION,
     VK_PROFILES_USER_ACCESS_TOKEN_MIGRATION,
     VK_PROFILES_VK_USER_ID_MIGRATION,
+    VK_PROFILES_OAUTH_APP_MIGRATION,
     VK_POSTS_TABLE,
     VK_POSTS_INDEXES,
     VK_POSTS_MIGRATION,

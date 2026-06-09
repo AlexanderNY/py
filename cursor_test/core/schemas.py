@@ -447,6 +447,11 @@ class VKontakteProfileBase(BaseModel):
     users_to_read: List[int] = []  # ID пользователей для чтения стены
     group_to_post: Optional[str] = None  # ID или short_name группы для публикации
     post_to_own_wall: bool = False  # публиковать на личную стену пользователя
+    # OAuth-приложение VK (из UI «Авторизация»; fallback — env core)
+    vk_app_id: Optional[str] = None
+    vk_app_secret: Optional[str] = None
+    vk_frontend_url: Optional[str] = None
+    vk_public_gateway_url: Optional[str] = None
 
 
 class VKontakteProfileCreate(VKontakteProfileBase):

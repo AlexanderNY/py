@@ -7,7 +7,8 @@ import base64
 import logging
 import re
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Optional
+from io import BytesIO
+from typing import TYPE_CHECKING, Any, Optional
 
 from config import settings
 from storage_helper import get_storage
@@ -39,6 +40,86 @@ async def _put_png_and_presigned_url(
     await storage.put(key, png, content_type="image/png")
     url = await storage.get_presigned_url(key, expires_in=expires_in)
     return key, url
+
+
+def _build_diag_s3_key(label: str, user_id: Optional[int]) -> str:
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    uid_part = f"uid{user_id}" if user_id is not None else "nouid"
+    safe = _sanitize_label(label)
+    prefix = (settings.S3_DIAG_PREFIX or "dzen/diag").strip().strip("/")
+    return f"{prefix}/diag_selenium_{ts}_{uid_part}_{safe}.png"
+
+
+def _png_to_jpeg_data_url(png: bytes, *, max_width: int = 800, quality: int = 75) -> Optional[str]:
+    """Сжатый JPEG для inline-отображения в UI (не зависит от presigned MinIO)."""
+    try:
+        from PIL import Image
+
+        img = Image.open(BytesIO(png))
+        if img.mode in ("RGBA", "P", "LA"):
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            if img.mode == "P":
+                img = img.convert("RGBA")
+            background.paste(img, mask=img.split()[-1] if img.mode in ("RGBA", "LA") else None)
+            img = background
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+        width, height = img.size
+        if width > max_width:
+            height = max(1, int(height * max_width / width))
+            img = img.resize((max_width, height), Image.Resampling.LANCZOS)
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        encoded = base64.b64encode(buf.getvalue()).decode("ascii")
+        return f"data:image/jpeg;base64,{encoded}"
+    except Exception as e:
+        logger.warning("selenium_diag: JPEG encode failed (%s), fallback to PNG data URL", e)
+        return "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+
+
+def _upload_png_to_s3(key: str, png: bytes) -> Optional[str]:
+    if not get_storage():
+        return None
+    try:
+        asyncio.run(_put_png(key, png))
+    except RuntimeError as e:
+        if "cannot be called from a running event loop" in str(e).lower() or "already running" in str(
+            str(e)
+        ).lower():
+            logger.warning("selenium_diag: cannot run async S3 upload in this context (%s)", e)
+            return None
+        logger.warning("selenium_diag: S3 upload failed: %s", e)
+        return None
+    except Exception as e:
+        logger.warning("selenium_diag: S3 upload failed: %s", e)
+        return None
+    bucket = getattr(settings, "S3_BUCKET", "")
+    logger.info("selenium_diag: screenshot uploaded s3://%s/%s", bucket, key)
+    return key
+
+
+def capture_diag_for_ui(
+    driver: Optional["WebDriver"],
+    label: str,
+    *,
+    user_id: Optional[int] = None,
+) -> dict[str, Any]:
+    """
+    Диагностика для verify-yandex: архив PNG в S3 + inline JPEG data URL для UI.
+    Returns:
+        {"diag_image_url": str|None, "diag_s3_key": str|None}
+    """
+    if driver is None:
+        return {"diag_image_url": None, "diag_s3_key": None}
+    try:
+        png = driver.get_screenshot_as_png()
+    except Exception as e:
+        logger.warning("selenium_diag: get_screenshot_as_png failed: %s", e)
+        return {"diag_image_url": None, "diag_s3_key": None}
+
+    jpeg_url = _png_to_jpeg_data_url(png)
+    s3_key = _upload_png_to_s3(_build_diag_s3_key(label, user_id), png)
+    return {"diag_image_url": jpeg_url, "diag_s3_key": s3_key}
 
 
 def upload_selenium_diag_screenshot(

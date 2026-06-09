@@ -20,6 +20,11 @@ services:
       - S3_SECRET_KEY=password123
       - S3_USE_SSL=false
       - API_GATEWAY_URL=http://gateway:8000
+      - VK_PUBLIC_GATEWAY_URL=${VK_PUBLIC_GATEWAY_URL:-http://localhost:8000}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8100}
+      - VK_APP_ID=${VK_APP_ID:-}
+      - VK_APP_SECRET=${VK_APP_SECRET:-}
+      - VK_OAUTH_REDIRECT_URI=${VK_OAUTH_REDIRECT_URI:-}
       - AUTH_SERVICE_URL=http://auth:8001
       - TG_BOT_SERVICE_URL=http://tg-bot:8004
       - VK_BOT_SERVICE_URL=http://vk-bot:8005

@@ -870,6 +870,9 @@ class ProfileService:
         user_access_token = data.get("user_access_token")
         if user_access_token in (None, "", "***"):
             user_access_token = None
+        vk_app_secret = data.get("vk_app_secret")
+        if vk_app_secret in (None, "", "***"):
+            vk_app_secret = None
         groups_to_read = data.get("groups_to_read", [])
         if not isinstance(groups_to_read, list):
             groups_to_read = []
@@ -888,8 +891,9 @@ class ProfileService:
                         time_intervals, owner_id, friends_only, from_group,
                         message, attachments, signed, mark_as_ads,
                         access_token, user_access_token, groups_to_read, group_to_post,
-                        post_to_own_wall, users_to_read
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        post_to_own_wall, users_to_read,
+                        vk_app_id, vk_app_secret, vk_frontend_url, vk_public_gateway_url
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -908,6 +912,12 @@ class ProfileService:
                         group_to_post = COALESCE(EXCLUDED.group_to_post, vk_profiles.group_to_post),
                         post_to_own_wall = COALESCE(EXCLUDED.post_to_own_wall, vk_profiles.post_to_own_wall),
                         users_to_read = COALESCE(EXCLUDED.users_to_read, vk_profiles.users_to_read),
+                        vk_app_id = COALESCE(NULLIF(EXCLUDED.vk_app_id, ''), vk_profiles.vk_app_id),
+                        vk_app_secret = COALESCE(NULLIF(EXCLUDED.vk_app_secret, ''), vk_profiles.vk_app_secret),
+                        vk_frontend_url = COALESCE(NULLIF(EXCLUDED.vk_frontend_url, ''), vk_profiles.vk_frontend_url),
+                        vk_public_gateway_url = COALESCE(
+                            NULLIF(EXCLUDED.vk_public_gateway_url, ''), vk_profiles.vk_public_gateway_url
+                        ),
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING *
                     """,
@@ -930,6 +940,10 @@ class ProfileService:
                         group_to_post,
                         post_to_own_wall,
                         json.dumps(users_to_read),
+                        data.get("vk_app_id") or None,
+                        vk_app_secret,
+                        data.get("vk_frontend_url") or None,
+                        data.get("vk_public_gateway_url") or None,
                     )
                 )
                 row = await cur.fetchone()
@@ -967,6 +981,30 @@ class ProfileService:
                     "vk_user_id": vk_user_id,
                     "group_to_post": group_to_post,
                     "groups_to_read": gr,
+                }
+        finally:
+            await release_db_connection(conn)
+
+    async def get_vk_oauth_config_raw(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """OAuth-приложение VK из профиля (секрет без маскирования)."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT vk_app_id, vk_app_secret, vk_frontend_url, vk_public_gateway_url
+                    FROM vk_profiles WHERE user_id = %s
+                    """,
+                    (user_id,),
+                )
+                row = await cur.fetchone()
+                if not row:
+                    return None
+                return {
+                    "vk_app_id": row[0],
+                    "vk_app_secret": row[1],
+                    "vk_frontend_url": row[2],
+                    "vk_public_gateway_url": row[3],
                 }
         finally:
             await release_db_connection(conn)
@@ -1019,6 +1057,8 @@ class ProfileService:
             profile["access_token"] = "***"
         if profile.get("user_access_token"):
             profile["user_access_token"] = "***"
+        if profile.get("vk_app_secret"):
+            profile["vk_app_secret"] = "***"
         return profile
     
     # ==================== cURL ====================

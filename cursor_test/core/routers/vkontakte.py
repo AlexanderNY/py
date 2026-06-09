@@ -15,7 +15,7 @@ from services.post_service import post_service
 from schemas import VKontakteProfileCreate, VKontaktePost
 from storage_client import get_storage
 from pydantic import BaseModel
-from config import settings
+from config import settings, get_vk_oauth_redirect_uri
 
 
 router = APIRouter(prefix="/vk", tags=["VKontakte"])
@@ -66,6 +66,10 @@ async def get_vk_profile(x_user_id: Optional[str] = Header(None)):
         "users_to_read": [],
         "group_to_post": None,
         "post_to_own_wall": False,
+        "vk_app_id": None,
+        "vk_app_secret": None,
+        "vk_frontend_url": None,
+        "vk_public_gateway_url": None,
     }
 
 
@@ -73,6 +77,33 @@ VK_OAUTH_SCOPES = "wall,photos,groups,offline"
 
 VK_API_VERSION = "5.199"
 VK_API_BASE = "https://api.vk.com/method"
+
+
+async def _resolve_vk_oauth_config(user_id: int) -> dict:
+    """OAuth-параметры: сначала профиль пользователя (UI), иначе env core."""
+    raw = await profile_service.get_vk_oauth_config_raw(user_id)
+    app_id = ""
+    app_secret = ""
+    frontend_url = ""
+    public_gateway = ""
+    if raw:
+        app_id = (raw.get("vk_app_id") or "").strip()
+        app_secret = (raw.get("vk_app_secret") or "").strip()
+        frontend_url = (raw.get("vk_frontend_url") or "").strip().rstrip("/")
+        public_gateway = (raw.get("vk_public_gateway_url") or "").strip()
+    if not app_id:
+        app_id = (getattr(settings, "VK_APP_ID", None) or "").strip()
+    if not app_secret:
+        app_secret = (getattr(settings, "VK_APP_SECRET", None) or "").strip()
+    if not frontend_url:
+        frontend_url = (settings.FRONTEND_URL or "").strip().rstrip("/")
+    redirect_uri = get_vk_oauth_redirect_uri(public_gateway or None)
+    return {
+        "app_id": app_id,
+        "app_secret": app_secret,
+        "frontend_url": frontend_url,
+        "redirect_uri": redirect_uri,
+    }
 
 
 def _vk_parse_api_response(data: dict) -> Any:
@@ -231,12 +262,17 @@ async def vk_list_subscriptions(x_user_id: Optional[str] = Header(None)):
 async def get_vk_oauth_url(x_user_id: Optional[str] = Header(None)):
     """Возвращает URL авторизации VK OAuth (state = user_id)."""
     user_id = get_user_id_from_header(x_user_id)
-    app_id = (getattr(settings, "VK_APP_ID", None) or "").strip()
-    redirect_uri = (getattr(settings, "VK_OAUTH_REDIRECT_URI", None) or "").strip()
-    if not app_id or not redirect_uri:
+    oauth_cfg = await _resolve_vk_oauth_config(user_id)
+    app_id = oauth_cfg["app_id"]
+    redirect_uri = oauth_cfg["redirect_uri"]
+    if not app_id:
         raise HTTPException(
             status_code=503,
-            detail="VK OAuth is not configured (VK_APP_ID, VK_OAUTH_REDIRECT_URI)",
+            detail=(
+                "VK OAuth не настроен: укажите VK App ID на вкладке «Авторизация» (приложение VK) "
+                "или задайте VK_APP_ID в окружении core. "
+                f"Redirect URI для кабинета VK: {redirect_uri}"
+            ),
         )
     params = {
         "client_id": app_id,
@@ -259,7 +295,17 @@ async def vk_oauth_callback(
     error_description: Optional[str] = None,
 ):
     """Callback VK OAuth: обмен code на access_token, сохранение user_access_token."""
-    frontend_url = (settings.FRONTEND_URL or "").rstrip("/")
+    try:
+        user_id = int(state) if state else 0
+    except (ValueError, TypeError):
+        user_id = 0
+    oauth_cfg = await _resolve_vk_oauth_config(user_id) if user_id else {
+        "app_id": (settings.VK_APP_ID or "").strip(),
+        "app_secret": (settings.VK_APP_SECRET or "").strip(),
+        "frontend_url": (settings.FRONTEND_URL or "").strip().rstrip("/"),
+        "redirect_uri": get_vk_oauth_redirect_uri(),
+    }
+    frontend_url = oauth_cfg["frontend_url"] or (settings.FRONTEND_URL or "").rstrip("/")
     vk_page = f"{frontend_url}/vkontakte"
     if error:
         msg = error_description or error
@@ -270,9 +316,9 @@ async def vk_oauth_callback(
         user_id = int(state)
     except (ValueError, TypeError):
         return RedirectResponse(url=f"{vk_page}?oauth=error&message=invalid_state")
-    app_id = (getattr(settings, "VK_APP_ID", None) or "").strip()
-    app_secret = (getattr(settings, "VK_APP_SECRET", None) or "").strip()
-    redirect_uri = (getattr(settings, "VK_OAUTH_REDIRECT_URI", None) or "").strip()
+    app_id = oauth_cfg["app_id"]
+    app_secret = oauth_cfg["app_secret"]
+    redirect_uri = oauth_cfg["redirect_uri"]
     if not app_id or not app_secret or not redirect_uri:
         return RedirectResponse(url=f"{vk_page}?oauth=error&message=server_config")
     params = {

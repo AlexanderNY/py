@@ -193,7 +193,21 @@ async def dzen_bot_verify_yandex_push_code(
         settings.DZEN_BOT_SERVICE_URL,
         "/dzen-bot/verify-yandex/push-code",
         request,
-        timeout_seconds=120.0,
+        timeout_seconds=300.0,
+    )
+
+
+@router.get("/dzen-bot/verify-yandex/pending-diag")
+async def dzen_bot_verify_yandex_pending_diag(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """GET /dzen-bot/verify-yandex/pending-diag -> актуальный скрин pending Selenium-сессии."""
+    return await _forward_to_bot(
+        settings.DZEN_BOT_SERVICE_URL,
+        "/dzen-bot/verify-yandex/pending-diag",
+        request,
+        timeout_seconds=45.0,
     )
 
 
