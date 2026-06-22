@@ -10,12 +10,14 @@ import { authService } from '@/services/auth-service'
 import { useAuth } from '@/contexts/auth-context'
 import { coreService } from '@/services/core-service'
 import { notificationsService } from '@/services/notifications-service'
+import { feedbackService } from '@/services/feedback-service'
 import { Input } from '@/components/ui/input'
 import type { User, RoleTariffHistoryEntry, GroupResponse, AdminAuditLogEntry } from '@/types/auth'
 import type {
   UserStatisticsItem,
   ScheduleSnapshot,
   Notification,
+  Feedback,
   ServicesStatusResponse,
   PostsTablesResponse,
   PlatformMetric,
@@ -25,8 +27,9 @@ import type {
   StorageFilesResponse,
   RuntimeLocationResponse,
 } from '@/types/core'
+import { FEEDBACK_TYPE_LABELS } from '@/types/core'
 
-type AdminTab = 'users' | 'audit' | 'groups' | 'statistics' | 'schedule' | 'notifications' | 'services-status' | 'processor' | 'collector' | 'scheduler' | 'posts-tables' | 'posting-diagnostics' | 'runtime-location' | 'storage'
+type AdminTab = 'users' | 'audit' | 'groups' | 'statistics' | 'schedule' | 'notifications' | 'feedback' | 'services-status' | 'processor' | 'collector' | 'scheduler' | 'posts-tables' | 'posting-diagnostics' | 'runtime-location' | 'storage'
 
 /** Платформы для «Принудительный запуск ботов» (совпадает с scheduler BOT_PLATFORMS). */
 const SCHEDULE_BOT_PLATFORMS = [
@@ -135,6 +138,12 @@ export function AdministrationPage() {
   const [notificationsList, setNotificationsList] = useState<Notification[]>([])
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false)
   const [isDeletingNotification, setIsDeletingNotification] = useState<number | null>(null)
+
+  // Feedback state
+  const [feedbackList, setFeedbackList] = useState<Feedback[]>([])
+  const [isLoadingFeedback, setIsLoadingFeedback] = useState(false)
+  const [feedbackError, setFeedbackError] = useState('')
+  const [isDeletingFeedback, setIsDeletingFeedback] = useState<number | null>(null)
 
   // Services status & Posts tables (admin)
   const [servicesStatus, setServicesStatus] = useState<ServicesStatusResponse | null>(null)
@@ -503,6 +512,37 @@ export function AdministrationPage() {
     }
   }
 
+  async function loadFeedback() {
+    setIsLoadingFeedback(true)
+    setFeedbackError('')
+    try {
+      const response = await feedbackService.getFeedbackList()
+      setFeedbackList(response.feedback || [])
+    } catch (error) {
+      setFeedbackError(error instanceof Error ? error.message : 'Failed to load feedback')
+      setFeedbackList([])
+    } finally {
+      setIsLoadingFeedback(false)
+    }
+  }
+
+  async function handleDeleteFeedback(feedbackId: number) {
+    if (!window.confirm('Удалить эту запись обратной связи?')) {
+      return
+    }
+
+    setIsDeletingFeedback(feedbackId)
+    setFeedbackError('')
+    try {
+      await feedbackService.deleteFeedback(feedbackId)
+      setFeedbackList(prev => prev.filter(item => item.id !== feedbackId))
+    } catch (error) {
+      setFeedbackError(error instanceof Error ? error.message : 'Failed to delete feedback')
+    } finally {
+      setIsDeletingFeedback(null)
+    }
+  }
+
   async function handleLoadServicesStatus() {
     setServicesStatusError('')
     setIsLoadingServicesStatus(true)
@@ -718,6 +758,12 @@ export function AdministrationPage() {
     }
   }, [activeTab])
 
+  useEffect(() => {
+    if (activeTab === 'feedback') {
+      void loadFeedback()
+    }
+  }, [activeTab])
+
   const POSTS_TABLE_COLUMNS: { key: keyof PostRow; label: string }[] = [
     { key: 'id', label: 'ID' },
     { key: 'user_id', label: 'User ID' },
@@ -837,6 +883,16 @@ export function AdministrationPage() {
           }`}
         >
           Notifications
+        </button>
+        <button
+          onClick={() => setActiveTab('feedback')}
+          className={`px-4 py-2 font-medium text-sm transition-colors ${
+            activeTab === 'feedback'
+              ? 'text-primary-400 border-b-2 border-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          Обратная связь
         </button>
         <button
           onClick={() => setActiveTab('services-status')}
@@ -1804,6 +1860,93 @@ export function AdministrationPage() {
                 </p>
               )}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'feedback' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              </svg>
+              Обратная связь
+            </CardTitle>
+            <CardDescription>Сообщения пользователей: ошибки, предложения, контакты</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {feedbackError && (
+              <Alert variant="error" className="animate-slide-down">
+                {feedbackError}
+              </Alert>
+            )}
+
+            <div className="flex justify-end">
+              <Button
+                variant="secondary"
+                onClick={() => void loadFeedback()}
+                isLoading={isLoadingFeedback}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Refresh
+              </Button>
+            </div>
+
+            {feedbackList.length > 0 ? (
+              <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
+                <table className="w-full">
+                  <thead className="bg-[var(--bg-tertiary)]">
+                    <tr>
+                      <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Тип</th>
+                      <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Текст</th>
+                      <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Email</th>
+                      <th className="py-3 px-4 text-center text-sm font-medium text-[var(--text-secondary)]">Действие</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border-color)]">
+                    {feedbackList.map((item) => (
+                      <tr key={item.id} className="hover:bg-[var(--bg-tertiary)] transition-colors">
+                        <td className="py-3 px-4 text-[var(--text-primary)] text-sm whitespace-nowrap">
+                          {FEEDBACK_TYPE_LABELS[item.type] ?? item.type}
+                        </td>
+                        <td className="py-3 px-4 text-[var(--text-primary)] text-sm max-w-md">
+                          <p className="whitespace-pre-wrap break-words">{item.text}</p>
+                        </td>
+                        <td className="py-3 px-4 text-[var(--text-secondary)] text-sm whitespace-nowrap">
+                          {item.email || '—'}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <button
+                            onClick={() => void handleDeleteFeedback(item.id)}
+                            disabled={isDeletingFeedback === item.id}
+                            className="p-2 rounded-lg hover:bg-red-500/20 text-red-400 hover:text-red-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Удалить"
+                          >
+                            {isDeletingFeedback === item.id ? (
+                              <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                            ) : (
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-[var(--text-muted)] text-center py-8">
+                {isLoadingFeedback ? 'Загрузка...' : 'Записей обратной связи пока нет'}
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

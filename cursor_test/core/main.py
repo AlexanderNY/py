@@ -21,6 +21,7 @@ from routers import (
     curl,
     cpost,
     notifications,
+    feedback,
     admin,
     threads,
 )
@@ -65,6 +66,7 @@ app.include_router(instagram.router)
 app.include_router(curl.router)
 app.include_router(cpost.router)
 app.include_router(notifications.router)
+app.include_router(feedback.router)
 app.include_router(admin.router)
 app.include_router(threads.router)
 

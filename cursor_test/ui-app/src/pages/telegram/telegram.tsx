@@ -15,9 +15,17 @@ import {
   type TargetSocialNetworks,
 } from '@/components/target-social-networks'
 import { useAuth } from '@/contexts/auth-context'
-import type { TelegramConfig, TelegramPostListItem, TimeInterval, PublishScheduleType } from '@/types/telegram'
+import type {
+  TelegramConfig,
+  TelegramPostListItem,
+  TimeInterval,
+  PublishScheduleType,
+  TelegramAlertRule,
+} from '@/types/telegram'
 
 const AUTH_STATUS_POLL_INTERVAL_MS = 12_000
+const MAX_ALERT_RULES = 10
+const MAX_ALERT_LIST_ITEMS = 10
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
@@ -29,6 +37,88 @@ type ScheduleMinute = (typeof SCHEDULE_MINUTES)[number]
 interface DynamicField {
   id: string
   value: string
+}
+
+interface AlertRuleBlock {
+  id: string
+  enabled: boolean
+  chatsToRead: DynamicField[]
+  saveConditions: DynamicField[]
+  channelToPost: string
+  alertText: string
+}
+
+function createEmptyAlertRuleBlock(): AlertRuleBlock {
+  return {
+    id: generateId(),
+    enabled: true,
+    chatsToRead: [{ id: generateId(), value: '' }],
+    saveConditions: [{ id: generateId(), value: '' }],
+    channelToPost: '',
+    alertText: '',
+  }
+}
+
+function mapAlertRulesFromProfile(rules?: TelegramAlertRule[]): AlertRuleBlock[] {
+  if (rules && rules.length > 0) {
+    return rules.map((rule) => ({
+      id: generateId(),
+      enabled: rule.enabled ?? true,
+      chatsToRead: (rule.chats_to_read?.length ? rule.chats_to_read : ['']).map((value) => ({
+        id: generateId(),
+        value,
+      })),
+      saveConditions: (rule.save_conditions?.length ? rule.save_conditions : ['']).map((value) => ({
+        id: generateId(),
+        value,
+      })),
+      channelToPost: rule.channel_to_post || '',
+      alertText: rule.alert_text || '',
+    }))
+  }
+  return [createEmptyAlertRuleBlock()]
+}
+
+function serializeAlertRules(rules: AlertRuleBlock[]): TelegramAlertRule[] {
+  return rules
+    .map((block) => ({
+      enabled: block.enabled,
+      chats_to_read: block.chatsToRead.map((field) => field.value.trim()).filter(Boolean),
+      save_conditions: block.saveConditions.map((field) => field.value.trim()).filter(Boolean),
+      channel_to_post: block.channelToPost.trim() || undefined,
+      alert_text: block.alertText.trim().slice(0, 1000) || undefined,
+    }))
+    .filter(
+      (rule) =>
+        rule.chats_to_read.length > 0 &&
+        rule.save_conditions.length > 0 &&
+        rule.channel_to_post &&
+        rule.alert_text
+    )
+    .slice(0, MAX_ALERT_RULES)
+}
+
+function validateAlertRules(alertEnabled: boolean, rules: AlertRuleBlock[]): string | null {
+  for (const block of rules) {
+    if (!block.enabled) continue
+    const hasAnyField =
+      block.chatsToRead.some((field) => field.value.trim()) ||
+      block.saveConditions.some((field) => field.value.trim()) ||
+      block.channelToPost.trim() ||
+      block.alertText.trim()
+    const hasAllFields =
+      block.chatsToRead.some((field) => field.value.trim()) &&
+      block.saveConditions.some((field) => field.value.trim()) &&
+      block.channelToPost.trim() &&
+      block.alertText.trim()
+    if (hasAnyField && !hasAllFields) {
+      return 'Заполните все поля для включённых правил Alerting или отключите правило.'
+    }
+  }
+  if (alertEnabled && serializeAlertRules(rules).length === 0) {
+    return 'Добавьте хотя бы одно полное правило Alerting или отключите alerting.'
+  }
+  return null
 }
 
 export function TelegramPage() {
@@ -58,6 +148,8 @@ export function TelegramPage() {
   const [telegramUsername, setTelegramUsername] = useState('')
   const [authPhoneNumber, setAuthPhoneNumber] = useState('')
   const [channelToPost, setChannelToPost] = useState('')
+  const [alertEnabled, setAlertEnabled] = useState(false)
+  const [alertRules, setAlertRules] = useState<AlertRuleBlock[]>(() => [createEmptyAlertRuleBlock()])
   const [chatsToRead, setChatsToRead] = useState<DynamicField[]>([{ id: generateId(), value: '' }])
   const [saveConditions, setSaveConditions] = useState<DynamicField[]>([{ id: generateId(), value: '' }])
   const [processEnabled, setProcessEnabled] = useState(false)
@@ -172,6 +264,8 @@ export function TelegramPage() {
         setTelegramUsername(profile.telegram_username || '')
         setAuthPhoneNumber(profile.auth_phone_number || '')
         setChannelToPost(profile.channel_to_post || '')
+        setAlertEnabled(profile.alert_enabled ?? false)
+        setAlertRules(mapAlertRulesFromProfile(profile.alert_rules))
         if (profile.chats_to_read && profile.chats_to_read.length > 0) {
           setChatsToRead(profile.chats_to_read.map(chat => ({ id: generateId(), value: chat })))
         }
@@ -304,6 +398,11 @@ export function TelegramPage() {
     e.preventDefault()
     setError('')
     setSuccess('')
+    const alertValidationError = validateAlertRules(alertEnabled, alertRules)
+    if (alertValidationError) {
+      setError(alertValidationError)
+      return
+    }
     setIsSavingProfile(true)
     const timeIntervals = publishScheduleType === 'by_intervals'
       ? [{ start: `${String(publishScheduleHour).padStart(2, '0')}:${String(publishScheduleMinute).padStart(2, '0')}` }]
@@ -321,6 +420,8 @@ export function TelegramPage() {
         chats_to_read: chatsToRead.map(f => f.value).filter(Boolean),
         save_conditions: saveConditions.map(f => f.value).filter(Boolean),
         channel_to_post: channelToPost || undefined,
+        alert_enabled: alertEnabled,
+        alert_rules: serializeAlertRules(alertRules),
         process_enabled: processEnabled,
         processing_description: processEnabled ? processingDescription || undefined : undefined,
       })
@@ -340,6 +441,11 @@ export function TelegramPage() {
     e.preventDefault()
     setError('')
     setSuccess('')
+    const alertValidationError = validateAlertRules(alertEnabled, alertRules)
+    if (alertValidationError) {
+      setError(alertValidationError)
+      return
+    }
     setIsSavingProfile(true)
     const timeIntervals = publishScheduleType === 'by_intervals'
       ? [{ start: `${String(publishScheduleHour).padStart(2, '0')}:${String(publishScheduleMinute).padStart(2, '0')}` }]
@@ -357,6 +463,8 @@ export function TelegramPage() {
         chats_to_read: chatsToRead.map(f => f.value).filter(Boolean),
         save_conditions: saveConditions.map(f => f.value).filter(Boolean),
         channel_to_post: channelToPost || undefined,
+        alert_enabled: alertEnabled,
+        alert_rules: serializeAlertRules(alertRules),
         process_enabled: processEnabled,
         processing_description: processEnabled ? processingDescription || undefined : undefined,
         remove_emojis: removeEmojis,
@@ -400,6 +508,61 @@ export function TelegramPage() {
     setter(prev => prev.map(field => 
       field.id === id ? { ...field, value } : field
     ))
+  }
+
+  function addAlertRule() {
+    setAlertRules((prev) => {
+      if (prev.length >= MAX_ALERT_RULES) return prev
+      return [...prev, createEmptyAlertRuleBlock()]
+    })
+  }
+
+  function removeAlertRule(ruleId: string) {
+    setAlertRules((prev) => {
+      if (prev.length <= 1) return prev
+      return prev.filter((rule) => rule.id !== ruleId)
+    })
+  }
+
+  function updateAlertRule(ruleId: string, patch: Partial<Pick<AlertRuleBlock, 'enabled' | 'channelToPost' | 'alertText'>>) {
+    setAlertRules((prev) =>
+      prev.map((rule) => (rule.id === ruleId ? { ...rule, ...patch } : rule))
+    )
+  }
+
+  function addAlertRuleField(ruleId: string, field: 'chatsToRead' | 'saveConditions') {
+    setAlertRules((prev) =>
+      prev.map((rule) => {
+        if (rule.id !== ruleId || rule[field].length >= MAX_ALERT_LIST_ITEMS) return rule
+        return { ...rule, [field]: [...rule[field], { id: generateId(), value: '' }] }
+      })
+    )
+  }
+
+  function removeAlertRuleField(ruleId: string, field: 'chatsToRead' | 'saveConditions', fieldId: string) {
+    setAlertRules((prev) =>
+      prev.map((rule) => {
+        if (rule.id !== ruleId || rule[field].length <= 1) return rule
+        return { ...rule, [field]: rule[field].filter((item) => item.id !== fieldId) }
+      })
+    )
+  }
+
+  function updateAlertRuleField(
+    ruleId: string,
+    field: 'chatsToRead' | 'saveConditions',
+    fieldId: string,
+    value: string
+  ) {
+    setAlertRules((prev) =>
+      prev.map((rule) => {
+        if (rule.id !== ruleId) return rule
+        return {
+          ...rule,
+          [field]: rule[field].map((item) => (item.id === fieldId ? { ...item, value } : item)),
+        }
+      })
+    )
   }
 
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1212,6 +1375,189 @@ export function TelegramPage() {
                           Add Condition
                         </Button>
                       </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Alerting */}
+                <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                    Alerting
+                  </h3>
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={alertEnabled}
+                        onChange={(e) => setAlertEnabled(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
+                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                    </div>
+                    <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                      Enable alerting
+                    </span>
+                  </label>
+
+                  {alertEnabled && (
+                    <div className="space-y-4 animate-slide-down">
+                      <p className="text-sm text-[var(--text-muted)]">
+                        При совпадении Save Conditions в мониторинговых чатах отправляется оповещение в Channel to Post
+                        с ID канала-источника, текстом сообщения и заданным текстом алерта.
+                      </p>
+                      {alertRules.map((rule, ruleIndex) => (
+                        <div
+                          key={rule.id}
+                          className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <h4 className="text-sm font-semibold text-[var(--text-primary)]">
+                              Rule {ruleIndex + 1}
+                            </h4>
+                            <div className="flex items-center gap-3">
+                              <label className="flex items-center gap-2 cursor-pointer text-sm text-[var(--text-secondary)]">
+                                <input
+                                  type="checkbox"
+                                  checked={rule.enabled}
+                                  onChange={(e) => updateAlertRule(rule.id, { enabled: e.target.checked })}
+                                  className="w-4 h-4 text-primary-500"
+                                />
+                                Enabled
+                              </label>
+                              {alertRules.length > 1 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeAlertRule(rule.id)}
+                                  className="text-red-400 hover:text-red-300"
+                                >
+                                  Remove rule
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <h5 className="text-sm font-medium text-[var(--text-secondary)]">Chats to Read</h5>
+                            {rule.chatsToRead.map((field) => (
+                              <div key={field.id} className="flex gap-3">
+                                <Input
+                                  placeholder="e.g., -1002009872429"
+                                  value={field.value}
+                                  onChange={(e) =>
+                                    updateAlertRuleField(rule.id, 'chatsToRead', field.id, e.target.value)
+                                  }
+                                  className="flex-1"
+                                />
+                                {rule.chatsToRead.length > 1 && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => removeAlertRuleField(rule.id, 'chatsToRead', field.id)}
+                                    className="px-3 text-red-400 hover:text-red-300"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </Button>
+                                )}
+                              </div>
+                            ))}
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              disabled={rule.chatsToRead.length >= MAX_ALERT_LIST_ITEMS}
+                              onClick={() => addAlertRuleField(rule.id, 'chatsToRead')}
+                            >
+                              Add Chat
+                            </Button>
+                          </div>
+
+                          <div className="space-y-3">
+                            <h5 className="text-sm font-medium text-[var(--text-secondary)]">Save Conditions</h5>
+                            {rule.saveConditions.map((field) => (
+                              <div key={field.id} className="flex gap-3">
+                                <Input
+                                  placeholder="Enter condition (e.g., contains keyword)"
+                                  value={field.value}
+                                  onChange={(e) =>
+                                    updateAlertRuleField(rule.id, 'saveConditions', field.id, e.target.value)
+                                  }
+                                  className="flex-1"
+                                />
+                                {rule.saveConditions.length > 1 && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => removeAlertRuleField(rule.id, 'saveConditions', field.id)}
+                                    className="px-3 text-red-400 hover:text-red-300"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </Button>
+                                )}
+                              </div>
+                            ))}
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              disabled={rule.saveConditions.length >= MAX_ALERT_LIST_ITEMS}
+                              onClick={() => addAlertRuleField(rule.id, 'saveConditions')}
+                            >
+                              Add Condition
+                            </Button>
+                          </div>
+
+                          <Input
+                            label="Channel to Post"
+                            type="text"
+                            value={rule.channelToPost}
+                            onChange={(e) => updateAlertRule(rule.id, { channelToPost: e.target.value })}
+                            placeholder="e.g., -1002009872429"
+                          />
+
+                          <div>
+                            <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">
+                              Alert text
+                            </label>
+                            <textarea
+                              value={rule.alertText}
+                              onChange={(e) =>
+                                updateAlertRule(rule.id, { alertText: e.target.value.slice(0, 1000) })
+                              }
+                              rows={3}
+                              maxLength={1000}
+                              className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
+                              placeholder="Текст оповещения..."
+                            />
+                            <p className="text-xs text-[var(--text-muted)] mt-2">
+                              {rule.alertText.length} / 1000 characters
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={alertRules.length >= MAX_ALERT_RULES}
+                        onClick={addAlertRule}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add rule
+                      </Button>
                     </div>
                   )}
                 </div>

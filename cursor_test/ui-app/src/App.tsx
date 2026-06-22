@@ -19,6 +19,7 @@ import { GroupPage } from '@/pages/group'
 import { FigmaPreviewPage } from '@/pages/figma-preview'
 import { AboutPage } from '@/pages/about/about'
 import { PricingPage } from '@/pages/pricing/pricing'
+import { FeedbackPage } from '@/pages/feedback'
 import { RouteLoader } from '@/components/route-loader'
 
 interface ProtectedRouteProps {
@@ -99,6 +100,7 @@ function App() {
         <Route path="administration" element={<AdminRoute><AdministrationPage /></AdminRoute>} />
         <Route path="about" element={<AboutPage />} />
         <Route path="pricing" element={<PricingPage />} />
+        <Route path="feedback" element={<FeedbackPage />} />
       </Route>
 
       <Route path="figma-preview" element={<FigmaPreviewPage />} />

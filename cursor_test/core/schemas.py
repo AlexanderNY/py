@@ -1,7 +1,7 @@
 """Pydantic модели для Core сервиса."""
 
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field, EmailStr, field_validator
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 from enum import Enum
 
@@ -89,6 +89,30 @@ class ScheduleResponse(BaseModel):
 
 # ==================== Telegram ====================
 
+class TelegramAlertRule(BaseModel):
+    """Правило алертинга: мониторинг чатов и оповещение в канал."""
+    enabled: bool = True
+    chats_to_read: List[str] = Field(default_factory=list, max_length=10)
+    save_conditions: List[str] = Field(default_factory=list, max_length=10)
+    channel_to_post: Optional[str] = None
+    alert_text: Optional[str] = Field(None, max_length=1000)
+
+    @field_validator("chats_to_read", "save_conditions", mode="before")
+    @classmethod
+    def trim_string_lists(cls, value: Any) -> List[str]:
+        if not isinstance(value, list):
+            return []
+        result: List[str] = []
+        for item in value:
+            if isinstance(item, str):
+                trimmed = item.strip()
+                if trimmed:
+                    result.append(trimmed)
+            if len(result) >= 10:
+                break
+        return result
+
+
 class TelegramProfileBase(BaseModel):
     """Базовая модель профиля Telegram."""
     publish_enabled: bool = False
@@ -102,6 +126,8 @@ class TelegramProfileBase(BaseModel):
     chats_to_read: List[str] = []
     save_conditions: List[str] = []
     channel_to_post: Optional[str] = None
+    alert_enabled: bool = False
+    alert_rules: List[TelegramAlertRule] = Field(default_factory=list, max_length=10)
     process_enabled: bool = False
     processing_description: Optional[str] = None
     remove_emojis: bool = False
@@ -111,6 +137,13 @@ class TelegramProfileBase(BaseModel):
     status_review_after_process: bool = False
     add_static_html: bool = False
     static_html_content: Optional[str] = None  # max 1000
+
+    @field_validator("alert_rules", mode="before")
+    @classmethod
+    def limit_alert_rules(cls, value: Any) -> List[Any]:
+        if not isinstance(value, list):
+            return []
+        return value[:10]
 
 
 class TelegramProfileCreate(TelegramProfileBase):
@@ -843,6 +876,33 @@ class Notification(BaseModel):
 class NotificationResponse(BaseModel):
     """Ответ со списком уведомлений."""
     notifications: List[Notification]
+
+
+# ==================== Feedback ====================
+
+class FeedbackCreate(BaseModel):
+    """Модель для создания обратной связи."""
+    type: Literal["bug_report", "suggestion", "contact_author"]
+    text: str = Field(..., min_length=1)
+    email: Optional[EmailStr] = None
+
+
+class Feedback(BaseModel):
+    """Модель обратной связи."""
+    id: int
+    type: str
+    text: str
+    email: Optional[str] = None
+    user_id: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class FeedbackResponse(BaseModel):
+    """Ответ со списком обратной связи."""
+    feedback: List[Feedback]
 
 
 # ==================== Admin (services status, posts tables) ====================

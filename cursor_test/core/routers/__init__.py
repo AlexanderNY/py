@@ -10,6 +10,7 @@ from . import instagram
 from . import curl
 from . import cpost
 from . import notifications
+from . import feedback
 from . import admin
 from . import threads
 
@@ -26,6 +27,7 @@ __all__ = [
     "curl",
     "cpost",
     "notifications",
+    "feedback",
     "admin",
     "threads",
 ]

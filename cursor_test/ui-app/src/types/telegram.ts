@@ -1,5 +1,13 @@
 export type PublishScheduleType = 'on_new_messages' | 'by_intervals'
 
+export interface TelegramAlertRule {
+  enabled: boolean
+  chats_to_read: string[]
+  save_conditions: string[]
+  channel_to_post?: string
+  alert_text?: string
+}
+
 export interface TelegramConfig {
   publish_enabled: boolean
   collect_enabled: boolean
@@ -12,6 +20,8 @@ export interface TelegramConfig {
   chats_to_read: string[]
   save_conditions: string[]
   channel_to_post?: string
+  alert_enabled?: boolean
+  alert_rules?: TelegramAlertRule[]
   process_enabled: boolean
   processing_description?: string
   remove_emojis?: boolean

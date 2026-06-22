@@ -54,16 +54,19 @@ class ProfileService:
                 else:
                     process_services_json = None
                 
+                alert_rules = data.get("alert_rules", [])
+                alert_rules_json = json.dumps(alert_rules) if isinstance(alert_rules, list) else "[]"
+
                 await cur.execute(
                     """
                     INSERT INTO tg_profiles (
                         user_id, publish_enabled, collect_enabled, schedule_type,
                         time_intervals, api_id, api_hash, telegram_username, auth_phone_number,
-                        chats_to_read, save_conditions, channel_to_post, process_enabled,
-                        processing_description, remove_emojis, remove_images,
+                        chats_to_read, save_conditions, channel_to_post, alert_enabled, alert_rules,
+                        process_enabled, processing_description, remove_emojis, remove_images,
                         clean_html, process_services, status_review_after_process,
                         add_static_html, static_html_content
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -76,6 +79,8 @@ class ProfileService:
                         chats_to_read = EXCLUDED.chats_to_read,
                         save_conditions = EXCLUDED.save_conditions,
                         channel_to_post = EXCLUDED.channel_to_post,
+                        alert_enabled = EXCLUDED.alert_enabled,
+                        alert_rules = EXCLUDED.alert_rules,
                         process_enabled = EXCLUDED.process_enabled,
                         processing_description = EXCLUDED.processing_description,
                         remove_emojis = EXCLUDED.remove_emojis,
@@ -103,6 +108,8 @@ class ProfileService:
                         json.dumps(data.get("chats_to_read", [])),
                         json.dumps(data.get("save_conditions", [])),
                         data.get("channel_to_post"),
+                        data.get("alert_enabled", False),
+                        alert_rules_json,
                         data.get("process_enabled", False),
                         data.get("processing_description"),
                         data.get("remove_emojis", False),
@@ -130,6 +137,13 @@ class ProfileService:
             profile["chats_to_read"] = json.loads(profile["chats_to_read"])
         if isinstance(profile.get("save_conditions"), str):
             profile["save_conditions"] = json.loads(profile["save_conditions"])
+        if isinstance(profile.get("alert_rules"), str):
+            try:
+                profile["alert_rules"] = json.loads(profile["alert_rules"])
+            except (json.JSONDecodeError, TypeError):
+                profile["alert_rules"] = []
+        elif not isinstance(profile.get("alert_rules"), list):
+            profile["alert_rules"] = []
         # Парсим process_services
         ps = profile.get("process_services")
         if ps is not None and isinstance(ps, str):
@@ -143,6 +157,8 @@ class ProfileService:
         profile.setdefault("remove_emojis", False)
         profile.setdefault("remove_images", False)
         profile.setdefault("clean_html", False)
+        profile.setdefault("alert_enabled", False)
+        profile.setdefault("alert_rules", [])
         profile.setdefault("status_review_after_process", False)
         profile.setdefault("add_static_html", False)
         return profile

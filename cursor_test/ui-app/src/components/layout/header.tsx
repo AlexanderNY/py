@@ -71,7 +71,7 @@ export function Header() {
   )
 
   return (
-    <header className="h-16 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] flex items-center justify-between px-6">
+    <header className="h-[115px] bg-[var(--bg-secondary)] border-b border-[var(--border-color)] flex items-center justify-between px-6">
       <div className="flex items-center gap-4 flex-1">
         {/* Notifications Block */}
         {notifications.length > 0 && (

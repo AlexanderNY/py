@@ -93,6 +93,8 @@ CREATE TABLE IF NOT EXISTS tg_profiles (
     chats_to_read JSONB DEFAULT '[]',
     save_conditions JSONB DEFAULT '[]',
     channel_to_post VARCHAR(50),
+    alert_enabled BOOLEAN DEFAULT FALSE,
+    alert_rules JSONB DEFAULT '[]',
     process_enabled BOOLEAN DEFAULT FALSE,
     processing_description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -155,6 +157,16 @@ END $$;
 DO $$
 BEGIN
   ALTER TABLE tg_profiles ADD COLUMN auth_phone_number VARCHAR(50);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN alert_enabled BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN alert_rules JSONB DEFAULT '[]';
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 """
@@ -1248,6 +1260,22 @@ EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 """
 
+# Таблица feedback - обратная связь от пользователей
+FEEDBACK_TABLE = """
+CREATE TABLE IF NOT EXISTS feedback (
+    id SERIAL PRIMARY KEY,
+    type VARCHAR(50) NOT NULL CHECK (type IN ('bug_report', 'suggestion', 'contact_author')),
+    text TEXT NOT NULL,
+    email VARCHAR(255),
+    user_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+FEEDBACK_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at DESC);
+"""
+
 # Список всех таблиц для инициализации
 ALL_TABLES = [
     POSTS_TABLE,
@@ -1307,4 +1335,6 @@ ALL_TABLES = [
     NOTIFICATIONS_TABLE,
     NOTIFICATIONS_MIGRATION,
     NOTIFICATIONS_INDEXES,
+    FEEDBACK_TABLE,
+    FEEDBACK_INDEXES,
 ]

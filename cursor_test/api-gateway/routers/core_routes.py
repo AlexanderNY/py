@@ -341,3 +341,43 @@ async def delete_notification(
     Требует JWT аутентификации и роли admin.
     """
     return await forward_to_core(f"/notifications/{notification_id}", request)
+
+
+@router.post("/feedback")
+async def create_feedback(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Создаёт запись обратной связи на core сервисе.
+
+    POST /core/feedback -> POST /feedback на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core("/feedback", request)
+
+
+@router.get("/feedback")
+async def get_feedback(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Получает список обратной связи из core сервиса.
+
+    GET /core/feedback -> GET /feedback на core сервисе
+    Требует JWT и роли admin (проверка на core).
+    """
+    return await forward_to_core("/feedback", request)
+
+
+@router.delete("/feedback/{feedback_id}")
+async def delete_feedback(
+    feedback_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Удаляет запись обратной связи на core сервисе.
+
+    DELETE /core/feedback/{id} -> DELETE /feedback/{id} на core сервисе
+    Требует JWT и роли admin (проверка на core).
+    """
+    return await forward_to_core(f"/feedback/{feedback_id}", request)

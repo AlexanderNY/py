@@ -8,6 +8,7 @@ from fastapi import FastAPI
 import uvicorn
 from database import init_db, close_db
 from game_schema import GAME_TABLE_DDL
+from tg_profiles_migration import TG_PROFILES_ALERT_MIGRATION
 from services.telegram_bot_service import TelegramBotService
 from services.client_manager import TelegramClientManager
 from routers.auth import router as auth_router, set_client_manager
@@ -103,9 +104,9 @@ async def main():
     try:
         logger.info("Initializing Telegram Bot...")
         
-        # Инициализация БД (пул соединений; таблицы создаются в core)
+        # Инициализация БД: игровые таблицы + миграции tg_profiles (alerting)
         logger.info("Initializing database...")
-        await init_db(GAME_TABLE_DDL)
+        await init_db(TG_PROFILES_ALERT_MIGRATION + GAME_TABLE_DDL)
         logger.info("Database initialized")
         
         # Создание менеджера клиентов

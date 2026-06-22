@@ -47,7 +47,7 @@ class TelegramClientManager:
                 await cur.execute(
                     """
                     SELECT * FROM tg_profiles
-                    WHERE (collect_enabled = TRUE OR publish_enabled = TRUE)
+                    WHERE (collect_enabled = TRUE OR publish_enabled = TRUE OR alert_enabled = TRUE)
                       AND api_id IS NOT NULL
                       AND api_hash IS NOT NULL
                     """
@@ -74,6 +74,14 @@ class TelegramClientManager:
                             profile['save_conditions'] = json.loads(profile['save_conditions'])
                         except (json.JSONDecodeError, TypeError):
                             profile['save_conditions'] = []
+                    if isinstance(profile.get('alert_rules'), str):
+                        try:
+                            profile['alert_rules'] = json.loads(profile['alert_rules'])
+                        except (json.JSONDecodeError, TypeError):
+                            profile['alert_rules'] = []
+                    elif not isinstance(profile.get('alert_rules'), list):
+                        profile['alert_rules'] = []
+                    profile.setdefault('alert_enabled', False)
                     profiles.append(profile)
                 
                 _log_action("Loaded %d profiles for collect/publish", len(profiles))
@@ -389,11 +397,12 @@ class TelegramClientManager:
         if not profiles:
             return
 
-        # Приоритизация: collect_enabled, затем publish_enabled
+        # Приоритизация: collect_enabled, alert_enabled, publish_enabled
         def _priority(p: Dict) -> int:
             c = 1 if p.get("collect_enabled") else 0
+            a = 1 if p.get("alert_enabled") else 0
             p_en = 1 if p.get("publish_enabled") else 0
-            return (c * 2 + p_en)  # collect=2, publish=1, both=3
+            return c * 4 + a * 2 + p_en
 
         profiles = sorted(profiles, key=_priority, reverse=True)
 

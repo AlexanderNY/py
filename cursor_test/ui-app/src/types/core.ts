@@ -67,6 +67,33 @@ export interface NotificationCreate {
   type?: string | null
 }
 
+export type FeedbackType = 'bug_report' | 'suggestion' | 'contact_author'
+
+export interface Feedback {
+  id: number
+  type: FeedbackType
+  text: string
+  email?: string | null
+  user_id?: number | null
+  created_at: string
+}
+
+export interface FeedbackResponse {
+  feedback: Feedback[]
+}
+
+export interface FeedbackCreate {
+  type: FeedbackType
+  text: string
+  email?: string | null
+}
+
+export const FEEDBACK_TYPE_LABELS: Record<FeedbackType, string> = {
+  bug_report: 'Сообщить об ошибке',
+  suggestion: 'Предложить доработку',
+  contact_author: 'Связаться с автором',
+}
+
 // Admin: services status & posts tables
 
 export interface LoopStatus {

@@ -70,7 +70,9 @@ async def get_tg_profile(x_user_id: Optional[str] = Header(None)):
         "process_services": [],
         "status_review_after_process": False,
         "add_static_html": False,
-        "static_html_content": None
+        "static_html_content": None,
+        "alert_enabled": False,
+        "alert_rules": [],
     }
 
 
