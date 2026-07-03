@@ -1,4 +1,4 @@
-Кратко, что сделано:
+, что сделано:
 
 1. База данных
 tg-bot/game_schema.py — DDL: game_players, game_modes, game_questions, game_question_options, game_sessions, game_session_questions, game_answers, индексы, сид режима demo.
